@@ -1,13 +1,6 @@
 import { PlaceholderPage } from "./PlaceholderPage";
 
-export function SpritzgussPage() {
-  return (
-    <PlaceholderPage
-      title="Spritzguss-Kalkulation"
-      description="Kalkulation von Spritzgussteilen inklusive Material-, Maschinen- und Lohnkosten."
-    />
-  );
-}
+export { SpritzgussPage } from "./SpritzgussPage";
 
 export function VeredelungPage() {
   return (

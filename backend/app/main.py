@@ -7,7 +7,7 @@ from sqlalchemy import text
 from app.api.router import api_router
 from app.config import settings
 from app.database import Base, SessionLocal, engine, verify_database_connection
-from app.models import Lohnkosten, Maschine, Material, User, Zuschlagssatz  # noqa: F401
+from app.models import Lohnkosten, Maschine, Material, SpritzgussKalkulation, User, Zuschlagssatz  # noqa: F401
 from app.scripts.seed_admin import seed_admin_user
 
 
