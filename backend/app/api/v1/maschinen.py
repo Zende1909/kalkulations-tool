@@ -10,7 +10,7 @@ from app.schemas.maschine import MaschineCreate, MaschineRead, MaschineUpdate
 router = APIRouter(prefix="/maschinen", tags=["Maschinen"])
 
 
-@router.get("/", response_model=list[MaschineRead])
+@router.get("", response_model=list[MaschineRead])
 def list_maschinen(
     skip: int = 0,
     limit: int = 100,
@@ -32,7 +32,7 @@ def get_maschine(
     return item
 
 
-@router.post("/", response_model=MaschineRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=MaschineRead, status_code=status.HTTP_201_CREATED)
 def create_maschine(
     item_in: MaschineCreate,
     db: Session = Depends(get_db),

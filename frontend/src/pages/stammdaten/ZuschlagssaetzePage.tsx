@@ -1,6 +1,7 @@
 import type { ColDef } from "ag-grid-community";
 
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
+import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import type { Zuschlagssatz } from "../../types/stammdaten";
 
 const columnDefs: ColDef<Zuschlagssatz>[] = [
@@ -10,8 +11,21 @@ const columnDefs: ColDef<Zuschlagssatz>[] = [
   { field: "aktiv", headerName: "Aktiv" },
 ];
 
-const defaultRow = {
-  bezeichnung: "Neuer Zuschlagssatz",
+const formFields: FormField[] = [
+  { name: "bezeichnung", label: "Bezeichnung", type: "text", required: true },
+  { name: "satz_prozent", label: "Satz (%)", type: "number", required: true, step: "0.01" },
+  {
+    name: "typ",
+    label: "Typ",
+    type: "select",
+    required: true,
+    options: ["GEMEINKOSTEN", "GEWINN", "VERSCHROTTUNG"],
+  },
+  { name: "aktiv", label: "Aktiv", type: "checkbox" },
+];
+
+const emptyFormValues = {
+  bezeichnung: "",
   satz_prozent: 0,
   typ: "GEMEINKOSTEN",
   aktiv: true,
@@ -21,9 +35,11 @@ export function ZuschlagssaetzePage() {
   return (
     <StammdatenGrid<Zuschlagssatz>
       title="Zuschlagssätze"
+      entityLabel="Zuschlagssatz"
       endpoint="/zuschlagssaetze"
       columnDefs={columnDefs}
-      defaultRow={defaultRow}
+      formFields={formFields}
+      emptyFormValues={emptyFormValues}
     />
   );
 }

@@ -6,5 +6,12 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    proxy: {
+      // Vermeidet localhost/IPv6- und CORS-Probleme im Dev-Modus
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+      },
+    },
   },
 });

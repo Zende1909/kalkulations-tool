@@ -1,6 +1,9 @@
 from typing import Generic, TypeVar
 
+from fastapi import HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import Base
@@ -15,15 +18,33 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         self.model = model
 
     def get(self, db: Session, item_id: int) -> ModelType | None:
-        return db.query(self.model).filter(self.model.id == item_id).first()
+        return db.get(self.model, item_id)
 
     def get_multi(self, db: Session, skip: int = 0, limit: int = 100) -> list[ModelType]:
-        return db.query(self.model).offset(skip).limit(limit).all()
+        stmt = (
+            select(self.model)
+            .order_by(self.model.id.asc())
+            .offset(skip)
+            .limit(limit)
+        )
+        return list(db.scalars(stmt).all())
 
     def create(self, db: Session, obj_in: CreateSchemaType) -> ModelType:
         db_obj = self.model(**obj_in.model_dump())
         db.add(db_obj)
-        db.commit()
+        try:
+            # Expliziter Commit – ohne commit() wäre der INSERT nur in der Session sichtbar.
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Datensatz verletzt eine Unique-Constraint "
+                    "(z. B. Material-Nr. bereits vergeben). "
+                    f"Detail: {exc.orig}"
+                ),
+            ) from exc
         db.refresh(db_obj)
         return db_obj
 
@@ -32,7 +53,17 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         for field, value in update_data.items():
             setattr(db_obj, field, value)
         db.add(db_obj)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Aktualisierung verletzt eine Unique-Constraint "
+                    f"(Wert bereits vergeben). Detail: {exc.orig}"
+                ),
+            ) from exc
         db.refresh(db_obj)
         return db_obj
 

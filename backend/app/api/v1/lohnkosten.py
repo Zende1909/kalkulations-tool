@@ -10,7 +10,7 @@ from app.schemas.lohnkosten import LohnkostenCreate, LohnkostenRead, LohnkostenU
 router = APIRouter(prefix="/lohnkosten", tags=["Lohnkosten"])
 
 
-@router.get("/", response_model=list[LohnkostenRead])
+@router.get("", response_model=list[LohnkostenRead])
 def list_lohnkosten(
     skip: int = 0,
     limit: int = 100,
@@ -32,7 +32,7 @@ def get_lohnkosten(
     return item
 
 
-@router.post("/", response_model=LohnkostenRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=LohnkostenRead, status_code=status.HTTP_201_CREATED)
 def create_lohnkosten(
     item_in: LohnkostenCreate,
     db: Session = Depends(get_db),

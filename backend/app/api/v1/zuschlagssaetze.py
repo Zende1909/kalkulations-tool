@@ -10,7 +10,7 @@ from app.schemas.zuschlagssatz import ZuschlagssatzCreate, ZuschlagssatzRead, Zu
 router = APIRouter(prefix="/zuschlagssaetze", tags=["Zuschlagssätze"])
 
 
-@router.get("/", response_model=list[ZuschlagssatzRead])
+@router.get("", response_model=list[ZuschlagssatzRead])
 def list_zuschlagssaetze(
     skip: int = 0,
     limit: int = 100,
@@ -32,7 +32,7 @@ def get_zuschlagssatz(
     return item
 
 
-@router.post("/", response_model=ZuschlagssatzRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ZuschlagssatzRead, status_code=status.HTTP_201_CREATED)
 def create_zuschlagssatz(
     item_in: ZuschlagssatzCreate,
     db: Session = Depends(get_db),

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.permissions import require_kalkulator, require_viewer
@@ -10,10 +10,10 @@ from app.schemas.material import MaterialCreate, MaterialRead, MaterialUpdate
 router = APIRouter(prefix="/materialien", tags=["Materialien"])
 
 
-@router.get("/", response_model=list[MaterialRead])
+@router.get("", response_model=list[MaterialRead])
 def list_materialien(
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
@@ -32,7 +32,7 @@ def get_material(
     return item
 
 
-@router.post("/", response_model=MaterialRead, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=MaterialRead, status_code=status.HTTP_201_CREATED)
 def create_material(
     item_in: MaterialCreate,
     db: Session = Depends(get_db),

@@ -1,6 +1,7 @@
 import type { ColDef } from "ag-grid-community";
 
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
+import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import type { Maschine } from "../../types/stammdaten";
 
 const columnDefs: ColDef<Maschine>[] = [
@@ -11,9 +12,17 @@ const columnDefs: ColDef<Maschine>[] = [
   { field: "aktiv", headerName: "Aktiv" },
 ];
 
-const defaultRow = {
-  bezeichnung: "Neue Maschine",
-  maschinen_nr: `MAS-${Date.now()}`,
+const formFields: FormField[] = [
+  { name: "maschinen_nr", label: "Maschinen-Nr.", type: "text", required: true },
+  { name: "bezeichnung", label: "Bezeichnung", type: "text", required: true },
+  { name: "stundensatz", label: "Stundensatz (EUR/h)", type: "number", required: true, step: "0.01" },
+  { name: "schliesskraft_t", label: "Schließkraft (t)", type: "number", required: true, step: "0.1" },
+  { name: "aktiv", label: "Aktiv", type: "checkbox" },
+];
+
+const emptyFormValues = {
+  bezeichnung: "",
+  maschinen_nr: "",
   stundensatz: 0,
   schliesskraft_t: 0,
   aktiv: true,
@@ -23,9 +32,11 @@ export function MaschinenPage() {
   return (
     <StammdatenGrid<Maschine>
       title="Maschinen"
+      entityLabel="Maschine"
       endpoint="/maschinen"
       columnDefs={columnDefs}
-      defaultRow={defaultRow}
+      formFields={formFields}
+      emptyFormValues={emptyFormValues}
     />
   );
 }
