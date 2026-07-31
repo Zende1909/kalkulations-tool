@@ -1,0 +1,31 @@
+from datetime import date, datetime
+
+from pydantic import BaseModel, ConfigDict
+
+
+class LohnkostenBase(BaseModel):
+    bezeichnung: str
+    kosten_pro_stunde: float
+    kostenstelle: str
+    gueltig_ab: date
+    aktiv: bool = True
+
+
+class LohnkostenCreate(LohnkostenBase):
+    pass
+
+
+class LohnkostenUpdate(BaseModel):
+    bezeichnung: str | None = None
+    kosten_pro_stunde: float | None = None
+    kostenstelle: str | None = None
+    gueltig_ab: date | None = None
+    aktiv: bool | None = None
+
+
+class LohnkostenRead(LohnkostenBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    created_at: datetime
+    updated_at: datetime
