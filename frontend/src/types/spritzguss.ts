@@ -8,6 +8,7 @@ export interface SpritzgussErgebnis {
   fertigungslohn: number;
   fertigungsgemeinkosten: number;
   werkzeugkostenanteil: number;
+  werkzeug_einmalzahlung: number;
   herstellkosten: number;
   vvgk: number;
   selbstkosten: number;
@@ -30,6 +31,8 @@ export interface SpritzgussCalcResponse {
   bloecke: SpritzgussBloecke;
 }
 
+export type WerkzeugAbrechnungsart = "amortisation" | "einmalzahlung";
+
 export interface SpritzgussFormData {
   teilebezeichnung: string;
   teilenummer: string;
@@ -51,8 +54,9 @@ export interface SpritzgussFormData {
   lohnkosten_id: number | null;
   lohnstundensatz: number;
 
+  werkzeug_abrechnungsart: WerkzeugAbrechnungsart;
   werkzeugkosten_eur: number;
-  amortisationsvolumen: number;
+  amortisationsvolumen: number | null;
 
   mgk_pct: number;
   fgk_pct: number;
@@ -101,6 +105,7 @@ export const emptySpritzgussForm = (): SpritzgussFormData => ({
   maschinenstundensatz: 0,
   lohnkosten_id: null,
   lohnstundensatz: 0,
+  werkzeug_abrechnungsart: "amortisation",
   werkzeugkosten_eur: 0,
   amortisationsvolumen: 1,
   mgk_pct: 0,

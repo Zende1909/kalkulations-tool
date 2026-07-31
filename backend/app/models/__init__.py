@@ -1,3 +1,4 @@
+from app.models.investition import Investition
 from app.models.lohnkosten import Lohnkosten
 from app.models.material import Material
 from app.models.maschine import Maschine
@@ -12,4 +13,5 @@ __all__ = [
     "Lohnkosten",
     "Zuschlagssatz",
     "SpritzgussKalkulation",
+    "Investition",
 ]

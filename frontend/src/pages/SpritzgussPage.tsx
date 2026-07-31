@@ -16,6 +16,7 @@ import {
   type SpritzgussBloecke,
   type SpritzgussFormData,
   type SpritzgussListItem,
+  type WerkzeugAbrechnungsart,
 } from "../types/spritzguss";
 
 function euro(value: number | undefined | null): string {
@@ -43,7 +44,8 @@ const FIELD_LABELS: Record<string, string> = {
   maschinenkosten: "Maschinenkosten je Teil (€)",
   fertigungslohn: "Fertigungslohn je Teil (€)",
   fertigungsgemeinkosten: "Fertigungsgemeinkosten FGK (€)",
-  werkzeugkostenanteil: "Werkzeugkostenanteil (€)",
+  werkzeugkostenanteil: "Werkzeugkostenanteil je Stück (€)",
+  werkzeug_einmalzahlung: "Einmalzahlung / Investition (€)",
   herstellkosten: "Herstellkosten (€)",
   vvgk: "VVGK (€)",
   selbstkosten: "Selbstkosten (€)",
@@ -154,7 +156,11 @@ export function SpritzgussPage() {
       lohnstundensatz: form.lohnstundensatz,
       fgk_pct: form.fgk_pct,
       werkzeugkosten_eur: form.werkzeugkosten_eur,
-      amortisationsvolumen: form.amortisationsvolumen,
+      werkzeug_abrechnungsart: form.werkzeug_abrechnungsart,
+      amortisationsvolumen:
+        form.werkzeug_abrechnungsart === "amortisation"
+          ? form.amortisationsvolumen
+          : null,
       vvgk_pct: form.vvgk_pct,
       gewinn_pct: form.gewinn_pct,
       skonto_pct: form.skonto_pct,
@@ -209,6 +215,14 @@ export function SpritzgussPage() {
     setError(null);
     setSuccess(null);
     try {
+      if (form.werkzeug_abrechnungsart === "amortisation") {
+        const vol = form.amortisationsvolumen;
+        if (vol == null || !Number.isInteger(vol) || vol < 1) {
+          throw new Error(
+            "Amortisationsvolumen muss eine positive ganze Zahl >= 1 sein (z. B. 1 oder 20000).",
+          );
+        }
+      }
       const result = await berechnen(calcPayload);
       setBloecke(result.bloecke);
       setSuccess("Berechnung erfolgreich.");
@@ -226,10 +240,25 @@ export function SpritzgussPage() {
     setError(null);
     setSuccess(null);
     try {
+      if (form.werkzeug_abrechnungsart === "amortisation") {
+        const vol = form.amortisationsvolumen;
+        if (vol == null || !Number.isInteger(vol) || vol < 1) {
+          throw new Error(
+            "Amortisationsvolumen muss eine positive ganze Zahl >= 1 sein (z. B. 1 oder 20000).",
+          );
+        }
+      }
+      const payload = {
+        ...form,
+        amortisationsvolumen:
+          form.werkzeug_abrechnungsart === "amortisation"
+            ? form.amortisationsvolumen
+            : null,
+      };
       const saved =
         editId == null
-          ? await createKalkulation(form)
-          : await updateKalkulation(editId, form);
+          ? await createKalkulation(payload)
+          : await updateKalkulation(editId, payload);
       setEditId(saved.id);
       setBloecke((saved.ergebnis_bloecke as SpritzgussBloecke) ?? null);
       setSuccess(editId == null ? "Kalkulation gespeichert." : "Kalkulation aktualisiert.");
@@ -265,7 +294,14 @@ export function SpritzgussPage() {
         lohnkosten_id: item.lohnkosten_id,
         lohnstundensatz: item.lohnstundensatz,
         werkzeugkosten_eur: item.werkzeugkosten_eur,
-        amortisationsvolumen: item.amortisationsvolumen,
+        werkzeug_abrechnungsart:
+          (item.werkzeug_abrechnungsart as WerkzeugAbrechnungsart) || "amortisation",
+        amortisationsvolumen:
+          item.werkzeug_abrechnungsart === "einmalzahlung"
+            ? null
+            : item.amortisationsvolumen != null
+              ? Math.round(Number(item.amortisationsvolumen))
+              : 1,
         mgk_pct: item.mgk_pct,
         fgk_pct: item.fgk_pct,
         vvgk_pct: item.vvgk_pct,
@@ -497,23 +533,91 @@ export function SpritzgussPage() {
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 font-semibold text-gray-900">Werkzeug</h3>
+
+            <fieldset className="mb-4">
+              <legend className="text-sm font-medium text-gray-700">Abrechnungsart</legend>
+              <div className="mt-2 flex flex-wrap gap-4">
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="werkzeug_abrechnungsart"
+                    checked={form.werkzeug_abrechnungsart === "amortisation"}
+                    onChange={() =>
+                      setForm((current) => ({
+                        ...current,
+                        werkzeug_abrechnungsart: "amortisation",
+                        amortisationsvolumen:
+                          current.amortisationsvolumen != null &&
+                          current.amortisationsvolumen >= 1
+                            ? Math.round(current.amortisationsvolumen)
+                            : 1,
+                      }))
+                    }
+                  />
+                  Amortisation
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="werkzeug_abrechnungsart"
+                    checked={form.werkzeug_abrechnungsart === "einmalzahlung"}
+                    onChange={() =>
+                      setForm((current) => ({
+                        ...current,
+                        werkzeug_abrechnungsart: "einmalzahlung",
+                        amortisationsvolumen: null,
+                      }))
+                    }
+                  />
+                  Einmalzahlung
+                </label>
+              </div>
+            </fieldset>
+
             <div className="grid gap-3 md:grid-cols-2">
               <NumberInput
-                label="Werkzeugkosten (€)"
+                label={
+                  form.werkzeug_abrechnungsart === "einmalzahlung"
+                    ? "Einmalzahlung / Werkzeugkosten (€)"
+                    : "Werkzeugkosten (€)"
+                }
                 value={form.werkzeugkosten_eur}
                 min={0}
                 onChange={(v) => setField("werkzeugkosten_eur", v)}
               />
-              <NumberInput
-                label="Amortisationsvolumen (Stück)"
-                value={form.amortisationsvolumen}
-                min={0.0001}
-                step="1"
-                onChange={(v) => setField("amortisationsvolumen", v)}
-              />
+              {form.werkzeug_abrechnungsart === "amortisation" && (
+                <label className="block text-sm">
+                  <span className="font-medium text-gray-700">
+                    Amortisationsvolumen (Stück)
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    step={1}
+                    min={1}
+                    required
+                    value={form.amortisationsvolumen ?? ""}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === "") {
+                        setField("amortisationsvolumen", null);
+                        return;
+                      }
+                      const parsed = Number.parseInt(raw, 10);
+                      setField(
+                        "amortisationsvolumen",
+                        Number.isFinite(parsed) ? parsed : null,
+                      );
+                    }}
+                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                  />
+                  <span className="mt-1 block text-xs text-gray-500">
+                    Positive ganze Zahl, z. B. 1 oder 20000
+                  </span>
+                </label>
+              )}
             </div>
           </section>
-
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 font-semibold text-gray-900">Zuschläge (%)</h3>
             <div className="grid gap-3 md:grid-cols-3">
@@ -549,14 +653,33 @@ export function SpritzgussPage() {
                       {BLOCK_LABELS[blockKey] ?? blockKey}
                     </h4>
                     <dl className="space-y-1 text-sm">
-                      {Object.entries(fields).map(([field, value]) => (
-                        <div key={field} className="flex justify-between gap-3 border-b border-gray-100 py-1">
-                          <dt className="text-gray-600">{FIELD_LABELS[field] ?? field}</dt>
-                          <dd className="font-medium tabular-nums text-gray-900">
-                            {euro(typeof value === "number" ? value : Number(value))}
-                          </dd>
-                        </div>
-                      ))}
+                      {Object.entries(fields).map(([field, value]) => {
+                        if (
+                          blockKey === "werkzeug" &&
+                          form.werkzeug_abrechnungsart === "amortisation" &&
+                          field === "werkzeug_einmalzahlung"
+                        ) {
+                          return null;
+                        }
+                        if (
+                          blockKey === "werkzeug" &&
+                          form.werkzeug_abrechnungsart === "einmalzahlung" &&
+                          field === "werkzeugkostenanteil"
+                        ) {
+                          return null;
+                        }
+                        return (
+                          <div
+                            key={field}
+                            className="flex justify-between gap-3 border-b border-gray-100 py-1"
+                          >
+                            <dt className="text-gray-600">{FIELD_LABELS[field] ?? field}</dt>
+                            <dd className="font-medium tabular-nums text-gray-900">
+                              {euro(typeof value === "number" ? value : Number(value))}
+                            </dd>
+                          </div>
+                        );
+                      })}
                     </dl>
                   </div>
                 ))}

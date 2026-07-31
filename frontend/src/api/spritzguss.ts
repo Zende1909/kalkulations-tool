@@ -18,6 +18,7 @@ export type CalcPayload = Pick<
   | "lohnstundensatz"
   | "fgk_pct"
   | "werkzeugkosten_eur"
+  | "werkzeug_abrechnungsart"
   | "amortisationsvolumen"
   | "vvgk_pct"
   | "gewinn_pct"

@@ -36,8 +36,11 @@ class SpritzgussKalkulation(Base, TimestampMixin):
     lohnstundensatz: Mapped[float] = mapped_column(Float, nullable=False)
 
     # Werkzeug
+    werkzeug_abrechnungsart: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="amortisation"
+    )
     werkzeugkosten_eur: Mapped[float] = mapped_column(Float, nullable=False)
-    amortisationsvolumen: Mapped[float] = mapped_column(Float, nullable=False)
+    amortisationsvolumen: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Zuschläge
     mgk_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0)

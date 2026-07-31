@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Literal
+
+WerkzeugAbrechnungsart = Literal["amortisation", "einmalzahlung"]
 
 
 class SpritzgussValidationError(ValueError):
     """Ungültige Eingaben für die Spritzguss-Kalkulation."""
-
-
-Money = Decimal
 
 
 def _d(value: float | int | Decimal | str) -> Decimal:
@@ -29,6 +29,18 @@ def _qty(value: Decimal, places: str = "0.0001") -> Decimal:
     return value.quantize(Decimal(places), rounding=ROUND_HALF_UP)
 
 
+def _is_positive_int(value: float | int | None) -> bool:
+    if value is None:
+        return False
+    try:
+        as_decimal = _d(value)
+    except Exception:
+        return False
+    if as_decimal != as_decimal.to_integral_value():
+        return False
+    return int(as_decimal) >= 1
+
+
 @dataclass(frozen=True)
 class SpritzgussInput:
     teilegewicht_netto_g: float
@@ -41,27 +53,25 @@ class SpritzgussInput:
     lohnstundensatz: float
     fgk_pct: float
     werkzeugkosten_eur: float
-    amortisationsvolumen: float
-    vvgk_pct: float
-    gewinn_pct: float
-    skonto_pct: float
+    werkzeug_abrechnungsart: WerkzeugAbrechnungsart = "amortisation"
+    amortisationsvolumen: int | None = None
+    vvgk_pct: float = 0
+    gewinn_pct: float = 0
+    skonto_pct: float = 0
 
 
 @dataclass(frozen=True)
 class SpritzgussErgebnis:
-    # 1–5 Material
     materialgewicht_kg: float
     materialkosten: float
     materialkosten_inkl_ausschuss: float
     materialgemeinkosten: float
     materialkosten_gesamt: float
-    # 6–8 Fertigung
     maschinenkosten: float
     fertigungslohn: float
     fertigungsgemeinkosten: float
-    # 9 Werkzeug
     werkzeugkostenanteil: float
-    # 10–16
+    werkzeug_einmalzahlung: float
     herstellkosten: float
     vvgk: float
     selbstkosten: float
@@ -89,6 +99,7 @@ class SpritzgussErgebnis:
             },
             "werkzeug": {
                 "werkzeugkostenanteil": self.werkzeugkostenanteil,
+                "werkzeug_einmalzahlung": self.werkzeug_einmalzahlung,
             },
             "gemeinkosten": {
                 "herstellkosten": self.herstellkosten,
@@ -115,7 +126,6 @@ def validate_spritzguss_input(data: SpritzgussInput) -> None:
         "lohnstundensatz": data.lohnstundensatz,
         "fgk_pct": data.fgk_pct,
         "werkzeugkosten_eur": data.werkzeugkosten_eur,
-        "amortisationsvolumen": data.amortisationsvolumen,
         "vvgk_pct": data.vvgk_pct,
         "gewinn_pct": data.gewinn_pct,
         "skonto_pct": data.skonto_pct,
@@ -130,8 +140,18 @@ def validate_spritzguss_input(data: SpritzgussInput) -> None:
     if data.kavitaeten < 1:
         raise SpritzgussValidationError("kavitaeten muss mindestens 1 sein")
 
-    if data.amortisationsvolumen <= 0:
-        raise SpritzgussValidationError("amortisationsvolumen muss größer als 0 sein")
+    if data.werkzeug_abrechnungsart not in ("amortisation", "einmalzahlung"):
+        raise SpritzgussValidationError(
+            "werkzeug_abrechnungsart muss 'amortisation' oder 'einmalzahlung' sein"
+        )
+
+    if data.werkzeug_abrechnungsart == "amortisation":
+        if not _is_positive_int(data.amortisationsvolumen):
+            raise SpritzgussValidationError(
+                "amortisationsvolumen muss eine positive ganze Zahl >= 1 sein "
+                "(z. B. 1 oder 20000; Dezimalwerte wie 20000.0001 sind ungültig)"
+            )
+    # Bei Einmalzahlung wird amortisationsvolumen ignoriert.
 
 
 def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
@@ -148,7 +168,6 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
     lohnstundensatz = _d(data.lohnstundensatz)
     fgk = _pct_to_rate(_d(data.fgk_pct))
     werkzeugkosten = _d(data.werkzeugkosten_eur)
-    amortisation = _d(data.amortisationsvolumen)
     vvgk_rate = _pct_to_rate(_d(data.vvgk_pct))
     gewinn_rate = _pct_to_rate(_d(data.gewinn_pct))
     skonto_rate = _pct_to_rate(_d(data.skonto_pct))
@@ -181,10 +200,16 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
     # 8 Fertigungsgemeinkosten
     fertigungsgemeinkosten = _money(fertigungslohn * fgk)
 
-    # 9 Werkzeugkostenanteil
-    werkzeugkostenanteil = _money(werkzeugkosten / amortisation)
+    # 9 Werkzeug: Amortisation → Stückanteil; Einmalzahlung → nicht im Teilepreis
+    if data.werkzeug_abrechnungsart == "amortisation":
+        volumen = int(data.amortisationsvolumen)  # type: ignore[arg-type]
+        werkzeugkostenanteil = _money(werkzeugkosten / _d(volumen))
+        werkzeug_einmalzahlung = _money(Decimal("0"))
+    else:
+        werkzeugkostenanteil = _money(Decimal("0"))
+        werkzeug_einmalzahlung = _money(werkzeugkosten)
 
-    # 10 Herstellkosten
+    # 10 Herstellkosten (ohne Einmalzahlung)
     herstellkosten = _money(
         materialkosten_gesamt
         + maschinenkosten
@@ -221,6 +246,7 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
         fertigungslohn=float(fertigungslohn),
         fertigungsgemeinkosten=float(fertigungsgemeinkosten),
         werkzeugkostenanteil=float(werkzeugkostenanteil),
+        werkzeug_einmalzahlung=float(werkzeug_einmalzahlung),
         herstellkosten=float(herstellkosten),
         vvgk=float(vvgk),
         selbstkosten=float(selbstkosten),
