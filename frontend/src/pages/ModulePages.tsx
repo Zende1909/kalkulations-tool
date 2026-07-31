@@ -1,15 +1,7 @@
 import { PlaceholderPage } from "./PlaceholderPage";
 
 export { SpritzgussPage } from "./SpritzgussPage";
-
-export function VeredelungPage() {
-  return (
-    <PlaceholderPage
-      title="Veredelung"
-      description="Kalkulation von Veredelungs- und Nachbearbeitungsprozessen."
-    />
-  );
-}
+export { VeredelungPage } from "./VeredelungPage";
 
 export function BaugruppenPage() {
   return (

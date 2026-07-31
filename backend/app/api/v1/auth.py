@@ -9,7 +9,7 @@ from app.crud import user as user_crud
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
-from app.schemas.auth import LoginRequest, Token, UserRead
+from app.schemas.auth import Token, UserRead
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -25,24 +25,6 @@ def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ungültige Anmeldedaten",
             headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Benutzer ist inaktiv")
-
-    access_token = create_access_token(
-        data={"sub": user.email, "role": user.role},
-        expires_delta=timedelta(minutes=480),
-    )
-    return Token(access_token=access_token)
-
-
-@router.post("/login/json", response_model=Token)
-def login_json(credentials: LoginRequest, db: Session = Depends(get_db)):
-    user = user_crud.user.get_by_email(db, email=credentials.email)
-    if not user or not verify_password(credentials.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Ungültige Anmeldedaten",
         )
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Benutzer ist inaktiv")

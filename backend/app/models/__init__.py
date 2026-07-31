@@ -4,6 +4,7 @@ from app.models.material import Material
 from app.models.maschine import Maschine
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.user import User
+from app.models.veredelungsschritt import Veredelungsschritt
 from app.models.zuschlagssatz import Zuschlagssatz
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "Zuschlagssatz",
     "SpritzgussKalkulation",
     "Investition",
+    "Veredelungsschritt",
 ]
