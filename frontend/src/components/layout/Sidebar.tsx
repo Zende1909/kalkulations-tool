@@ -11,6 +11,7 @@ const navItems = [
       { to: "/stammdaten/lohnkosten", label: "Lohnkosten" },
       { to: "/stammdaten/kaufteile", label: "Kaufteile" },
       { to: "/stammdaten/zuschlagssaetze", label: "Zuschlagssätze" },
+      { to: "/stammdaten/hierarchie", label: "Kunden, Programme & Projekte" },
     ],
   },
   { to: "/spritzguss", label: "Spritzguss-Kalkulation" },

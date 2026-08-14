@@ -12,6 +12,7 @@ import {
   SpritzgussPage,
   VeredelungPage,
 } from "./pages/ModulePages";
+import { KundenProgrammeProjektePage } from "./pages/stammdaten/KundenProgrammeProjektePage";
 import { LohnkostenPage } from "./pages/stammdaten/LohnkostenPage";
 import { KaufteilePage } from "./pages/stammdaten/KaufteilePage";
 import { MaschinenPage } from "./pages/stammdaten/MaschinenPage";
@@ -32,6 +33,7 @@ export default function App() {
               <Route path="stammdaten/lohnkosten" element={<LohnkostenPage />} />
               <Route path="stammdaten/kaufteile" element={<KaufteilePage />} />
               <Route path="stammdaten/zuschlagssaetze" element={<ZuschlagssaetzePage />} />
+              <Route path="stammdaten/hierarchie" element={<KundenProgrammeProjektePage />} />
               <Route path="spritzguss" element={<SpritzgussPage />} />
               <Route path="veredelung" element={<VeredelungPage />} />
               <Route path="baugruppen" element={<BaugruppenPage />} />

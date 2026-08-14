@@ -4,12 +4,16 @@ from app.api.v1 import (
     auth,
     baugruppen,
     business_cases,
+    customers,
     dashboard,
     investitionen,
     kaufteile,
     lohnkosten,
     maschinen,
     materialien,
+    program_volumes,
+    programs,
+    projects,
     reports,
     spritzguss,
     users,
@@ -29,6 +33,10 @@ api_router.include_router(veredelung.router)
 api_router.include_router(kaufteile.router)
 api_router.include_router(baugruppen.router)
 api_router.include_router(business_cases.router)
+api_router.include_router(customers.router)
+api_router.include_router(programs.router)
+api_router.include_router(program_volumes.router)
+api_router.include_router(projects.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(investitionen.router)
 api_router.include_router(reports.router)
