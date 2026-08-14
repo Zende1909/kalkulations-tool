@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.assembly_calculation import AssemblyCalculationResultRead, CalculationWarning
+
 PositionType = Literal["PART", "PURCHASED_PART", "SUBASSEMBLY", "PROCESS"]
 PriceBasis = Literal["COST", "SELF_COST", "SALES_PRICE"]
 AssemblyType = Literal["TOP_LEVEL", "SUBASSEMBLY"]
@@ -52,6 +54,7 @@ class AssemblyPositionRead(BaseModel):
     snapshots: PositionSnapshotRead
     legacy_source: LegacySource | None = None
     child_assembly: ChildAssemblyPreview | None = None
+    snapshot_stale: bool = False
 
 
 class AssemblyStructureRead(BaseModel):
@@ -73,6 +76,10 @@ class AssemblyStructureRead(BaseModel):
     pricing_status: str
     positions_source: PositionsSource
     positions: list[AssemblyPositionRead] = Field(default_factory=list)
+    calculation: AssemblyCalculationResultRead | None = None
+    warnings: list[CalculationWarning] = Field(default_factory=list)
+    snapshot_stale: bool = False
+    effective_pricing_status: str | None = None
 
 
 class AssemblyPositionInput(BaseModel):

@@ -9,12 +9,20 @@ from sqlalchemy.orm import Session
 from app.core.permissions import require_kalkulator, require_viewer
 from app.database import get_db
 from app.models.user import User
+from app.schemas.assembly_calculation import (
+    AssemblyRecalculateRequest,
+    AssemblyRecalculateResponse,
+)
 from app.schemas.assembly_structure import (
     AssemblyPositionCreateRequest,
     AssemblyPositionPatchRequest,
     AssemblyPositionRead,
     AssemblyStructureRead,
     AssemblyStructureReplaceRequest,
+)
+from app.services.assembly_recalculation_service import (
+    AssemblyRecalculationError,
+    recalculate_assembly_tree,
 )
 from app.services.assembly_structure_service import (
     AssemblyStructureError,
@@ -30,6 +38,27 @@ router = APIRouter(prefix="/baugruppen", tags=["Baugruppen-Struktur"])
 
 def _raise_from_service(exc: AssemblyStructureError) -> None:
     raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+def _raise_from_recalc(exc: AssemblyRecalculationError) -> None:
+    raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.post("/{baugruppe_id}/recalculate", response_model=AssemblyRecalculateResponse)
+def recalculate_structure(
+    baugruppe_id: int,
+    payload: AssemblyRecalculateRequest | None = None,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_kalkulator),
+) -> AssemblyRecalculateResponse:
+    request = payload or AssemblyRecalculateRequest()
+    try:
+        return recalculate_assembly_tree(db, baugruppe_id, request)
+    except AssemblyRecalculationError as exc:
+        _raise_from_recalc(exc)
+    except AssemblyStructureError as exc:
+        _raise_from_service(exc)
+    raise RuntimeError("unreachable")
 
 
 @router.get("/{baugruppe_id}/structure", response_model=AssemblyStructureRead)

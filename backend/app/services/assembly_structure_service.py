@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -103,6 +103,7 @@ def _position_to_read(
     pos: AssemblyPosition,
     *,
     child_assembly: ChildAssemblyPreview | None = None,
+    snapshot_stale: bool = False,
 ) -> AssemblyPositionRead:
     return AssemblyPositionRead(
         id=pos.id,
@@ -119,6 +120,7 @@ def _position_to_read(
         finishing_step_id=pos.finishing_step_id,
         snapshots=_position_snapshots_from_orm(pos),
         child_assembly=child_assembly,
+        snapshot_stale=snapshot_stale,
     )
 
 
@@ -274,19 +276,31 @@ def build_child_preview(
 
 
 def get_structure(db: Session, baugruppe_id: int) -> AssemblyStructureRead:
+    from app.services.assembly_recalculation_service import (
+        calculation_from_baugruppe,
+        is_position_snapshot_stale,
+        warnings_from_baugruppe,
+    )
+
     baugruppe = get_baugruppe_or_raise(db, baugruppe_id)
     db_positions = load_positions(db, baugruppe_id)
 
     if db_positions:
         positions_source: PositionsSource = "assembly_positions"
         position_reads: list[AssemblyPositionRead] = []
+        any_stale = False
         for pos in db_positions:
             child_preview = None
             if pos.position_type == "SUBASSEMBLY" and pos.child_assembly_id:
                 child_preview = build_child_preview(db, pos.child_assembly_id, depth=0)
-            position_reads.append(_position_to_read(pos, child_assembly=child_preview))
+            stale = is_position_snapshot_stale(db, pos)
+            any_stale = any_stale or stale
+            position_reads.append(
+                _position_to_read(pos, child_assembly=child_preview, snapshot_stale=stale)
+            )
     elif baugruppe.legacy_mode:
         position_reads = build_legacy_synthetic_positions(db, baugruppe_id)
+        any_stale = False
         if position_reads:
             positions_source = "legacy_synthetic"
         else:
@@ -295,6 +309,11 @@ def get_structure(db: Session, baugruppe_id: int) -> AssemblyStructureRead:
     else:
         positions_source = "empty"
         position_reads = []
+        any_stale = False
+
+    effective_pricing_status = baugruppe.pricing_status
+    if any_stale and baugruppe.assembly_type == "TOP_LEVEL":
+        effective_pricing_status = "STALE"
 
     return AssemblyStructureRead(
         id=baugruppe.id,
@@ -313,6 +332,10 @@ def get_structure(db: Session, baugruppe_id: int) -> AssemblyStructureRead:
         pricing_status=baugruppe.pricing_status,
         positions_source=positions_source,
         positions=position_reads,
+        calculation=calculation_from_baugruppe(baugruppe),
+        warnings=warnings_from_baugruppe(baugruppe),
+        snapshot_stale=any_stale,
+        effective_pricing_status=effective_pricing_status,
     )
 
 
@@ -387,20 +410,32 @@ def validate_referenced_entities_exist(db: Session, positions: list[AssemblyPosi
     for index, position in enumerate(positions, start=1):
         prefix = f"Position #{index}"
         if position.part_calculation_id is not None:
-            if not db.get(SpritzgussKalkulation, position.part_calculation_id):
+            exists = db.scalar(
+                select(SpritzgussKalkulation.id).where(
+                    SpritzgussKalkulation.id == position.part_calculation_id
+                )
+            )
+            if not exists:
                 raise AssemblyStructureError(
                     f"{prefix}: Spritzguss-Kalkulation {position.part_calculation_id} nicht gefunden",
                     status_code=404,
                 )
         if position.purchased_part_id is not None:
-            kt = db.get(Kaufteil, position.purchased_part_id)
-            if not kt:
+            exists = db.scalar(
+                select(Kaufteil.id).where(Kaufteil.id == position.purchased_part_id)
+            )
+            if not exists:
                 raise AssemblyStructureError(
                     f"{prefix}: Kaufteil {position.purchased_part_id} nicht gefunden",
                     status_code=404,
                 )
         if position.finishing_step_id is not None:
-            if not db.get(Veredelungsschritt, position.finishing_step_id):
+            exists = db.scalar(
+                select(Veredelungsschritt.id).where(
+                    Veredelungsschritt.id == position.finishing_step_id
+                )
+            )
+            if not exists:
                 raise AssemblyStructureError(
                     f"{prefix}: Veredelungsschritt {position.finishing_step_id} nicht gefunden",
                     status_code=404,
@@ -417,8 +452,12 @@ def validate_project_scope(
     for index, position in enumerate(positions, start=1):
         prefix = f"Position #{index}"
         if position.part_calculation_id is not None:
-            kalk = db.get(SpritzgussKalkulation, position.part_calculation_id)
-            if kalk and kalk.project_id is not None and kalk.project_id != project_id:
+            part_project_id = db.scalar(
+                select(SpritzgussKalkulation.project_id).where(
+                    SpritzgussKalkulation.id == position.part_calculation_id
+                )
+            )
+            if part_project_id is not None and part_project_id != project_id:
                 raise AssemblyStructureError(
                     f"{prefix}: Spritzguss-Kalkulation gehört nicht zum Projekt der Baugruppe"
                 )
@@ -531,21 +570,39 @@ def capture_snapshots_if_possible(db: Session, position: AssemblyPositionInput) 
     }
 
     if position.position_type == "PART" and position.part_calculation_id:
-        kalk = db.get(SpritzgussKalkulation, position.part_calculation_id)
-        if kalk:
-            result["name_snapshot"] = kalk.teilebezeichnung
-            result["part_number_snapshot"] = kalk.teilenummer
-            result["price_snapshot"] = _endpreis_aus_spritzguss(kalk)
+        row = db.execute(
+            text(
+                "SELECT teilebezeichnung, teilenummer, ergebnis "
+                "FROM spritzguss_kalkulationen WHERE id = :id"
+            ),
+            {"id": position.part_calculation_id},
+        ).first()
+        if row:
+            result["name_snapshot"] = row[0] or ""
+            result["part_number_snapshot"] = row[1] or ""
+            ergebnis = _parse_ergebnis(row[2])
+            if ergebnis:
+                preis = ergebnis.get("endpreis_je_stueck") or ergebnis.get("verkaufspreis")
+                if preis is not None:
+                    result["price_snapshot"] = float(preis)
     elif position.position_type == "PURCHASED_PART" and position.purchased_part_id:
-        kt = db.get(Kaufteil, position.purchased_part_id)
-        if kt:
-            result["name_snapshot"] = kt.bezeichnung
-            result["supplier_snapshot"] = kt.lieferant
-            result["price_snapshot"] = kt.preis
+        row = db.execute(
+            text(
+                "SELECT bezeichnung, lieferant, preis FROM kaufteile WHERE id = :id"
+            ),
+            {"id": position.purchased_part_id},
+        ).first()
+        if row:
+            result["name_snapshot"] = row[0] or ""
+            result["supplier_snapshot"] = row[1] or ""
+            result["price_snapshot"] = row[2]
     elif position.position_type == "PROCESS" and position.finishing_step_id:
-        schritt = db.get(Veredelungsschritt, position.finishing_step_id)
-        if schritt:
-            result["name_snapshot"] = schritt.bezeichnung
+        row = db.execute(
+            text("SELECT bezeichnung FROM veredelungsschritte WHERE id = :id"),
+            {"id": position.finishing_step_id},
+        ).first()
+        if row:
+            result["name_snapshot"] = row[0] or ""
     elif position.position_type == "SUBASSEMBLY" and position.child_assembly_id:
         child = db.get(Baugruppe, position.child_assembly_id)
         if child:
@@ -649,6 +706,15 @@ def replace_structure(
         raise _handle_integrity_error(exc) from exc
 
     db.refresh(baugruppe)
+    if request.recalculate:
+        from app.schemas.assembly_calculation import AssemblyRecalculateRequest
+        from app.services.assembly_recalculation_service import recalculate_assembly_tree
+
+        recalculate_assembly_tree(
+            db,
+            baugruppe_id,
+            AssemblyRecalculateRequest(refresh_snapshots=True, include_descendants=True),
+        )
     return get_structure(db, baugruppe_id)
 
 
