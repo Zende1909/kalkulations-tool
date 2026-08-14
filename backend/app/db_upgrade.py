@@ -28,3 +28,19 @@ def ensure_spritzguss_schema(engine: Engine) -> None:
             except Exception:
                 # Tabelle existiert ggf. noch nicht – create_all legt sie neu an.
                 pass
+
+
+def ensure_investition_schema(engine: Engine) -> None:
+    statements = [
+        """
+        ALTER TABLE investitionen
+        ADD COLUMN IF NOT EXISTS baugruppe_id INTEGER
+        REFERENCES baugruppen(id) ON DELETE SET NULL
+        """,
+    ]
+    with engine.begin() as conn:
+        for stmt in statements:
+            try:
+                conn.execute(text(stmt))
+            except Exception:
+                pass

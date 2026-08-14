@@ -15,6 +15,9 @@ class Investition(Base, TimestampMixin):
     calculation_id: Mapped[int | None] = mapped_column(
         ForeignKey("spritzguss_kalkulationen.id"), nullable=True, index=True
     )
+    baugruppe_id: Mapped[int | None] = mapped_column(
+        ForeignKey("baugruppen.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     part_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     amount: Mapped[float] = mapped_column(Float, nullable=False, default=0)

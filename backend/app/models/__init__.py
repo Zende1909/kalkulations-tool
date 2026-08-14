@@ -1,4 +1,11 @@
+from app.models.baugruppe import (
+    Baugruppe,
+    BaugruppeKaufteilZuordnung,
+    BaugruppeSpritzgussZuordnung,
+    BaugruppeVeredelungZuordnung,
+)
 from app.models.investition import Investition
+from app.models.kaufteil import Kaufteil
 from app.models.lohnkosten import Lohnkosten
 from app.models.material import Material
 from app.models.maschine import Maschine
@@ -18,4 +25,9 @@ __all__ = [
     "Investition",
     "Veredelungsschritt",
     "SpritzgussVeredelungZuordnung",
+    "Kaufteil",
+    "Baugruppe",
+    "BaugruppeSpritzgussZuordnung",
+    "BaugruppeKaufteilZuordnung",
+    "BaugruppeVeredelungZuordnung",
 ]

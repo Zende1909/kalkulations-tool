@@ -9,6 +9,7 @@ const navItems = [
       { to: "/stammdaten/materialien", label: "Materialien" },
       { to: "/stammdaten/maschinen", label: "Maschinen" },
       { to: "/stammdaten/lohnkosten", label: "Lohnkosten" },
+      { to: "/stammdaten/kaufteile", label: "Kaufteile" },
       { to: "/stammdaten/zuschlagssaetze", label: "Zuschlagssätze" },
     ],
   },

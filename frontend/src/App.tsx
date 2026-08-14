@@ -12,6 +12,7 @@ import {
   VeredelungPage,
 } from "./pages/ModulePages";
 import { LohnkostenPage } from "./pages/stammdaten/LohnkostenPage";
+import { KaufteilePage } from "./pages/stammdaten/KaufteilePage";
 import { MaschinenPage } from "./pages/stammdaten/MaschinenPage";
 import { MaterialienPage } from "./pages/stammdaten/MaterialienPage";
 import { ZuschlagssaetzePage } from "./pages/stammdaten/ZuschlagssaetzePage";
@@ -28,6 +29,7 @@ export default function App() {
               <Route path="stammdaten/materialien" element={<MaterialienPage />} />
               <Route path="stammdaten/maschinen" element={<MaschinenPage />} />
               <Route path="stammdaten/lohnkosten" element={<LohnkostenPage />} />
+              <Route path="stammdaten/kaufteile" element={<KaufteilePage />} />
               <Route path="stammdaten/zuschlagssaetze" element={<ZuschlagssaetzePage />} />
               <Route path="spritzguss" element={<SpritzgussPage />} />
               <Route path="veredelung" element={<VeredelungPage />} />

@@ -2,6 +2,8 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     auth,
+    baugruppen,
+    kaufteile,
     lohnkosten,
     maschinen,
     materialien,
@@ -20,3 +22,5 @@ api_router.include_router(lohnkosten.router)
 api_router.include_router(zuschlagssaetze.router)
 api_router.include_router(spritzguss.router)
 api_router.include_router(veredelung.router)
+api_router.include_router(kaufteile.router)
+api_router.include_router(baugruppen.router)
