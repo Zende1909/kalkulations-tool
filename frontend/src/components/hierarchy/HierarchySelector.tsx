@@ -1,46 +1,39 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
-  getCalculatedProjectVolume,
-  listAvailableYears,
+  getProjectVolumeProfile,
   listCustomers,
-  listProgramVolumes,
   listPrograms,
   listProjects,
 } from "../../api/hierarchy";
-import type { Customer, Program, Project } from "../../types/hierarchy";
+import type { Customer, Program, Project, ProjectVolumeProfile } from "../../types/hierarchy";
 
 export interface HierarchySelection {
   customer_id: number | null;
   program_id: number | null;
   project_id: number | null;
-  calculation_year: number | null;
-  project_volume: number | null;
-  jahresstueckzahl: number;
 }
 
 interface Props {
   value: HierarchySelection;
   onChange: (next: HierarchySelection) => void;
   disabled?: boolean;
-  legacyText?: { kunde: string; projekt: string; jahresstueckzahl: number } | null;
+  legacyText?: { kunde: string; projekt: string; jahresstueckzahl: number; calculation_year?: number | null } | null;
 }
 
 const emptySelection = (): HierarchySelection => ({
   customer_id: null,
   program_id: null,
   project_id: null,
-  calculation_year: null,
-  project_volume: null,
-  jahresstueckzahl: 0,
 });
 
 export function HierarchySelector({ value, onChange, disabled, legacyText }: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [years, setYears] = useState<number[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [volumeProfile, setVolumeProfile] = useState<ProjectVolumeProfile | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   useEffect(() => {
     listCustomers(undefined, true).then(setCustomers).catch(() => setCustomers([]));
@@ -57,48 +50,27 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
   useEffect(() => {
     if (value.program_id == null) {
       setProjects([]);
-      setYears([]);
       return;
     }
     listProjects(value.program_id).then(setProjects).catch(() => setProjects([]));
-    listAvailableYears(value.program_id).then(setYears).catch(() => setYears([]));
   }, [value.program_id]);
 
   useEffect(() => {
     if (value.project_id == null) {
       setSelectedProject(null);
+      setVolumeProfile(null);
       return;
     }
     const p = projects.find((x) => x.id === value.project_id) ?? null;
     setSelectedProject(p);
+    setProfileError(null);
+    getProjectVolumeProfile(value.project_id)
+      .then(setVolumeProfile)
+      .catch((err) => {
+        setVolumeProfile(null);
+        setProfileError(err instanceof Error ? err.message : "Mengenprofil konnte nicht geladen werden.");
+      });
   }, [value.project_id, projects]);
-
-  useEffect(() => {
-    if (
-      value.project_id == null ||
-      value.calculation_year == null ||
-      legacyText != null
-    ) {
-      return;
-    }
-    getCalculatedProjectVolume(value.project_id, value.calculation_year)
-      .then((r: { project_volume: number }) => {
-        onChange({
-          ...value,
-          customer_id: value.customer_id,
-          program_id: value.program_id,
-          project_volume: r.project_volume,
-          jahresstueckzahl: Math.round(r.project_volume),
-        });
-      })
-      .catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value.project_id, value.calculation_year, legacyText]);
-
-  const yearVolumes = useMemo(() => {
-    if (!selectedProject || years.length === 0) return [];
-    return years;
-  }, [selectedProject, years]);
 
   if (legacyText) {
     return (
@@ -106,7 +78,10 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
         <p className="font-medium">Historische Kalkulation (Freitext)</p>
         <p>Kunde: {legacyText.kunde || "–"}</p>
         <p>Projekt: {legacyText.projekt || "–"}</p>
-        <p>Jahresstückzahl: {legacyText.jahresstueckzahl.toLocaleString("de-DE")}</p>
+        {legacyText.calculation_year != null && (
+          <p>Kalkulationsjahr: {legacyText.calculation_year}</p>
+        )}
+        <p>Jahresstückzahl (historisch): {legacyText.jahresstueckzahl.toLocaleString("de-DE")}</p>
       </div>
     );
   }
@@ -157,7 +132,7 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
         </select>
       </label>
 
-      <label className="block text-sm">
+      <label className="block text-sm md:col-span-2">
         <span className="font-medium text-gray-700">Projekt *</span>
         <select
           disabled={disabled || value.program_id == null}
@@ -170,9 +145,6 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
               customer_id: value.customer_id,
               program_id: value.program_id,
               project_id: prid,
-              calculation_year: null,
-              project_volume: null,
-              jahresstueckzahl: 0,
             });
             setSelectedProject(proj ?? null);
           }}
@@ -181,31 +153,6 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.project_number} – {p.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="block text-sm">
-        <span className="font-medium text-gray-700">Kalkulationsjahr *</span>
-        <select
-          disabled={disabled || value.project_id == null}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-          value={value.calculation_year ?? ""}
-          onChange={(e) => {
-            const year = e.target.value ? Number(e.target.value) : null;
-            onChange({
-              ...value,
-              calculation_year: year,
-              project_volume: null,
-              jahresstueckzahl: 0,
-            });
-          }}
-        >
-          <option value="">– auswählen –</option>
-          {years.map((y) => (
-            <option key={y} value={y}>
-              {y}
             </option>
           ))}
         </select>
@@ -220,84 +167,54 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
         </div>
       )}
 
-      <label className="block text-sm">
-        <span className="font-medium text-gray-700">Projektstückzahl (berechnet)</span>
-        <input
-          readOnly
-          className="mt-1 w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2"
-          value={
-            value.project_volume != null
-              ? value.project_volume.toLocaleString("de-DE")
-              : "–"
-          }
-        />
-      </label>
+      {profileError && (
+        <div className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {profileError}
+        </div>
+      )}
 
-      <label className="block text-sm">
-        <span className="font-medium text-gray-700">Jahresstückzahl (aus Projekt)</span>
-        <input
-          readOnly
-          className="mt-1 w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2"
-          value={value.jahresstueckzahl.toLocaleString("de-DE")}
-        />
-      </label>
-
-      {yearVolumes.length > 0 && selectedProject && (
-        <div className="md:col-span-2 overflow-x-auto">
-          <table className="min-w-full text-xs">
-            <thead>
-              <tr className="border-b text-left text-gray-600">
-                <th className="py-1 pr-3">Jahr</th>
-                <th className="py-1 pr-3">Fahrzeugstückzahl</th>
-                <th className="py-1 pr-3">Anzahl/Fzg.</th>
-                <th className="py-1">Projektstückzahl</th>
-              </tr>
-            </thead>
-            <tbody>
-              {yearVolumes.map((y) => (
-                <YearVolumePreviewRow
-                  key={y}
-                  projectId={selectedProject.id}
-                  year={y}
-                  qty={selectedProject.quantity_per_vehicle}
-                />
-              ))}
-            </tbody>
-          </table>
+      {volumeProfile && volumeProfile.rows.length > 0 && (
+        <div className="md:col-span-2">
+          <h4 className="mb-2 text-sm font-semibold text-gray-800">
+            Projektstückzahlen über die Projektlaufzeit
+          </h4>
+          <div className="overflow-x-auto rounded-md border border-gray-200">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50 text-left text-gray-600">
+                  <th className="px-3 py-2">Jahr</th>
+                  <th className="px-3 py-2">Programmfahrzeuge</th>
+                  <th className="px-3 py-2">Anzahl pro Fahrzeug</th>
+                  <th className="px-3 py-2">Projektstückzahl</th>
+                </tr>
+              </thead>
+              <tbody>
+                {volumeProfile.rows.map((row) => (
+                  <tr key={row.calendar_year} className="border-b border-gray-100">
+                    <td className="px-3 py-2">{row.calendar_year}</td>
+                    <td className="px-3 py-2">{row.vehicle_volume.toLocaleString("de-DE")}</td>
+                    <td className="px-3 py-2">{row.quantity_per_vehicle}</td>
+                    <td className="px-3 py-2">{row.project_volume.toLocaleString("de-DE")}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="bg-slate-50 font-medium">
+                  <td className="px-3 py-2" colSpan={3}>
+                    Gesamt über die Laufzeit
+                  </td>
+                  <td className="px-3 py-2">
+                    {volumeProfile.total_project_volume.toLocaleString("de-DE")}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            Nur zur Information – der Teilepreis gilt für die gesamte Projektlaufzeit.
+          </p>
         </div>
       )}
     </div>
   );
-}
-
-function YearVolumePreviewRow({
-  projectId,
-  year,
-  qty,
-}: {
-  projectId: number;
-  year: number;
-  qty: number;
-}) {
-  const [row, setRow] = useState<{ vehicle: number; project: number } | null>(null);
-  useEffect(() => {
-    getCalculatedProjectVolume(projectId, year)
-      .then((r: { vehicle_volume: number; project_volume: number }) =>
-        setRow({ vehicle: r.vehicle_volume, project: r.project_volume }),
-      )
-      .catch(() => setRow(null));
-  }, [projectId, year]);
-  if (!row) return null;
-  return (
-    <tr className="border-b border-gray-100">
-      <td className="py-1 pr-3">{year}</td>
-      <td className="py-1 pr-3">{row.vehicle.toLocaleString("de-DE")}</td>
-      <td className="py-1 pr-3">{qty}</td>
-      <td className="py-1">{row.project.toLocaleString("de-DE")}</td>
-    </tr>
-  );
-}
-
-export async function loadProgramVolumesForPreview(programId: number) {
-  return listProgramVolumes(programId);
 }

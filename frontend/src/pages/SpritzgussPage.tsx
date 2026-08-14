@@ -168,14 +168,12 @@ export function SpritzgussPage() {
     customer_id: null,
     program_id: null,
     project_id: null,
-    calculation_year: null,
-    project_volume: null,
-    jahresstueckzahl: 0,
   });
   const [legacyHierarchy, setLegacyHierarchy] = useState<{
     kunde: string;
     projekt: string;
     jahresstueckzahl: number;
+    calculation_year?: number | null;
   } | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [bloecke, setBloecke] = useState<SpritzgussBloecke | null>(null);
@@ -401,16 +399,14 @@ export function SpritzgussPage() {
         throw new Error("Teilenummer ist für das Speichern erforderlich.");
       }
       if (!legacyHierarchy && hierarchy.project_id == null) {
-        throw new Error("Bitte Kunde, Programm, Projekt und Kalkulationsjahr auswählen.");
+        throw new Error("Bitte Kunde, Programm und Projekt auswählen.");
       }
       const payload = {
         ...form,
         customer_id: hierarchy.customer_id,
         program_id: hierarchy.program_id,
         project_id: hierarchy.project_id,
-        calculation_year: hierarchy.calculation_year,
-        project_volume: hierarchy.project_volume,
-        jahresstueckzahl: hierarchy.jahresstueckzahl,
+        jahresstueckzahl: legacyHierarchy?.jahresstueckzahl ?? 0,
         kunde: form.kunde,
         projekt: form.projekt,
         werkzeugkosten_eur: 0,
@@ -452,23 +448,18 @@ export function SpritzgussPage() {
           customer_id: item.customer_id ?? null,
           program_id: item.program_id ?? null,
           project_id: item.project_id ?? null,
-          calculation_year: item.calculation_year ?? null,
-          project_volume: item.project_volume ?? null,
-          jahresstueckzahl: item.jahresstueckzahl,
         });
       } else {
         setLegacyHierarchy({
           kunde: item.kunde,
           projekt: item.projekt,
           jahresstueckzahl: item.jahresstueckzahl,
+          calculation_year: item.calculation_year,
         });
         setHierarchy({
           customer_id: null,
           program_id: null,
           project_id: null,
-          calculation_year: null,
-          project_volume: null,
-          jahresstueckzahl: 0,
         });
       }
       setForm({
@@ -527,9 +518,6 @@ export function SpritzgussPage() {
       customer_id: null,
       program_id: null,
       project_id: null,
-      calculation_year: null,
-      project_volume: null,
-      jahresstueckzahl: 0,
     });
     setLegacyHierarchy(null);
     setSelectedVeredelung([]);
@@ -677,9 +665,6 @@ export function SpritzgussPage() {
                     customer_id: next.customer_id,
                     program_id: next.program_id,
                     project_id: next.project_id,
-                    calculation_year: next.calculation_year,
-                    project_volume: next.project_volume,
-                    jahresstueckzahl: next.jahresstueckzahl,
                   }));
                 }}
               />

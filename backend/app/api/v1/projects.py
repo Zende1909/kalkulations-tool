@@ -14,8 +14,10 @@ from app.schemas.hierarchy import (
     ProjectRead,
     ProjectUpdate,
     ProjectVolumeCalculation,
+    ProjectVolumeProfileRead,
 )
 from app.services.hierarchy import calculate_project_volume, validate_calendar_year
+from app.services.project_volume_service import build_project_volume_profile
 
 router = APIRouter(prefix="/projects", tags=["Projekte"])
 
@@ -103,6 +105,16 @@ def deactivate_project(
 ):
     item = _get_project_or_404(db, item_id)
     project_crud.project.update(db, item, ProjectUpdate(active=False))
+
+
+@router.get("/{project_id}/volume-profile", response_model=ProjectVolumeProfileRead)
+def get_project_volume_profile(
+    project_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_viewer),
+):
+    _get_project_or_404(db, project_id)
+    return build_project_volume_profile(db, project_id)
 
 
 @router.get("/{project_id}/calculated-volume", response_model=ProjectVolumeCalculation)

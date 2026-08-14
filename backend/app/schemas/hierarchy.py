@@ -221,3 +221,57 @@ class ProjectVolumeCalculation(BaseModel):
     vehicle_volume: int
     quantity_per_vehicle: float
     project_volume: float
+
+
+class ProgramVolumeProfileRow(BaseModel):
+    id: int | None = None
+    calendar_year: int
+    vehicle_volume: int = 0
+    in_sop_eop_range: bool = True
+
+
+class ProgramVolumeProfileRead(BaseModel):
+    program_id: int
+    sop: date | None = None
+    eop: date | None = None
+    sop_eop_years: list[int] = Field(default_factory=list)
+    rows: list[ProgramVolumeProfileRow] = Field(default_factory=list)
+
+
+class ProgramVolumeBulkItem(BaseModel):
+    calendar_year: int
+    vehicle_volume: int = 0
+
+    @field_validator("calendar_year")
+    @classmethod
+    def check_year(cls, value: int) -> int:
+        return validate_calendar_year(value)
+
+    @field_validator("vehicle_volume")
+    @classmethod
+    def check_volume(cls, value: int) -> int:
+        return validate_vehicle_volume(value)
+
+
+class ProgramVolumeBulkSave(BaseModel):
+    volumes: list[ProgramVolumeBulkItem] = Field(min_length=1)
+
+
+class SopEopChangeWarning(BaseModel):
+    years_with_data_outside_new_range: list[int] = Field(default_factory=list)
+    message: str = ""
+
+
+class ProjectVolumeProfileRow(BaseModel):
+    calendar_year: int
+    vehicle_volume: int
+    quantity_per_vehicle: float
+    project_volume: float
+
+
+class ProjectVolumeProfileRead(BaseModel):
+    project_id: int
+    program_id: int
+    quantity_per_vehicle: float
+    total_project_volume: float = 0
+    rows: list[ProjectVolumeProfileRow] = Field(default_factory=list)

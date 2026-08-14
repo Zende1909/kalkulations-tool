@@ -71,7 +71,7 @@ def test_project_update_validates_area():
 def test_spritzguss_create_requires_hierarchy():
     from app.schemas.spritzguss_kalkulation import SpritzgussKalkulationCreate
 
-    with pytest.raises(ValidationError, match="Kunde, Programm, Projekt"):
+    with pytest.raises(ValidationError, match="Kunde, Programm und Projekt"):
         SpritzgussKalkulationCreate(
             teilebezeichnung="Teil",
             teilenummer="T-1",

@@ -18,17 +18,13 @@ def resolve_hierarchy_for_spritzguss(
     customer_id: int,
     program_id: int,
     project_id: int,
-    calculation_year: int,
+    calculation_year: int | None = None,
 ) -> dict:
     if customer_id < 1 or program_id < 1 or project_id < 1:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Ungültige Hierarchie-IDs.",
         )
-    try:
-        validate_calendar_year(calculation_year)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
     customer = db.get(Customer, customer_id)
     if not customer:
@@ -52,30 +48,33 @@ def resolve_hierarchy_for_spritzguss(
             detail="Projekt gehört nicht zum ausgewählten Programm.",
         )
 
-    volume_row = db.scalar(
-        select(ProgramVolume).where(
-            ProgramVolume.program_id == program_id,
-            ProgramVolume.calendar_year == calculation_year,
-        )
-    )
-    if not volume_row:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Keine Programmstückzahl für Kalenderjahr {calculation_year} hinterlegt.",
-        )
-
-    project_volume = calculate_project_volume(volume_row.vehicle_volume, project.quantity_per_vehicle)
-    jahresstueckzahl = int(round(project_volume))
-    if jahresstueckzahl < 0:
-        jahresstueckzahl = 0
-
-    return {
+    result: dict = {
         "customer_id": customer_id,
         "program_id": program_id,
         "project_id": project_id,
-        "calculation_year": calculation_year,
-        "project_volume": project_volume,
         "kunde": customer.name,
         "projekt": project.name,
-        "jahresstueckzahl": jahresstueckzahl,
     }
+
+    if calculation_year is not None:
+        try:
+            validate_calendar_year(calculation_year)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+        volume_row = db.scalar(
+            select(ProgramVolume).where(
+                ProgramVolume.program_id == program_id,
+                ProgramVolume.calendar_year == calculation_year,
+            )
+        )
+        if volume_row:
+            project_volume = calculate_project_volume(volume_row.vehicle_volume, project.quantity_per_vehicle)
+            jahresstueckzahl = int(round(project_volume))
+            if jahresstueckzahl < 0:
+                jahresstueckzahl = 0
+            result["calculation_year"] = calculation_year
+            result["project_volume"] = project_volume
+            result["jahresstueckzahl"] = jahresstueckzahl
+
+    return result

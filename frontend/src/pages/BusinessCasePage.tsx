@@ -161,7 +161,9 @@ export function BusinessCasePage() {
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[
-                ["Jahresstückzahl gesamt", int(data.kpis.jahresstueckzahl_gesamt)],
+                ["Gesamtstückzahl Laufzeit", int(data.kpis.gesamtstueckzahl_laufzeit)],
+                ["Umsatzpotenzial Laufzeit", euro(data.kpis.umsatzpotenzial_laufzeit)],
+                ["Jahresstückzahl gesamt (historisch)", int(data.kpis.jahresstueckzahl_gesamt)],
                 ["Umsatzpotenzial Einzelteile", euro(data.kpis.umsatzpotenzial_einzelteile)],
                 ["Umsatzpotenzial Baugruppen", euro(data.kpis.umsatzpotenzial_baugruppen)],
                 ["Investitionen gesamt", euro(data.kpis.investitionen_gesamt)],
@@ -197,6 +199,38 @@ export function BusinessCasePage() {
             </div>
           </section>
 
+          {data.lifetime_volume_profile && data.lifetime_volume_profile.length > 0 && (
+            <section className="rounded-lg border border-gray-200 bg-white p-4">
+              <h3 className="mb-3 font-semibold">Mengenprofil über die Projektlaufzeit</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-gray-600">
+                      <th className="py-2 pr-3">Jahr</th>
+                      <th className="py-2 pr-3">Programmfahrzeuge</th>
+                      <th className="py-2 pr-3">Anzahl pro Fahrzeug</th>
+                      <th className="py-2 pr-3">Projektstückzahl</th>
+                      <th className="py-2 pr-3">Teilepreis/Stück</th>
+                      <th className="py-2 pr-3">Jahresumsatz</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.lifetime_volume_profile.map((row) => (
+                      <tr key={row.calendar_year} className="border-b border-gray-100">
+                        <td className="py-2 pr-3">{row.calendar_year}</td>
+                        <td className="py-2 pr-3">{int(row.vehicle_volume)}</td>
+                        <td className="py-2 pr-3">{row.quantity_per_vehicle}</td>
+                        <td className="py-2 pr-3">{int(row.project_volume)}</td>
+                        <td className="py-2 pr-3">{euro(row.teilepreis_je_stueck)}</td>
+                        <td className="py-2 pr-3">{euro(row.jahresumsatz)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 font-semibold">Einzelteile</h3>
             {data.parts.length === 0 ? (
@@ -208,9 +242,9 @@ export function BusinessCasePage() {
                     <tr className="border-b text-left text-gray-600">
                       <th className="py-2 pr-3">Bezeichnung</th>
                       <th className="py-2 pr-3">Teilenummer</th>
-                      <th className="py-2 pr-3">Jahresstückzahl</th>
+                      <th className="py-2 pr-3">Stückzahl Laufzeit</th>
                       <th className="py-2 pr-3">Endpreis/Stück</th>
-                      <th className="py-2 pr-3">Jahresumsatz</th>
+                      <th className="py-2 pr-3">Umsatz Laufzeit</th>
                       <th className="py-2 pr-3">Veredelung</th>
                       <th className="py-2">Aktionen</th>
                     </tr>
@@ -220,9 +254,9 @@ export function BusinessCasePage() {
                       <tr key={p.id} className="border-b border-gray-100">
                         <td className="py-2 pr-3">{p.bezeichnung}</td>
                         <td className="py-2 pr-3">{p.teilenummer}</td>
-                        <td className="py-2 pr-3">{int(p.jahresstueckzahl)}</td>
+                        <td className="py-2 pr-3">{int(p.gesamtstueckzahl_laufzeit ?? p.jahresstueckzahl)}</td>
                         <td className="py-2 pr-3">{euro(p.endpreis_je_stueck)}</td>
-                        <td className="py-2 pr-3">{euro(p.jahresumsatz)}</td>
+                        <td className="py-2 pr-3">{euro(p.umsatzpotenzial_laufzeit ?? p.jahresumsatz)}</td>
                         <td className="py-2 pr-3">{p.anzahl_veredelungsschritte}</td>
                         <td className="py-2">
                           <div className="flex flex-wrap gap-1">

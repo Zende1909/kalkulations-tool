@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 MIN_CALENDAR_YEAR = 2000
 MAX_CALENDAR_YEAR = 2100
 
@@ -39,3 +41,13 @@ def validate_component_area(value: str, *, strict: bool = True) -> str:
 
 def calculate_project_volume(vehicle_volume: int, quantity_per_vehicle: float) -> float:
     return round(vehicle_volume * quantity_per_vehicle, 2)
+
+
+def calendar_years_from_sop_eop(sop: date | None, eop: date | None) -> list[int]:
+    if sop is None or eop is None:
+        return []
+    start = sop.year
+    end = eop.year
+    if start > end:
+        return []
+    return list(range(start, end + 1))

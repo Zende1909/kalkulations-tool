@@ -77,3 +77,43 @@ export interface ProjectVolumeCalculation {
   quantity_per_vehicle: number;
   project_volume: number;
 }
+
+export interface ProgramVolumeProfileRow {
+  id: number | null;
+  calendar_year: number;
+  vehicle_volume: number;
+  in_sop_eop_range: boolean;
+}
+
+export interface ProgramVolumeProfile {
+  program_id: number;
+  sop: string | null;
+  eop: string | null;
+  sop_eop_years: number[];
+  rows: ProgramVolumeProfileRow[];
+}
+
+export interface ProgramVolumeBulkItem {
+  calendar_year: number;
+  vehicle_volume: number;
+}
+
+export interface ProjectVolumeProfileRow {
+  calendar_year: number;
+  vehicle_volume: number;
+  quantity_per_vehicle: number;
+  project_volume: number;
+}
+
+export interface ProjectVolumeProfile {
+  project_id: number;
+  program_id: number;
+  quantity_per_vehicle: number;
+  total_project_volume: number;
+  rows: ProjectVolumeProfileRow[];
+}
+
+export interface SopEopChangeWarning {
+  years_with_data_outside_new_range: number[];
+  message: string;
+}

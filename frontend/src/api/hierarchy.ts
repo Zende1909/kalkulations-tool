@@ -3,8 +3,12 @@ import type {
   Customer,
   Program,
   ProgramVolume,
+  ProgramVolumeBulkItem,
+  ProgramVolumeProfile,
   Project,
   ProjectVolumeCalculation,
+  ProjectVolumeProfile,
+  SopEopChangeWarning,
 } from "../types/hierarchy";
 
 function q(params: Record<string, string | number | boolean | undefined>): string {
@@ -86,6 +90,48 @@ export async function updateProject(id: number, payload: Partial<Project>): Prom
 
 export async function deactivateProject(id: number): Promise<void> {
   return api.delete(`/projects/${id}`);
+}
+
+export async function getProjectVolumeProfile(projectId: number): Promise<ProjectVolumeProfile> {
+  return api.get<ProjectVolumeProfile>(`/projects/${projectId}/volume-profile`);
+}
+
+export async function getProgramVolumeProfile(programId: number): Promise<ProgramVolumeProfile> {
+  return api.get<ProgramVolumeProfile>(`/programs/${programId}/volume-profile`);
+}
+
+export async function generateProgramYears(programId: number): Promise<ProgramVolumeProfile> {
+  return api.post<ProgramVolumeProfile>(`/programs/${programId}/volume-profile/generate-years`, {});
+}
+
+export async function bulkSaveProgramVolumes(
+  programId: number,
+  volumes: ProgramVolumeBulkItem[],
+): Promise<ProgramVolume[]> {
+  return api.put<ProgramVolume[]>(`/programs/${programId}/volumes/bulk`, { volumes });
+}
+
+export async function deleteProgramYearVolume(programId: number, calendarYear: number): Promise<void> {
+  return api.delete(`/programs/${programId}/volumes/${calendarYear}`);
+}
+
+export async function previewSopEopChange(
+  programId: number,
+  sop?: string,
+  eop?: string,
+): Promise<SopEopChangeWarning> {
+  return api.get<SopEopChangeWarning>(
+    `/programs/${programId}/sop-eop-change-preview${q({ sop, eop })}`,
+  );
+}
+
+export async function updateProgramWithSopConfirm(
+  id: number,
+  payload: Partial<Program>,
+  confirmSopEopShrink = false,
+): Promise<Program> {
+  const suffix = confirmSopEopShrink ? "?confirm_sop_eop_shrink=true" : "";
+  return api.put<Program>(`/programs/${id}${suffix}`, payload);
 }
 
 export async function getCalculatedProjectVolume(

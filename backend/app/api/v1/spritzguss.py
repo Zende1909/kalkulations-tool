@@ -45,24 +45,24 @@ router = APIRouter(prefix="/spritzguss", tags=["Spritzguss-Kalkulation"])
 
 
 def _apply_hierarchy_payload(db: Session, payload: dict) -> dict:
-    """Setzt kunde/projekt/jahresstueckzahl aus zentraler Hierarchie, wenn IDs gesetzt sind."""
+    """Setzt kunde/projekt aus zentraler Hierarchie, wenn IDs gesetzt sind."""
     cid = payload.get("customer_id")
     pid = payload.get("program_id")
     prid = payload.get("project_id")
     year = payload.get("calculation_year")
-    if cid is None and pid is None and prid is None and year is None:
+    if cid is None and pid is None and prid is None:
         return payload
-    if None in (cid, pid, prid, year):
+    if None in (cid, pid, prid):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Kunde, Programm, Projekt und Kalkulationsjahr müssen gemeinsam angegeben werden.",
+            detail="Kunde, Programm und Projekt müssen gemeinsam angegeben werden.",
         )
     resolved = resolve_hierarchy_for_spritzguss(
         db,
         customer_id=int(cid),
         program_id=int(pid),
         project_id=int(prid),
-        calculation_year=int(year),
+        calculation_year=int(year) if year is not None else None,
     )
     payload.update(resolved)
     return payload

@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  bulkSaveProgramVolumes,
   createCustomer,
   createProgram,
-  createProgramVolume,
   createProject,
   deactivateCustomer,
   deactivateProgram,
   deactivateProject,
-  deleteProgramVolume,
-  getCalculatedProjectVolume,
-  listAvailableYears,
+  deleteProgramYearVolume,
+  generateProgramYears,
+  getProgramVolumeProfile,
+  getProjectVolumeProfile,
   listCustomers,
   listProgramVolumes,
   listPrograms,
   listProjects,
   updateCustomer,
-  updateProgram,
-  updateProgramVolume,
+  updateProgramWithSopConfirm,
   updateProject,
 } from "../../api/hierarchy";
 import { StammdatenFormModal, type FormField } from "../../components/stammdaten/StammdatenFormModal";
@@ -30,7 +30,7 @@ import {
   type Program,
   type ProgramVolume,
   type Project,
-  type ProjectVolumeCalculation,
+  type ProjectVolumeProfile,
 } from "../../types/hierarchy";
 
 type Tab = "customers" | "programs" | "projects";
@@ -85,12 +85,10 @@ export function KundenProgrammeProjektePage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | "">("");
   const [selectedProgramId, setSelectedProgramId] = useState<number | "">("");
   const [selectedProjectId, setSelectedProjectId] = useState<number | "">("");
-  const [calcYear, setCalcYear] = useState<number | "">("");
-  const [calcResult, setCalcResult] = useState<ProjectVolumeCalculation | null>(null);
+  const [projectVolumeProfile, setProjectVolumeProfile] = useState<ProjectVolumeProfile | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,8 +101,11 @@ export function KundenProgrammeProjektePage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [volumesModalProgram, setVolumesModalProgram] = useState<Program | null>(null);
-  const [modalVolumes, setModalVolumes] = useState<ProgramVolume[]>([]);
+  const [modalVolumeRows, setModalVolumeRows] = useState<{ calendar_year: number; vehicle_volume: number }[]>([]);
+  const [volumeModalBusy, setVolumeModalBusy] = useState(false);
+  const [volumeModalError, setVolumeModalError] = useState<string | null>(null);
   const [projectPreviewVolumes, setProjectPreviewVolumes] = useState<ProgramVolume[]>([]);
+  const [sopEopConfirmPending, setSopEopConfirmPending] = useState<boolean>(false);
 
   const filteredCustomers = useMemo(() => {
     if (!search.trim()) return customers;
@@ -154,12 +155,6 @@ export function KundenProgrammeProjektePage() {
       setCustomers(c);
       setPrograms(p);
       setProjects(j);
-      if (selectedProgramId !== "") {
-        const years = await listAvailableYears(selectedProgramId);
-        setAvailableYears(years);
-      } else {
-        setAvailableYears([]);
-      }
     } catch (err) {
       setError(errMsg(err));
     } finally {
@@ -172,14 +167,14 @@ export function KundenProgrammeProjektePage() {
   }, [reloadAll]);
 
   useEffect(() => {
-    if (selectedProjectId === "" || calcYear === "") {
-      setCalcResult(null);
+    if (selectedProjectId === "") {
+      setProjectVolumeProfile(null);
       return;
     }
-    getCalculatedProjectVolume(selectedProjectId, calcYear)
-      .then(setCalcResult)
-      .catch((err) => setError(errMsg(err)));
-  }, [selectedProjectId, calcYear]);
+    getProjectVolumeProfile(selectedProjectId)
+      .then(setProjectVolumeProfile)
+      .catch(() => setProjectVolumeProfile(null));
+  }, [selectedProjectId]);
 
   const openCreate = (kind: typeof formKind) => {
     setFormKind(kind);
@@ -311,25 +306,27 @@ export function KundenProgrammeProjektePage() {
           active: Boolean(formValues.active),
         };
         if (formMode === "edit" && editId != null) {
-          await updateProgram(editId, payload);
+          try {
+            await updateProgramWithSopConfirm(editId, payload, sopEopConfirmPending);
+          } catch (err) {
+            const msg = errMsg(err);
+            if (msg.includes("sop_eop_shrink") || msg.includes("außerhalb des neuen")) {
+              setSopEopConfirmPending(true);
+              setFormError(
+                `${msg} Klicken Sie erneut auf Speichern, um die Änderung zu bestätigen.`,
+              );
+              setSubmitting(false);
+              return;
+            }
+            throw err;
+          }
+          setSopEopConfirmPending(false);
         } else {
           await createProgram(payload);
         }
       } else if (formKind === "volume") {
-        const programId = volumesModalProgram?.id ?? (selectedProgramId as number);
-        const payload = {
-          program_id: programId,
-          calendar_year: Number(formValues.calendar_year),
-          vehicle_volume: Number(formValues.vehicle_volume),
-        };
-        if (formMode === "edit" && editId != null) {
-          await updateProgramVolume(editId, payload);
-        } else {
-          await createProgramVolume(payload);
-        }
-        setFormOpen(false);
-        setSuccess("Erfolgreich gespeichert.");
-        await reloadModalVolumes();
+        setFormError("Bitte die Mengen im Programm-Dialog speichern.");
+        setSubmitting(false);
         return;
       } else {
         const payload = {
@@ -374,29 +371,83 @@ export function KundenProgrammeProjektePage() {
   const openVolumesModal = async (program: Program) => {
     setVolumesModalProgram(program);
     setSelectedProgramId(program.id);
+    setVolumeModalError(null);
     try {
-      const vols = await listProgramVolumes(program.id);
-      setModalVolumes(vols);
+      const profile = await getProgramVolumeProfile(program.id);
+      setModalVolumeRows(
+        profile.rows.map((r) => ({
+          calendar_year: r.calendar_year,
+          vehicle_volume: r.vehicle_volume,
+        })),
+      );
     } catch {
-      setModalVolumes([]);
+      setModalVolumeRows([]);
     }
   };
 
   const reloadModalVolumes = async () => {
     if (!volumesModalProgram) return;
-    const vols = await listProgramVolumes(volumesModalProgram.id);
-    setModalVolumes(vols);
+    const profile = await getProgramVolumeProfile(volumesModalProgram.id);
+    setModalVolumeRows(
+      profile.rows.map((r) => ({
+        calendar_year: r.calendar_year,
+        vehicle_volume: r.vehicle_volume,
+      })),
+    );
     await reloadAll();
   };
 
-  const handleDeleteVolume = async (id: number) => {
+  const handleGenerateYears = async () => {
+    if (!volumesModalProgram) return;
+    setVolumeModalBusy(true);
+    setVolumeModalError(null);
     try {
-      await deleteProgramVolume(id);
-      setSuccess("Jahresstückzahl gelöscht.");
+      const profile = await generateProgramYears(volumesModalProgram.id);
+      setModalVolumeRows(
+        profile.rows.map((r) => ({
+          calendar_year: r.calendar_year,
+          vehicle_volume: r.vehicle_volume,
+        })),
+      );
+      setSuccess("Jahreszeilen aus SOP/EOP erzeugt.");
+    } catch (err) {
+      setVolumeModalError(errMsg(err));
+    } finally {
+      setVolumeModalBusy(false);
+    }
+  };
+
+  const handleBulkSaveVolumes = async () => {
+    if (!volumesModalProgram) return;
+    setVolumeModalBusy(true);
+    setVolumeModalError(null);
+    try {
+      const years = modalVolumeRows.map((r) => r.calendar_year);
+      if (new Set(years).size !== years.length) {
+        throw new Error("Doppelte Kalenderjahre sind nicht erlaubt.");
+      }
+      for (const row of modalVolumeRows) {
+        if (row.vehicle_volume < 0) {
+          throw new Error("Fahrzeugstückzahlen dürfen nicht negativ sein.");
+        }
+      }
+      await bulkSaveProgramVolumes(volumesModalProgram.id, modalVolumeRows);
+      setSuccess("Fahrzeugstückzahlen gespeichert.");
       await reloadModalVolumes();
     } catch (err) {
-      setError(errMsg(err));
+      setVolumeModalError(errMsg(err));
+    } finally {
+      setVolumeModalBusy(false);
     }
+  };
+
+  const handleAddVolumeYear = () => {
+    const nextYear =
+      modalVolumeRows.length > 0
+        ? Math.max(...modalVolumeRows.map((r) => r.calendar_year)) + 1
+        : new Date().getFullYear();
+    if (modalVolumeRows.some((r) => r.calendar_year === nextYear)) return;
+    setModalVolumeRows((rows) => [...rows, { calendar_year: nextYear, vehicle_volume: 0 }]);
   };
 
   const formFields =
@@ -486,34 +537,34 @@ export function KundenProgrammeProjektePage() {
                 ))}
             </select>
           </label>
-          {selectedProjectId !== "" && (
-            <label className="block text-sm">
-              <span className="text-gray-600">Jahr (Berechnung)</span>
-              <select
-                className="mt-1 block min-w-[120px] rounded border px-2 py-1.5"
-                value={calcYear}
-                onChange={(e) => setCalcYear(e.target.value ? Number(e.target.value) : "")}
-              >
-                <option value="">–</option>
-                {availableYears.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </label>
+          {selectedProjectId !== "" && projectVolumeProfile && projectVolumeProfile.rows.length > 0 && (
+            <div className="mt-4 w-full overflow-x-auto">
+              <h4 className="mb-2 text-sm font-semibold text-gray-700">
+                Projektstückzahlen über die Projektlaufzeit
+              </h4>
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="border-b text-left text-gray-600">
+                    <th className="py-1 pr-3">Jahr</th>
+                    <th className="py-1 pr-3">Programmfahrzeuge</th>
+                    <th className="py-1 pr-3">Anzahl pro Fahrzeug</th>
+                    <th className="py-1">Projektstückzahl</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projectVolumeProfile.rows.map((row) => (
+                    <tr key={row.calendar_year} className="border-b border-gray-100">
+                      <td className="py-1 pr-3">{row.calendar_year}</td>
+                      <td className="py-1 pr-3">{row.vehicle_volume.toLocaleString("de-DE")}</td>
+                      <td className="py-1 pr-3">{row.quantity_per_vehicle}</td>
+                      <td className="py-1">{row.project_volume.toLocaleString("de-DE")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
-        {calcResult && (
-          <p className="mt-3 rounded bg-slate-50 px-3 py-2 text-sm text-slate-800">
-            Projektstückzahl {calcResult.calendar_year}:{" "}
-            <strong>
-              {calcResult.project_volume.toLocaleString("de-DE")} Teile
-            </strong>{" "}
-            ({calcResult.vehicle_volume.toLocaleString("de-DE")} Fahrzeuge ×{" "}
-            {calcResult.quantity_per_vehicle} pro Fahrzeug)
-          </p>
-        )}
       </section>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-2">
@@ -715,11 +766,16 @@ export function KundenProgrammeProjektePage() {
 
       {volumesModalProgram && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">
-                Fahrzeugstückzahlen – {volumesModalProgram.name}
-              </h3>
+              <div>
+                <h3 className="text-lg font-semibold">Fahrzeugstückzahlen je Kalenderjahr</h3>
+                <p className="text-sm text-gray-600">{volumesModalProgram.name}</p>
+                <p className="text-xs text-gray-500">
+                  SOP: {volumesModalProgram.sop?.slice(0, 10) ?? "–"} · EOP:{" "}
+                  {volumesModalProgram.eop?.slice(0, 10) ?? "–"}
+                </p>
+              </div>
               <button
                 type="button"
                 className="text-gray-400 hover:text-gray-600"
@@ -728,47 +784,113 @@ export function KundenProgrammeProjektePage() {
                 ✕
               </button>
             </div>
-            {canWrite && (
-              <button
-                type="button"
-                className="mb-3 rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
-                onClick={() => {
-                  setVolumesModalProgram(volumesModalProgram);
-                  openCreate("volume");
-                }}
-              >
-                Jahr hinzufügen
-              </button>
+
+            {volumeModalError && (
+              <div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                {volumeModalError}
+              </div>
             )}
-            {modalVolumes.length === 0 ? (
-              <p className="text-sm text-gray-600">Keine Jahresstückzahlen hinterlegt.</p>
+
+            <div className="mb-3 flex flex-wrap gap-2">
+              {canWrite && (
+                <>
+                  <button
+                    type="button"
+                    disabled={volumeModalBusy}
+                    className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={handleGenerateYears}
+                  >
+                    Jahre aus SOP/EOP erzeugen
+                  </button>
+                  <button
+                    type="button"
+                    disabled={volumeModalBusy}
+                    className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+                    onClick={handleAddVolumeYear}
+                  >
+                    Jahr hinzufügen
+                  </button>
+                  <button
+                    type="button"
+                    disabled={volumeModalBusy}
+                    className="rounded bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-600 disabled:opacity-50"
+                    onClick={handleBulkSaveVolumes}
+                  >
+                    Mengen speichern
+                  </button>
+                </>
+              )}
+            </div>
+
+            {modalVolumeRows.length === 0 ? (
+              <p className="text-sm text-gray-600">
+                Keine Jahreszeilen vorhanden. Bitte SOP/EOP pflegen und „Jahre aus SOP/EOP erzeugen“
+                klicken.
+              </p>
             ) : (
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-gray-600">
                     <th className="py-2 pr-4">Kalenderjahr</th>
                     <th className="py-2 pr-4">Fahrzeugstückzahl</th>
-                    {canWrite && <th className="py-2">Aktionen</th>}
+                    {canWrite && <th className="py-2">Löschen</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {modalVolumes.map((v) => (
-                    <tr key={v.id} className="border-b border-gray-100">
-                      <td className="py-2 pr-4">{v.calendar_year}</td>
-                      <td className="py-2 pr-4">{v.vehicle_volume.toLocaleString("de-DE")}</td>
+                  {modalVolumeRows.map((row, index) => (
+                    <tr key={`${row.calendar_year}-${index}`} className="border-b border-gray-100">
+                      <td className="py-2 pr-4">
+                        {canWrite ? (
+                          <input
+                            type="number"
+                            className="w-24 rounded border px-2 py-1"
+                            value={row.calendar_year}
+                            onChange={(e) => {
+                              const year = Number(e.target.value);
+                              setModalVolumeRows((rows) =>
+                                rows.map((r, i) => (i === index ? { ...r, calendar_year: year } : r)),
+                              );
+                            }}
+                          />
+                        ) : (
+                          row.calendar_year
+                        )}
+                      </td>
+                      <td className="py-2 pr-4">
+                        {canWrite ? (
+                          <input
+                            type="number"
+                            min={0}
+                            className="w-32 rounded border px-2 py-1"
+                            value={row.vehicle_volume}
+                            onChange={(e) => {
+                              const vol = Number(e.target.value);
+                              setModalVolumeRows((rows) =>
+                                rows.map((r, i) => (i === index ? { ...r, vehicle_volume: vol } : r)),
+                              );
+                            }}
+                          />
+                        ) : (
+                          row.vehicle_volume.toLocaleString("de-DE")
+                        )}
+                      </td>
                       {canWrite && (
-                        <td className="py-2 space-x-2">
-                          <button
-                            type="button"
-                            className="text-blue-700 underline"
-                            onClick={() => openEdit("volume", v)}
-                          >
-                            Bearbeiten
-                          </button>
+                        <td className="py-2">
                           <button
                             type="button"
                             className="text-red-700 underline"
-                            onClick={() => handleDeleteVolume(v.id)}
+                            onClick={async () => {
+                              if (!volumesModalProgram) return;
+                              try {
+                                await deleteProgramYearVolume(
+                                  volumesModalProgram.id,
+                                  row.calendar_year,
+                                );
+                                await reloadModalVolumes();
+                              } catch {
+                                setModalVolumeRows((rows) => rows.filter((_, i) => i !== index));
+                              }
+                            }}
                           >
                             Löschen
                           </button>

@@ -200,13 +200,12 @@ class SpritzgussKalkulationCreate(SpritzgussKalkulationBase):
                 ("customer_id", self.customer_id),
                 ("program_id", self.program_id),
                 ("project_id", self.project_id),
-                ("calculation_year", self.calculation_year),
             )
             if val is None
         ]
         if missing:
             raise ValueError(
-                "Neue Kalkulationen benötigen Kunde, Programm, Projekt und Kalkulationsjahr "
+                "Neue Kalkulationen benötigen Kunde, Programm und Projekt "
                 f"(fehlend: {', '.join(missing)})."
             )
         return self

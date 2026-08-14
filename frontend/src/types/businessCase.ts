@@ -1,3 +1,13 @@
+export interface LifetimeYearRow {
+  calendar_year: number;
+  vehicle_volume: number;
+  quantity_per_vehicle: number;
+  project_volume: number;
+  teilepreis_je_stueck?: number | null;
+  baugruppenpreis_je_stueck?: number | null;
+  jahresumsatz: number;
+}
+
 export interface BusinessCasePartRow {
   id: number;
   bezeichnung: string;
@@ -5,8 +15,11 @@ export interface BusinessCasePartRow {
   kunde: string;
   projekt: string;
   jahresstueckzahl: number;
+  gesamtstueckzahl_laufzeit?: number;
   endpreis_je_stueck: number | null;
   jahresumsatz: number;
+  umsatzpotenzial_laufzeit?: number;
+  lifetime_years?: LifetimeYearRow[];
   anzahl_veredelungsschritte: number;
 }
 
@@ -17,8 +30,11 @@ export interface BusinessCaseAssemblyRow {
   kunde: string;
   projekt: string;
   jahresstueckzahl: number;
+  gesamtstueckzahl_laufzeit?: number;
   baugruppenpreis_je_stueck: number | null;
   jahresumsatz: number;
+  umsatzpotenzial_laufzeit?: number;
+  lifetime_years?: LifetimeYearRow[];
   anzahl_einzelteile: number;
   anzahl_kaufteile: number;
   anzahl_veredelungsschritte: number;
@@ -44,6 +60,8 @@ export interface BusinessCaseResponse {
     kunde: string;
     projekt: string;
     jahresstueckzahl_gesamt: number;
+    gesamtstueckzahl_laufzeit?: number;
+    umsatzpotenzial_laufzeit?: number;
     umsatzpotenzial_einzelteile: number;
     umsatzpotenzial_baugruppen: number;
     anzahl_einzelteile: number;
@@ -63,6 +81,9 @@ export interface BusinessCaseResponse {
   revenue_summary: {
     umsatzpotenzial_einzelteile: number;
     umsatzpotenzial_baugruppen: number;
+    umsatzpotenzial_laufzeit?: number;
+    umsatz_je_kalenderjahr?: { calendar_year: number; jahresumsatz: number }[];
     hinweis: string;
   };
+  lifetime_volume_profile?: LifetimeYearRow[];
 }
