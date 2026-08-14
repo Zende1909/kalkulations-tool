@@ -10,33 +10,44 @@ from app.models.investition import Investition
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.user import User
 from app.schemas.investition import (
+    BusinessCaseSummary,
     InvestitionCreate,
     InvestitionRead,
-    InvestitionSummary,
     InvestitionUpdate,
 )
-from app.services.investition_service import (
-    EINMALZAHLUNG_HINWEIS,
-    validate_investition_input,
-    zuordnung_label,
+from app.services.business_case import (
+    BaugruppeSnapshot,
+    CalcSnapshot,
+    InvestitionSnapshot,
+    build_business_case,
 )
+from app.services.investition_service import EINMALZAHLUNG_HINWEIS, validate_investition_input, zuordnung_label
 
 router = APIRouter(prefix="/investitionen", tags=["Investitionen"])
-
-SORT_FIELDS = {
-    "amount": Investition.amount,
-    "status": Investition.status,
-    "delivery_date": Investition.delivery_date,
-    "order_date": Investition.order_date,
-    "created_at": Investition.created_at,
-    "updated_at": Investition.updated_at,
-}
 
 
 def _load_link_maps(db: Session) -> tuple[dict[int, SpritzgussKalkulation], dict[int, Baugruppe]]:
     sg_map = {row.id: row for row in db.scalars(select(SpritzgussKalkulation)).all()}
     bg_map = {row.id: row for row in db.scalars(select(Baugruppe)).all()}
     return sg_map, bg_map
+
+
+def _to_snapshot(row: Investition) -> InvestitionSnapshot:
+    return InvestitionSnapshot(
+        id=row.id,
+        name=row.name or row.description or row.part_name or f"Investition #{row.id}",
+        investment_type=row.investment_type,
+        payment_type=row.payment_type,
+        amount=float(row.amount),
+        amortization_volume=row.amortization_volume,
+        cost_per_piece=row.cost_per_piece,
+        project_id=row.project_id or "",
+        customer=row.customer or "",
+        calculation_id=row.calculation_id,
+        baugruppe_id=row.baugruppe_id,
+        included_in_unit_price=bool(row.included_in_unit_price),
+        archived=bool(row.archived),
+    )
 
 
 def _to_read(
@@ -48,7 +59,7 @@ def _to_read(
     bg = bg_map.get(row.baugruppe_id) if row.baugruppe_id else None
     return InvestitionRead(
         id=row.id,
-        name=row.name,
+        name=row.name or row.description or row.part_name,
         investment_type=row.investment_type,
         payment_type=row.payment_type,
         amount=float(row.amount),
@@ -56,23 +67,17 @@ def _to_read(
         cost_per_piece=row.cost_per_piece,
         project=row.project_id or "",
         customer=row.customer or "",
-        part_name=row.part_name or "",
-        part_number=row.part_number or "",
         calculation_id=row.calculation_id,
         baugruppe_id=row.baugruppe_id,
-        supplier=row.supplier or "",
-        order_date=row.order_date,
-        delivery_date=row.delivery_date,
-        status=row.status,
         description=row.description or "",
         included_in_unit_price=bool(row.included_in_unit_price),
         archived=bool(row.archived),
         zuordnung=zuordnung_label(
             calculation_id=row.calculation_id,
             baugruppe_id=row.baugruppe_id,
-            part_number=row.part_number,
-            part_name=row.part_name,
-            project_id=row.project_id,
+            part_number=row.part_number or "",
+            part_name=row.part_name or "",
+            project_id=row.project_id or "",
             calc_teilenummer=calc.teilenummer if calc else None,
             calc_bezeichnung=calc.teilebezeichnung if calc else None,
             bg_name=bg.name if bg else None,
@@ -86,16 +91,22 @@ def _to_read(
 
 def _validate_links(db: Session, calculation_id: int | None, baugruppe_id: int | None) -> None:
     if calculation_id is not None and not db.get(SpritzgussKalkulation, calculation_id):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Einzelteil-Kalkulation nicht gefunden")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Einzelteil-Kalkulation nicht gefunden",
+        )
     if baugruppe_id is not None and not db.get(Baugruppe, baugruppe_id):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Baugruppe nicht gefunden")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Baugruppe nicht gefunden",
+        )
 
 
 def _build_payload(body: InvestitionCreate | InvestitionUpdate, existing: Investition | None = None) -> dict:
     if isinstance(body, InvestitionCreate):
-        data = body.model_dump()
+        data = body.model_dump(by_alias=True)
     else:
-        data = body.model_dump(exclude_unset=True)
+        data = body.model_dump(exclude_unset=True, by_alias=True)
         if existing is not None:
             merged = {
                 "name": existing.name,
@@ -103,9 +114,12 @@ def _build_payload(body: InvestitionCreate | InvestitionUpdate, existing: Invest
                 "payment_type": existing.payment_type,
                 "amount": existing.amount,
                 "amortization_volume": existing.amortization_volume,
-                "status": existing.status,
+                "project": existing.project_id,
+                "customer": existing.customer,
                 "calculation_id": existing.calculation_id,
+                "baugruppe_id": existing.baugruppe_id,
                 "included_in_unit_price": existing.included_in_unit_price,
+                "status": existing.status,
             }
             merged.update(data)
             data = merged
@@ -116,26 +130,25 @@ def _build_payload(body: InvestitionCreate | InvestitionUpdate, existing: Invest
         payment_type=data["payment_type"],
         amount=float(data["amount"]),
         amortization_volume=data.get("amortization_volume"),
-        status_value=data["status"],
+        project=data.get("project", ""),
         calculation_id=data.get("calculation_id"),
+        baugruppe_id=data.get("baugruppe_id"),
         included_in_unit_price=data.get("included_in_unit_price"),
+        planning_status=data.get("status"),
     )
     db_payload = {
         "name": data["name"].strip(),
         "investment_type": data["investment_type"],
         "payment_type": data["payment_type"],
         "amount": float(data["amount"]),
-        "project_id": data.get("project", "") or "",
+        "project_id": data.get("project", "").strip(),
         "customer": data.get("customer", "") or "",
         "part_name": data.get("part_name", "") or "",
         "part_number": data.get("part_number", "") or "",
         "calculation_id": data.get("calculation_id"),
         "baugruppe_id": data.get("baugruppe_id"),
-        "supplier": data.get("supplier", "") or "",
-        "order_date": data.get("order_date"),
-        "delivery_date": data.get("delivery_date"),
-        "status": data["status"],
         "description": data.get("description", "") or "",
+        "status": computed.pop("status"),
         **computed,
     }
     if isinstance(body, InvestitionUpdate) and body.archived is not None:
@@ -148,9 +161,11 @@ def _apply_filters(
     *,
     project: str | None,
     customer: str | None,
+    calculation_id: int | None,
+    baugruppe_id: int | None,
     investment_type: str | None,
     payment_type: str | None,
-    status_filter: str | None,
+    scope: str | None = None,
     search: str | None,
     include_archived: bool,
 ):
@@ -160,12 +175,23 @@ def _apply_filters(
         stmt = stmt.where(Investition.project_id == project)
     if customer:
         stmt = stmt.where(Investition.customer == customer)
+    if calculation_id is not None:
+        stmt = stmt.where(Investition.calculation_id == calculation_id)
+    elif baugruppe_id is not None:
+        stmt = stmt.where(Investition.baugruppe_id == baugruppe_id)
+    elif scope == "gesamtprojekt":
+        stmt = stmt.where(
+            Investition.calculation_id.is_(None),
+            Investition.baugruppe_id.is_(None),
+        )
+    elif scope == "einzelteil":
+        stmt = stmt.where(Investition.calculation_id.is_not(None))
+    elif scope == "baugruppe":
+        stmt = stmt.where(Investition.baugruppe_id.is_not(None))
     if investment_type:
         stmt = stmt.where(Investition.investment_type == investment_type)
     if payment_type:
         stmt = stmt.where(Investition.payment_type == payment_type)
-    if status_filter:
-        stmt = stmt.where(Investition.status == status_filter)
     if search:
         term = f"%{search.strip()}%"
         stmt = stmt.where(
@@ -174,7 +200,6 @@ def _apply_filters(
                 Investition.description.ilike(term),
                 Investition.part_name.ilike(term),
                 Investition.part_number.ilike(term),
-                Investition.supplier.ilike(term),
                 Investition.project_id.ilike(term),
                 Investition.customer.ilike(term),
             )
@@ -182,40 +207,69 @@ def _apply_filters(
     return stmt
 
 
-@router.get("/summary", response_model=InvestitionSummary)
-def get_investition_summary(
+def _load_all_snapshots(db: Session) -> list[InvestitionSnapshot]:
+    rows = db.scalars(select(Investition)).all()
+    return [_to_snapshot(row) for row in rows]
+
+
+@router.get("/business-case", response_model=BusinessCaseSummary)
+def get_business_case(
     project: str | None = Query(default=None),
     customer: str | None = Query(default=None),
-    investment_type: str | None = Query(default=None),
-    payment_type: str | None = Query(default=None),
-    status_filter: str | None = Query(default=None, alias="status"),
-    search: str | None = Query(default=None),
+    calculation_id: int | None = Query(default=None),
+    baugruppe_id: int | None = Query(default=None),
+    scope: str | None = Query(default=None, description="gesamtprojekt|einzelteil|baugruppe"),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
-    stmt = select(Investition)
-    stmt = _apply_filters(
-        stmt,
+    if calculation_id is not None and baugruppe_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Einzelteil und Baugruppe können nicht gleichzeitig gefiltert werden.",
+        )
+
+    calc_obj = db.get(SpritzgussKalkulation, calculation_id) if calculation_id else None
+    bg_obj = db.get(Baugruppe, baugruppe_id) if baugruppe_id else None
+
+    calc_snap = (
+        CalcSnapshot(
+            id=calc_obj.id,
+            teilenummer=calc_obj.teilenummer,
+            teilebezeichnung=calc_obj.teilebezeichnung,
+            kunde=calc_obj.kunde,
+            projekt=calc_obj.projekt,
+            jahresstueckzahl=calc_obj.jahresstueckzahl,
+            ergebnis=calc_obj.ergebnis if isinstance(calc_obj.ergebnis, dict) else None,
+        )
+        if calc_obj
+        else None
+    )
+    bg_snap = (
+        BaugruppeSnapshot(
+            id=bg_obj.id,
+            name=bg_obj.name,
+            teilenummer=bg_obj.teilenummer,
+            kunde=bg_obj.kunde,
+            projekt=bg_obj.projekt,
+            jahresstueckzahl=bg_obj.jahresstueckzahl,
+            ergebnis=bg_obj.ergebnis if isinstance(bg_obj.ergebnis, dict) else None,
+        )
+        if bg_obj
+        else None
+    )
+
+    snapshots = _load_all_snapshots(db)
+    result = build_business_case(
+        snapshots,
         project=project,
         customer=customer,
-        investment_type=investment_type,
-        payment_type=payment_type,
-        status_filter=status_filter,
-        search=search,
-        include_archived=False,
+        calculation_id=calculation_id,
+        baugruppe_id=baugruppe_id,
+        scope=scope,
+        calc=calc_snap,
+        baugruppe=bg_snap,
     )
-    rows = list(db.scalars(stmt).all())
-    einmal = [r for r in rows if r.payment_type == "Einmalzahlung"]
-    amort = [r for r in rows if r.payment_type == "Amortisation"]
-    return InvestitionSummary(
-        gesamtinvestitionen=round(sum(float(r.amount) for r in rows), 2),
-        anzahl_investitionen=len(rows),
-        summe_einmalzahlungen=round(sum(float(r.amount) for r in einmal), 2),
-        summe_amortisiert=round(sum(float(r.amount) for r in amort), 2),
-        in_planung=sum(1 for r in rows if r.status == "In Planung"),
-        bestellt=sum(1 for r in rows if r.status == "Bestellt"),
-        abgeschlossen=sum(1 for r in rows if r.status == "Abgeschlossen"),
-    )
+    return BusinessCaseSummary(**result)
 
 
 @router.get("", response_model=list[InvestitionRead])
@@ -224,33 +278,30 @@ def list_investitionen(
     limit: int = Query(200, ge=1, le=1000),
     project: str | None = Query(default=None),
     customer: str | None = Query(default=None),
+    calculation_id: int | None = Query(default=None),
+    baugruppe_id: int | None = Query(default=None),
     investment_type: str | None = Query(default=None),
     payment_type: str | None = Query(default=None),
-    status_filter: str | None = Query(default=None, alias="status"),
+    scope: str | None = Query(default=None),
     search: str | None = Query(default=None),
-    sort_by: str = Query(default="updated_at"),
-    sort_dir: str = Query(default="desc"),
     include_archived: bool = Query(default=False),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
-    sort_col = SORT_FIELDS.get(sort_by, Investition.updated_at)
     stmt = select(Investition)
     stmt = _apply_filters(
         stmt,
         project=project,
         customer=customer,
+        calculation_id=calculation_id,
+        baugruppe_id=baugruppe_id,
+        scope=scope,
         investment_type=investment_type,
         payment_type=payment_type,
-        status_filter=status_filter,
         search=search,
         include_archived=include_archived,
     )
-    if sort_dir.lower() == "asc":
-        stmt = stmt.order_by(sort_col.asc())
-    else:
-        stmt = stmt.order_by(sort_col.desc())
-    stmt = stmt.offset(skip).limit(limit)
+    stmt = stmt.order_by(Investition.updated_at.desc()).offset(skip).limit(limit)
     rows = list(db.scalars(stmt).all())
     sg_map, bg_map = _load_link_maps(db)
     return [_to_read(row, sg_map, bg_map) for row in rows]
@@ -275,6 +326,11 @@ def create_investition(
     db: Session = Depends(get_db),
     _: User = Depends(require_kalkulator),
 ):
+    if body.calculation_id is not None and body.baugruppe_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Investition kann nur einem Einzelteil oder einer Baugruppe zugeordnet werden.",
+        )
     _validate_links(db, body.calculation_id, body.baugruppe_id)
     payload = _build_payload(body)
     db_obj = Investition(**payload)
@@ -297,6 +353,11 @@ def update_investition(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Investition nicht gefunden")
     calc_id = body.calculation_id if body.calculation_id is not None else row.calculation_id
     bg_id = body.baugruppe_id if body.baugruppe_id is not None else row.baugruppe_id
+    if calc_id is not None and bg_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Investition kann nur einem Einzelteil oder einer Baugruppe zugeordnet werden.",
+        )
     _validate_links(db, calc_id, bg_id)
     payload = _build_payload(body, existing=row)
     for field, value in payload.items():

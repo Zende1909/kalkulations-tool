@@ -1,4 +1,4 @@
-"""Validierung und Berechnung für Investitionen."""
+"""Validierung und Berechnung für projektbezogene Investitionsplanung."""
 
 from __future__ import annotations
 
@@ -16,16 +16,8 @@ INVESTMENT_TYPES = (
 
 PAYMENT_TYPES = ("Amortisation", "Einmalzahlung")
 
-STATUS_VALUES = (
-    "In Planung",
-    "Angefragt",
-    "Bestellt",
-    "In Herstellung",
-    "Geliefert",
-    "Abgenommen",
-    "Abgeschlossen",
-    "Storniert",
-)
+# Optionaler Planungsstatus – kein Beschaffungs-/Lieferstatus
+PLANNING_STATUS_VALUES = ("Geplant", "Berücksichtigt", "Entfällt")
 
 EINMALZAHLUNG_HINWEIS = "Separat, nicht im Stückpreis enthalten"
 
@@ -66,13 +58,14 @@ def compute_cost_per_piece(
 def resolve_included_in_unit_price(
     payment_type: str,
     calculation_id: int | None,
+    baugruppe_id: int | None = None,
     explicit: bool | None = None,
 ) -> bool:
     if payment_type == "Einmalzahlung":
         return False
     if explicit is not None:
         return explicit
-    return calculation_id is not None
+    return calculation_id is not None or baugruppe_id is not None
 
 
 def validate_investition_input(
@@ -82,14 +75,21 @@ def validate_investition_input(
     payment_type: str,
     amount: float,
     amortization_volume: int | float | None,
-    status_value: str,
+    project: str,
     calculation_id: int | None = None,
+    baugruppe_id: int | None = None,
     included_in_unit_price: bool | None = None,
+    planning_status: str | None = None,
 ) -> dict:
     if not name.strip():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Investitionsbezeichnung ist erforderlich.",
+        )
+    if not project.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Projekt ist für den Business Case erforderlich.",
         )
     if investment_type not in INVESTMENT_TYPES:
         raise HTTPException(
@@ -106,10 +106,10 @@ def validate_investition_input(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Investitionsbetrag darf nicht negativ sein.",
         )
-    if status_value not in STATUS_VALUES:
+    if planning_status and planning_status not in PLANNING_STATUS_VALUES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Ungültiger Status: {status_value}",
+            detail=f"Ungültiger Planungsstatus: {planning_status}",
         )
 
     volume: int | None
@@ -124,21 +124,16 @@ def validate_investition_input(
         volume = validate_amortization_volume(amortization_volume)
 
     cost = compute_cost_per_piece(amount, payment_type, volume)
-    included = resolve_included_in_unit_price(payment_type, calculation_id, included_in_unit_price)
+    included = resolve_included_in_unit_price(
+        payment_type, calculation_id, baugruppe_id, included_in_unit_price
+    )
 
     return {
         "amortization_volume": volume,
         "cost_per_piece": cost,
         "included_in_unit_price": included,
+        "status": planning_status or "",
     }
-
-
-def investition_display_name(row) -> str:
-    if getattr(row, "name", None):
-        return row.name
-    if row.description:
-        return row.description
-    return row.part_name or f"Investition #{row.id}"
 
 
 def zuordnung_label(
@@ -165,8 +160,6 @@ def zuordnung_label(
         if nummer and name:
             return f"Baugruppe: {nummer} – {name}"
         return f"Baugruppe #{baugruppe_id}"
-    if part_number:
-        return part_number
     if project_id:
-        return f"Projekt: {project_id}"
-    return "–"
+        return f"Gesamtprojekt: {project_id}"
+    return "Gesamtprojekt"

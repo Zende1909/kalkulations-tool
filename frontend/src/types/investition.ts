@@ -10,20 +10,8 @@ export const INVESTMENT_TYPES = [
 
 export const PAYMENT_TYPES = ["Amortisation", "Einmalzahlung"] as const;
 
-export const INVESTITION_STATUS = [
-  "In Planung",
-  "Angefragt",
-  "Bestellt",
-  "In Herstellung",
-  "Geliefert",
-  "Abgenommen",
-  "Abgeschlossen",
-  "Storniert",
-] as const;
-
 export type InvestmentType = (typeof INVESTMENT_TYPES)[number];
 export type PaymentType = (typeof PAYMENT_TYPES)[number];
-export type InvestitionStatus = (typeof INVESTITION_STATUS)[number];
 
 export interface Investition {
   id: number;
@@ -35,14 +23,8 @@ export interface Investition {
   cost_per_piece: number | null;
   project: string;
   customer: string;
-  part_name: string;
-  part_number: string;
   calculation_id: number | null;
   baugruppe_id: number | null;
-  supplier: string;
-  order_date: string | null;
-  delivery_date: string | null;
-  status: InvestitionStatus | string;
   description: string;
   included_in_unit_price: boolean;
   archived: boolean;
@@ -52,14 +34,25 @@ export interface Investition {
   updated_at: string;
 }
 
-export interface InvestitionSummary {
-  gesamtinvestitionen: number;
+export interface BusinessCaseSummary {
+  filter: {
+    project: string | null;
+    customer: string | null;
+    calculation_id: number | null;
+    baugruppe_id: number | null;
+  };
+  teilepreis_je_stueck: number | null;
+  baugruppenpreis_je_stueck: number | null;
+  jahresstueckzahl: number | null;
+  jahresumsatz: number | null;
+  investitionen_gesamt: number;
+  amortisationsinvestitionen_gesamt: number;
+  einmalinvestitionen_gesamt: number;
+  amortisationsanteil_je_stueck: number | null;
+  preis_inkl_amortisation_je_stueck: number | null;
+  einmalinvestitionen: Array<{ id: number; name: string; amount: number; hinweis: string }>;
   anzahl_investitionen: number;
-  summe_einmalzahlungen: number;
-  summe_amortisiert: number;
-  in_planung: number;
-  bestellt: number;
-  abgeschlossen: number;
+  hat_gespeicherte_kalkulation: boolean;
 }
 
 export interface InvestitionPayload {
@@ -70,46 +63,34 @@ export interface InvestitionPayload {
   amortization_volume?: number | null;
   project: string;
   customer: string;
-  part_name: string;
-  part_number: string;
+  part_name?: string;
+  part_number?: string;
   calculation_id?: number | null;
   baugruppe_id?: number | null;
-  supplier: string;
-  order_date?: string | null;
-  delivery_date?: string | null;
-  status: string;
   description: string;
-  included_in_unit_price?: boolean | null;
 }
 
-export interface InvestitionFilters {
+export interface BusinessCaseFilters {
   project?: string;
   customer?: string;
-  investment_type?: string;
-  payment_type?: string;
-  status?: string;
-  search?: string;
-  sort_by?: string;
-  sort_dir?: "asc" | "desc";
+  calculation_id?: number;
+  baugruppe_id?: number;
+  scope?: "gesamtprojekt" | "einzelteil" | "baugruppe";
 }
 
 export const emptyInvestitionForm = (): InvestitionPayload => ({
   name: "",
   investment_type: "Werkzeug",
-  payment_type: "Einmalzahlung",
+  payment_type: "",
   amount: 0,
   amortization_volume: null,
   project: "",
   customer: "",
-  part_name: "",
-  part_number: "",
   calculation_id: null,
   baugruppe_id: null,
-  supplier: "",
-  order_date: null,
-  delivery_date: null,
-  status: "In Planung",
   description: "",
 });
 
 export const EINMALZAHLUNG_HINWEIS = "Separat, nicht im Stückpreis enthalten";
+
+export type ZuordnungFilter = "" | "einzelteil" | "baugruppe" | "projekt";
