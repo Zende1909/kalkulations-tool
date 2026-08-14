@@ -1,4 +1,7 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -38,6 +41,65 @@ from app.services.veredelung_kalkulation import berechne_veredelung
 from app.services.veredelung_kalkulation import VeredelungInput as VeredelungCalcInput
 
 router = APIRouter(prefix="/spritzguss", tags=["Spritzguss-Kalkulation"])
+
+
+def _normalize_veredelung_zuordnungen(
+    zuordnungen: list[VeredelungZuordnungInput | dict[str, Any]] | None,
+) -> list[VeredelungZuordnungInput]:
+    """Wandelt Dict- oder Pydantic-Eingaben in Validierte Zuordnungen um."""
+    if not zuordnungen:
+        return []
+
+    normalized: list[VeredelungZuordnungInput] = []
+    seen_ids: set[int] = set()
+
+    for index, item in enumerate(zuordnungen, start=1):
+        if isinstance(item, VeredelungZuordnungInput):
+            zuordnung = item
+        elif isinstance(item, dict):
+            raw_id = item.get("veredelungsschritt_id")
+            if raw_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Veredelungszuordnung #{index}: veredelungsschritt_id fehlt",
+                )
+            reihenfolge = item.get("reihenfolge", item.get("sequence"))
+            if reihenfolge is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Veredelungszuordnung #{index}: reihenfolge fehlt",
+                )
+            payload = {
+                "veredelungsschritt_id": raw_id,
+                "reihenfolge": reihenfolge,
+                "aktiv": item.get("aktiv", True),
+                "mengenfaktor": item.get("mengenfaktor", item.get("quantity_factor", 1.0)),
+            }
+            try:
+                zuordnung = VeredelungZuordnungInput.model_validate(payload)
+            except ValidationError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Veredelungszuordnung #{index}: {exc.errors()[0]['msg']}",
+                ) from exc
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Veredelungszuordnung #{index}: ungültiges Format",
+            )
+
+        if zuordnung.veredelungsschritt_id in seen_ids:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Veredelungsschritt {zuordnung.veredelungsschritt_id} "
+                    "ist doppelt zugeordnet"
+                ),
+            )
+        seen_ids.add(zuordnung.veredelungsschritt_id)
+        normalized.append(zuordnung)
+
+    return normalized
 
 
 def _to_calc_input_from_request(body: SpritzgussCalcRequest) -> SpritzgussInput:
@@ -90,11 +152,12 @@ def _live_kosten_fuer_veredelungsschritt(schritt: Veredelungsschritt) -> float:
 
 def _resolve_veredelung_eingaben(
     db: Session,
-    zuordnungen: list[VeredelungZuordnungInput],
+    zuordnungen: list[VeredelungZuordnungInput | dict[str, Any]],
     *,
     use_snapshots: bool,
     kalkulation_id: int | None = None,
 ) -> list[VeredelungSchrittEingabe]:
+    zuordnungen = _normalize_veredelung_zuordnungen(zuordnungen)
     if not zuordnungen:
         return []
 
@@ -184,9 +247,10 @@ def _load_zuordnungen(db: Session, kalkulation_id: int) -> list[SpritzgussVerede
 def _sync_veredelung_zuordnungen(
     db: Session,
     obj: SpritzgussKalkulation,
-    zuordnungen: list[VeredelungZuordnungInput],
+    zuordnungen: list[VeredelungZuordnungInput | dict[str, Any]],
 ) -> list[SpritzgussVeredelungZuordnung]:
     """Ersetzt Zuordnungen und speichert Kosten-Snapshots."""
+    zuordnungen = _normalize_veredelung_zuordnungen(zuordnungen)
     for existing in _load_zuordnungen(db, obj.id):
         db.delete(existing)
     db.flush()
@@ -219,12 +283,13 @@ def _sync_veredelung_zuordnungen(
 def _build_calc_response(
     db: Session,
     calc_input: SpritzgussInput,
-    zuordnungen: list[VeredelungZuordnungInput],
+    zuordnungen: list[VeredelungZuordnungInput | dict[str, Any]],
     *,
     use_snapshots: bool = False,
     kalkulation_id: int | None = None,
     saved_rows: list[SpritzgussVeredelungZuordnung] | None = None,
 ) -> SpritzgussCalcResponse:
+    zuordnungen = _normalize_veredelung_zuordnungen(zuordnungen)
     try:
         spritzguss = berechne_spritzguss(calc_input)
     except SpritzgussValidationError as exc:
@@ -242,15 +307,35 @@ def _build_calc_response(
             use_snapshots=use_snapshots,
             kalkulation_id=kalkulation_id,
         )
-        gesamt = berechne_gesamt(spritzguss_dict, veredelung_eingaben)
+        gesamt = berechne_gesamt(
+            spritzguss_dict,
+            veredelung_eingaben,
+            vvgk_pct=calc_input.vvgk_pct,
+            gewinn_pct=calc_input.gewinn_pct,
+            skonto_pct=calc_input.skonto_pct,
+        )
     except GesamtValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
 
-    ergebnis_dict = {**spritzguss_dict, **gesamt.to_dict()}
-    # verkaufspreis bleibt der reine Spritzguss-Anteil; Endpreis separat
+    ergebnis_dict = {
+        **spritzguss_dict,
+        **gesamt.to_dict(),
+        "verkaufspreis": spritzguss_dict["verkaufspreis"],
+    }
 
+    bloecke["gemeinkosten"] = {
+        "herstellkosten": gesamt.gesamte_herstellkosten,
+        "vvgk": gesamt.vvgk,
+        "selbstkosten": gesamt.selbstkosten,
+        "gewinn": gesamt.gewinn,
+    }
+    bloecke["verkaufspreis"] = {
+        "nettoverkaufspreis": gesamt.nettoverkaufspreis,
+        "skonto": gesamt.skonto,
+        "verkaufspreis": gesamt.endpreis_je_stueck,
+    }
     bloecke["zusammenfassung"] = gesamt.as_ergebnisuebersicht()
     if gesamt.veredelung_gesamt > 0 or gesamt.veredelung_schritte:
         bloecke["veredelung"] = gesamt.as_veredelung_block()
@@ -609,9 +694,8 @@ def create_kalkulation(
     obj = SpritzgussKalkulation(**payload)
     db.add(obj)
     db.flush()
-    if zuordnungen:
-        _sync_veredelung_zuordnungen(db, obj, zuordnungen)
-    _apply_calculation(db, obj, zuordnungen if zuordnungen else None, use_snapshots=bool(zuordnungen))
+    _sync_veredelung_zuordnungen(db, obj, zuordnungen)
+    _apply_calculation(db, obj, zuordnungen, use_snapshots=True)
     db.commit()
     db.refresh(obj)
     _sync_werkzeug_investition(db, obj)
@@ -645,13 +729,14 @@ def update_kalkulation(
         obj.amortisationsvolumen = int(obj.amortisationsvolumen)
 
     if zuordnungen is not None:
+        zuordnungen = _normalize_veredelung_zuordnungen(zuordnungen)
         _sync_veredelung_zuordnungen(db, obj, zuordnungen)
 
     _apply_calculation(
         db,
         obj,
         zuordnungen if zuordnungen is not None else None,
-        use_snapshots=zuordnungen is None or bool(zuordnungen),
+        use_snapshots=True,
     )
     db.add(obj)
     db.commit()

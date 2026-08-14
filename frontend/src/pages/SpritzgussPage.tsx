@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { api } from "../api/client";
 import {
@@ -44,7 +44,7 @@ const BLOCK_LABELS: Record<string, string> = {
   werkzeug: "Werkzeug",
   veredelung: "Veredelung",
   gemeinkosten: "Gemeinkosten / Selbstkosten",
-  verkaufspreis: "Verkaufspreis (Spritzguss)",
+  verkaufspreis: "Verkaufspreis",
 };
 
 const DETAIL_BLOCK_ORDER = [
@@ -62,6 +62,7 @@ const ERGEBNISUEBERSICHT: Array<{
   highlight?: boolean;
 }> = [
   { key: "spritzguss_herstellkosten", label: "Spritzguss-Herstellkosten (€)" },
+  { key: "werkzeugkostenanteil", label: "Werkzeugkostenanteil je Stück (€)" },
   { key: "veredelung_gesamt", label: "Veredelungskosten gesamt (€)" },
   { key: "gesamte_herstellkosten", label: "Gesamte Herstellkosten (€)" },
   { key: "vvgk", label: "VVGK (€)" },
@@ -89,7 +90,7 @@ const FIELD_LABELS: Record<string, string> = {
   gewinn: "Gewinn (€)",
   nettoverkaufspreis: "Nettoverkaufspreis (€)",
   skonto: "Skonto (€)",
-  verkaufspreis: "Spritzguss-Verkaufspreis (€)",
+  verkaufspreis: "Endpreis je Stück (€)",
 };
 
 function veredelungDetailLabel(
@@ -377,13 +378,18 @@ export function SpritzgussPage() {
     }
   };
 
-  const handleSave = async (event: FormEvent) => {
-    event.preventDefault();
+  const handleSave = async () => {
     if (!canWrite) return;
     setBusy(true);
     setError(null);
     setSuccess(null);
     try {
+      if (!form.teilebezeichnung.trim()) {
+        throw new Error("Teilebezeichnung ist für das Speichern erforderlich.");
+      }
+      if (!form.teilenummer.trim()) {
+        throw new Error("Teilenummer ist für das Speichern erforderlich.");
+      }
       if (form.werkzeug_abrechnungsart === "amortisation") {
         const vol = form.amortisationsvolumen;
         if (vol == null || !Number.isInteger(vol) || vol < 1) {
@@ -400,6 +406,7 @@ export function SpritzgussPage() {
             : null,
         veredelung_zuordnungen: veredelungZuordnungen,
       };
+      const wasNew = editId == null;
       const saved =
         editId == null
           ? await createKalkulation(payload)
@@ -407,7 +414,11 @@ export function SpritzgussPage() {
       setEditId(saved.id);
       setBloecke((saved.ergebnis_bloecke as SpritzgussBloecke) ?? null);
       loadVeredelungFromSaved(saved.veredelung_zuordnungen);
-      setSuccess(editId == null ? "Kalkulation gespeichert." : "Kalkulation aktualisiert.");
+      setSuccess(
+        wasNew
+          ? `Kalkulation #${saved.id} gespeichert.`
+          : `Kalkulation #${saved.id} aktualisiert.`,
+      );
       await loadList();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
@@ -539,12 +550,12 @@ export function SpritzgussPage() {
           </button>
           {canWrite && (
             <button
-              type="submit"
-              form="spritzguss-form"
+              type="button"
               disabled={busy}
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              onClick={handleSave}
+              className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
             >
-              {editId == null ? "Speichern" : "Aktualisieren"}
+              Kalkulation speichern
             </button>
           )}
         </div>
@@ -563,7 +574,7 @@ export function SpritzgussPage() {
       )}
 
       <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-        <form id="spritzguss-form" onSubmit={handleSave} className="space-y-6">
+        <form id="spritzguss-form" className="space-y-6" onSubmit={(e) => e.preventDefault()}>
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 font-semibold text-gray-900">Allgemeine Daten</h3>
             <div className="grid gap-3 md:grid-cols-2">
@@ -932,7 +943,7 @@ export function SpritzgussPage() {
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 font-semibold text-gray-900">Ergebnis</h3>
             {!bloecke ? (
-              <p className="text-sm text-gray-500">Noch keine Berechnung. „Berechnen“ oder „Speichern“ wählen.</p>
+              <p className="text-sm text-gray-500">Noch keine Berechnung. „Berechnen“ wählen.</p>
             ) : (
               <div className="space-y-4">
                 {ergebnisUebersicht && (
@@ -940,15 +951,6 @@ export function SpritzgussPage() {
                     <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
                       Ergebnisübersicht
                     </h4>
-                    {Number(ergebnisUebersicht.veredelung_gesamt ?? 0) > 0 && (
-                      <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                        Hinweis (klärungsbedürftig): VVGK, Gewinn und Skonto werden derzeit nur
-                        auf die Spritzguss-Herstellkosten berechnet. Veredelungskosten werden dem
-                        Spritzguss-Verkaufspreis addiert (Variante A). Ob die Excel-Kalkulation
-                        Variante B (Zuschläge auf gesamte Herstellkosten) vorsieht, ist im Code
-                        nicht hinterlegt.
-                      </p>
-                    )}
                     <dl className="space-y-1 text-sm">
                       {ERGEBNISUEBERSICHT.map(({ key, label, highlight }) => {
                         const value = ergebnisUebersicht[key];
