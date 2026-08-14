@@ -6,6 +6,7 @@ import re
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -22,8 +23,10 @@ from app.services.dashboard import (
     build_dashboard_summary,
     endpreis_aus_spritzguss,
     jahresumsatz_aus_baugruppe,
+    parse_json_dict,
     preis_aus_baugruppe,
 )
+from app.services.dashboard_assembly import build_assembly_overview
 from app.services.export_models import (
     BaugruppeExportData,
     DashboardExportData,
@@ -70,14 +73,13 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
     obj = db.get(SpritzgussKalkulation, calculation_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kalkulation nicht gefunden")
-    if not isinstance(obj.ergebnis, dict):
+    ergebnis = parse_json_dict(obj.ergebnis)
+    if not ergebnis:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Kalkulation wurde noch nicht gespeichert/berechnet – Export nicht möglich",
         )
-
-    ergebnis = obj.ergebnis
-    bloecke = obj.ergebnis_bloecke if isinstance(obj.ergebnis_bloecke, dict) else {}
+    bloecke = parse_json_dict(obj.ergebnis_bloecke) or {}
     zusammenfassung = bloecke.get("zusammenfassung") if isinstance(bloecke.get("zusammenfassung"), dict) else {}
 
     material_name = "–"
@@ -197,58 +199,110 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
     obj = db.get(Baugruppe, assembly_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Baugruppe nicht gefunden")
-    if not isinstance(obj.ergebnis, dict):
+    ergebnis = parse_json_dict(obj.ergebnis)
+    if not ergebnis:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Baugruppe wurde noch nicht gespeichert/berechnet – Export nicht möglich",
         )
 
-    ergebnis = obj.ergebnis
+    overview = build_assembly_overview(db, assembly_id)
     einzelteile_rows: list[list[str]] = []
-    for p in ergebnis.get("einzelteile", []) or []:
-        if isinstance(p, dict):
-            einzelteile_rows.append(
-                [
-                    p.get("bezeichnung", ""),
-                    p.get("detail", {}).get("teilenummer", "") if isinstance(p.get("detail"), dict) else "",
-                    str(p.get("menge", "")),
-                    _euro_str(_float_from(p, "einzelpreis")),
-                    _euro_str(_float_from(p, "zwischensumme")),
-                ]
-            )
-
     kaufteile_rows: list[list[str]] = []
-    for p in ergebnis.get("kaufteile", []) or []:
-        if isinstance(p, dict):
+    veredelung_rows: list[list[str]] = []
+    bom_rows: list[list[str]] = []
+
+    legacy_teile = ergebnis.get("einzelteile") or []
+    if isinstance(legacy_teile, list) and legacy_teile:
+        for p in legacy_teile:
+            if isinstance(p, dict):
+                einzelteile_rows.append(
+                    [
+                        p.get("bezeichnung", ""),
+                        p.get("detail", {}).get("teilenummer", "") if isinstance(p.get("detail"), dict) else "",
+                        str(p.get("menge", "")),
+                        _euro_str(_float_from(p, "einzelpreis")),
+                        _euro_str(_float_from(p, "zwischensumme")),
+                    ]
+                )
+    legacy_kauf = ergebnis.get("kaufteile") or []
+    if isinstance(legacy_kauf, list) and legacy_kauf:
+        for p in legacy_kauf:
+            if isinstance(p, dict):
+                kaufteile_rows.append(
+                    [
+                        p.get("bezeichnung", ""),
+                        p.get("detail", {}).get("lieferant", "") if isinstance(p.get("detail"), dict) else "",
+                        str(p.get("menge", "")),
+                        _euro_str(_float_from(p, "einzelpreis")),
+                        _euro_str(_float_from(p, "zwischensumme")),
+                    ]
+                )
+    legacy_vered = ergebnis.get("veredelungen") or []
+    if isinstance(legacy_vered, list) and legacy_vered:
+        for p in legacy_vered:
+            if isinstance(p, dict):
+                veredelung_rows.append(
+                    [
+                        str(p.get("reihenfolge", "")),
+                        p.get("bezeichnung", ""),
+                        _euro_str(_float_from(p, "kosten_je_stueck")),
+                        str(p.get("mengenfaktor", "")),
+                        _euro_str(_float_from(p, "zwischensumme")),
+                    ]
+                )
+
+    for item in overview["bom"]:
+        bom_rows.append(
+            [
+                str(item.get("position_type") or ""),
+                str(item.get("bezeichnung") or ""),
+                str(item.get("teilenummer") or ""),
+                str(item.get("menge") or ""),
+                _euro_str(item.get("einzelpreis")),
+                _euro_str(item.get("zwischensumme")),
+            ]
+        )
+        ptype = item.get("position_type")
+        row_common = [
+            str(item.get("bezeichnung") or ""),
+            str(item.get("teilenummer") or ""),
+            str(item.get("menge") or ""),
+            _euro_str(item.get("einzelpreis")),
+            _euro_str(item.get("zwischensumme")),
+        ]
+        if not legacy_teile and ptype in {"PART", "SUBASSEMBLY"}:
+            einzelteile_rows.append(row_common)
+        elif not legacy_kauf and ptype == "PURCHASED_PART":
             kaufteile_rows.append(
                 [
-                    p.get("bezeichnung", ""),
-                    p.get("detail", {}).get("lieferant", "") if isinstance(p.get("detail"), dict) else "",
-                    str(p.get("menge", "")),
-                    _euro_str(_float_from(p, "einzelpreis")),
-                    _euro_str(_float_from(p, "zwischensumme")),
+                    str(item.get("bezeichnung") or ""),
+                    "",
+                    str(item.get("menge") or ""),
+                    _euro_str(item.get("einzelpreis")),
+                    _euro_str(item.get("zwischensumme")),
                 ]
             )
-
-    veredelung_rows: list[list[str]] = []
-    for p in ergebnis.get("veredelungen", []) or []:
-        if isinstance(p, dict):
+        elif not legacy_vered and ptype == "PROCESS":
             veredelung_rows.append(
                 [
-                    str(p.get("reihenfolge", "")),
-                    p.get("bezeichnung", ""),
-                    _euro_str(_float_from(p, "kosten_je_stueck")),
-                    str(p.get("mengenfaktor", "")),
-                    _euro_str(_float_from(p, "zwischensumme")),
+                    "",
+                    str(item.get("bezeichnung") or ""),
+                    _euro_str(item.get("einzelpreis")),
+                    str(item.get("mengenfaktor") or ""),
+                    _euro_str(item.get("zwischensumme")),
                 ]
             )
 
-    sg_zuordnungen = db.scalars(
-        select(BaugruppeSpritzgussZuordnung).where(
-            BaugruppeSpritzgussZuordnung.baugruppe_id == assembly_id
-        )
-    ).all()
-    sg_ids = [r.spritzguss_kalkulation_id for r in sg_zuordnungen]
+    sg_ids: list[int] = []
+    bind = db.get_bind()
+    if bind is not None and sa_inspect(bind).has_table("baugruppe_spritzguss_zuordnungen"):
+        sg_zuordnungen = db.scalars(
+            select(BaugruppeSpritzgussZuordnung).where(
+                BaugruppeSpritzgussZuordnung.baugruppe_id == assembly_id
+            )
+        ).all()
+        sg_ids = [r.spritzguss_kalkulation_id for r in sg_zuordnungen]
 
     conditions = [Investition.baugruppe_id == assembly_id]
     if sg_ids:
@@ -269,7 +323,59 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
                 hinweis="Separat, nicht im Stückpreis enthalten",
             )
         )
+    for inv in overview["investitionen"]:
+        if inv["id"] in seen:
+            continue
+        seen.add(inv["id"])
+        investitionen.append(
+            ExportInvestment(
+                bezeichnung=inv["bezeichnung"],
+                typ=inv["typ"],
+                betrag=float(inv["betrag"]),
+                status=inv["status"],
+                hinweis="Separat, nicht im Stückpreis enthalten",
+            )
+        )
 
+    skonto = overview["skonto"]
+    if skonto is None and "skonto" in ergebnis:
+        skonto = 0.0
+
+    markup_rows = [
+        [
+            row["bezeichnung"],
+            f"{row['satz_prozent']:.2f} %".replace(".", ",") if row.get("satz_prozent") is not None else "–",
+            _euro_str(row.get("betrag")),
+        ]
+        for row in overview["zuschlagssaetze"]
+    ]
+    if not markup_rows and "skonto" in ergebnis:
+        markup_rows = [
+            ["VVGK", "–", _euro_str(overview["vvgk"])],
+            ["Gewinn", "–", _euro_str(overview["gewinn"])],
+            ["Skonto", "–", _euro_str(skonto)],
+        ]
+
+    kosten_aufstellung = [
+        ExportMoneyRow("Einzelteilkosten", overview["einzelteilkosten"]),
+        ExportMoneyRow("Kaufteilkosten", overview["kaufteilkosten"]),
+        ExportMoneyRow("Veredelungskosten", overview["veredelungskosten"]),
+        ExportMoneyRow("Investitions-/Werkzeugkosten", overview["investitionskosten"]),
+        ExportMoneyRow("Herstellkosten", overview["herstellkosten"]),
+        ExportMoneyRow("VVGK", overview["vvgk"]),
+        ExportMoneyRow("Gewinn", overview["gewinn"]),
+        ExportMoneyRow("Skonto", skonto),
+        ExportMoneyRow("Nettoverkaufspreis", overview["nettoverkaufspreis"]),
+        ExportMoneyRow(
+            "Preis pro Stück",
+            overview["preis_je_stueck"],
+            highlight=True,
+        ),
+        ExportMoneyRow("Jahresumsatz", overview["jahresumsatz"], highlight=True),
+        ExportMoneyRow("Gesamtergebnis", overview["gesamtsumme"], highlight=True),
+    ]
+
+    export_date = datetime.now(timezone.utc)
     return BaugruppeExportData(
         company_name=settings.COMPANY_NAME,
         assembly_id=obj.id,
@@ -281,7 +387,7 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
         created_at=obj.created_at,
         updated_at=obj.updated_at,
         einzelteile=ExportTable(
-            "Einzelteile",
+            "Einzelteile / Komponenten",
             ["Bezeichnung", "Teilenummer", "Menge", "Einzelpreis", "Zwischensumme"],
             einzelteile_rows,
         ),
@@ -296,11 +402,31 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
             veredelung_rows,
         ),
         investitionen=investitionen,
-        einzelteile_gesamt=_float_from(ergebnis, "einzelteile_gesamt") or 0,
-        kaufteile_gesamt=_float_from(ergebnis, "kaufteile_gesamt") or 0,
-        veredelung_gesamt=_float_from(ergebnis, "veredelung_gesamt") or 0,
+        einzelteile_gesamt=overview["einzelteilkosten"],
+        kaufteile_gesamt=overview["kaufteilkosten"],
+        veredelung_gesamt=overview["veredelungskosten"],
         baugruppenpreis_je_stueck=preis_aus_baugruppe(ergebnis),
         jahresumsatz=jahresumsatz_aus_baugruppe(ergebnis, obj.jahresstueckzahl),
+        export_date=export_date,
+        structure_version=obj.structure_version,
+        status=obj.status or "",
+        bom=ExportTable(
+            "BOM / Komponentenübersicht",
+            ["Typ", "Bezeichnung", "Teilenummer", "Menge", "Einzelpreis", "Zwischensumme"],
+            bom_rows,
+        ),
+        zuschlagssaetze=ExportTable(
+            "Zuschlagssätze",
+            ["Bezeichnung", "Satz", "Betrag"],
+            markup_rows,
+        ),
+        kosten_aufstellung=kosten_aufstellung,
+        herstellkosten=overview["herstellkosten"],
+        vvgk=overview["vvgk"],
+        gewinn=overview["gewinn"],
+        skonto=skonto,
+        nettoverkaufspreis=overview["nettoverkaufspreis"],
+        gesamtergebnis=overview["gesamtsumme"],
     )
 
 
@@ -323,13 +449,25 @@ def build_dashboard_export(
     *,
     project: str | None = None,
     customer: str | None = None,
+    status: str | None = None,
+    date_from=None,
+    date_to=None,
+    kalkulationsart: str | None = None,
 ) -> DashboardExportData:
     sg_rows, bg_rows, inv_rows = _load_dashboard_sources(db)
     summary = build_dashboard_summary(
-        sg_rows, bg_rows, inv_rows, project=project, customer=customer
+        sg_rows,
+        bg_rows,
+        inv_rows,
+        project=project,
+        customer=customer,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+        kalkulationsart=kalkulationsart,
     )
     kpis = summary["kpis"]
-    has_data = any(
+    has_data = bool(summary.get("has_data")) or any(
         [
             kpis["anzahl_spritzguss_kalkulationen"],
             kpis["anzahl_baugruppen"],
@@ -353,6 +491,7 @@ def build_dashboard_export(
         kpi_row("Anzahl Baugruppen", "anzahl_baugruppen"),
         kpi_row("Ø Endpreis je Einzelteil", "durchschnitt_endpreis_einzelteil", avg=True),
         kpi_row("Ø Baugruppenpreis je Stück", "durchschnitt_baugruppenpreis", avg=True),
+        kpi_row("Ø Preis pro Stück", "durchschnitt_preis_pro_stueck", avg=True),
         kpi_row("Investitionen gesamt", "investitionen_gesamt", money=True),
         kpi_row("Jahresstückzahl", "jahresstueckzahl"),
         kpi_row("Umsatzpotenzial / Jahr", "umsatzpotenzial_jahr", money=True),
@@ -379,13 +518,23 @@ def build_dashboard_export(
 
     assemblies = ExportTable(
         "Baugruppen",
-        ["Name", "Teilenummer", "Kunde", "Projekt", "Preis/St.", "Jahresstückzahl", "Jahresumsatz"],
+        [
+            "Name",
+            "Teilenummer",
+            "Kunde",
+            "Projekt",
+            "Status",
+            "Preis/St.",
+            "Jahresstückzahl",
+            "Jahresumsatz",
+        ],
         [
             [
                 r["name"],
                 r["teilenummer"],
                 r["kunde"],
                 r["projekt"],
+                r.get("status") or "",
                 _euro_str(r.get("preis_je_stueck")),
                 str(r["jahresstueckzahl"]),
                 _euro_str(r.get("jahresumsatz")),
@@ -396,14 +545,31 @@ def build_dashboard_export(
 
     investments = ExportTable(
         "Investitionen",
-        ["Bezeichnung", "Typ", "Betrag", "Projekt", "Status", "Hinweis"],
+        [
+            "Bezeichnung",
+            "Typ",
+            "Betrag",
+            "Projekt",
+            "Lieferant",
+            "Status",
+            "Bestelldatum",
+            "Liefertermin",
+            "Amortisationsvolumen",
+            "Kostenanteil/Teil",
+            "Hinweis",
+        ],
         [
             [
                 r["bezeichnung"],
                 r["typ"],
                 _euro_str(r["betrag"]),
                 r["projekt"],
+                r.get("lieferant") or "",
                 r["status"],
+                str(r.get("bestelldatum") or ""),
+                str(r.get("liefertermin") or ""),
+                str(r.get("amortisationsvolumen") or ""),
+                _euro_str(r.get("kostenanteil_pro_teil")),
                 r["hinweis"],
             ]
             for r in summary["investments"]
@@ -447,7 +613,12 @@ def build_dashboard_export(
         investment_chart=[(r["projekt"], float(r["betrag"])) for r in summary["investment_by_project"]],
         revenue_chart=[(r["projekt"], float(r["betrag"])) for r in summary["revenue_by_project"]],
         has_data=has_data,
-        empty_message=None if has_data else "Keine Daten für die gewählten Filter vorhanden.",
+        empty_message=summary.get("empty_message")
+        or (None if has_data else "Keine Daten für die gewählten Filter vorhanden."),
+        filter_status=status,
+        filter_date_from=str(date_from) if date_from else None,
+        filter_date_to=str(date_to) if date_to else None,
+        filter_kalkulationsart=kalkulationsart,
     )
 
 

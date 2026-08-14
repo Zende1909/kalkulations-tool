@@ -177,12 +177,16 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
     ws["A1"].font = BOLD
     ws["A2"] = "Baugruppen-Kalkulation"
     ws["A2"].font = BOLD
+    export_date = data.export_date or datetime.now()
     summary = [
         ("Baugruppen-ID", data.assembly_id),
         ("Name", data.name),
         ("Teilenummer", data.teilenummer),
         ("Kunde", data.kunde),
         ("Projekt", data.projekt),
+        ("Status", data.status or "–"),
+        ("Strukturversion", data.structure_version),
+        ("Exportdatum", export_date),
         ("Jahresstückzahl", data.jahresstueckzahl),
         ("Baugruppenpreis je Stück", data.baugruppenpreis_je_stueck),
         ("Jahresumsatz", data.jahresumsatz),
@@ -190,7 +194,7 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
     r = 4
     for label, val in summary:
         ws.cell(row=r, column=1, value=label).font = BOLD
-        cell = ws.cell(row=r, column=2, value=val)
+        cell = ws.cell(row=r, column=2, value=_cell_value(val))
         if "preis" in label.lower() or "umsatz" in label.lower():
             if isinstance(val, (int, float)):
                 cell.number_format = EUR_FORMAT
@@ -198,6 +202,11 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
             cell.font = BOLD
         r += 1
     _autosize(ws)
+
+    if data.bom is not None:
+        ws_bom = wb.create_sheet("BOM")
+        _write_table(ws_bom, 1, data.bom, table_name="BOM")
+        _autosize(ws_bom)
 
     ws_e = wb.create_sheet("Einzelteile")
     _write_table(ws_e, 1, data.einzelteile, table_name="Einzelteile")
@@ -226,20 +235,47 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
         ws_i["A1"] = "Keine Investitionen – nicht im Stückpreis enthalten"
     _autosize(ws_i)
 
+    if data.zuschlagssaetze is not None:
+        ws_m = wb.create_sheet("Zuschlagssaetze")
+        _write_table(ws_m, 1, data.zuschlagssaetze, table_name="Zuschlaege")
+        _autosize(ws_m)
+
     ws_z = wb.create_sheet("Zusammenfassung")
     totals = [
         ("Einzelteile gesamt", data.einzelteile_gesamt),
         ("Kaufteile gesamt", data.kaufteile_gesamt),
         ("Veredelung gesamt", data.veredelung_gesamt),
-        ("Baugruppenpreis je Stück", data.baugruppenpreis_je_stueck),
+        ("Herstellkosten", data.herstellkosten),
+        ("VVGK", data.vvgk),
+        ("Gewinn", data.gewinn),
+        ("Skonto", data.skonto),
+        ("Nettoverkaufspreis", data.nettoverkaufspreis),
+        ("Preis pro Stück", data.baugruppenpreis_je_stueck),
+        ("Jahresstückzahl", data.jahresstueckzahl),
         ("Jahresumsatz", data.jahresumsatz),
+        ("Gesamtergebnis", data.gesamtergebnis),
     ]
-    for i, (label, val) in enumerate(totals, start=1):
-        ws_z.cell(row=i, column=1, value=label).font = BOLD if "Baugruppenpreis" in label else None
-        c = ws_z.cell(row=i, column=2, value=val)
-        c.number_format = EUR_FORMAT
-        if "Baugruppenpreis" in label:
+    row_i = 1
+    if data.kosten_aufstellung:
+        ws_z.cell(row=row_i, column=1, value="Kostenaufstellung").font = BOLD
+        row_i += 1
+        for item in data.kosten_aufstellung:
+            ws_z.cell(row=row_i, column=1, value=item.label)
+            c = ws_z.cell(row=row_i, column=2, value=item.amount)
+            c.number_format = EUR_FORMAT
+            if item.highlight:
+                c.font = BOLD
+            row_i += 1
+        row_i += 1
+    for label, val in totals:
+        highlight = label in {"Preis pro Stück", "Gesamtergebnis", "Jahresumsatz"}
+        ws_z.cell(row=row_i, column=1, value=label).font = BOLD if highlight else None
+        c = ws_z.cell(row=row_i, column=2, value=val)
+        if label != "Jahresstückzahl":
+            c.number_format = EUR_FORMAT
+        if highlight:
             c.font = BOLD
+        row_i += 1
     _autosize(ws_z)
 
     buffer = io.BytesIO()
@@ -260,6 +296,12 @@ def render_dashboard_excel(data: DashboardExportData) -> bytes:
         filt.append(f"Projekt: {data.filter_project}")
     if data.filter_customer:
         filt.append(f"Kunde: {data.filter_customer}")
+    if data.filter_status:
+        filt.append(f"Status: {data.filter_status}")
+    if data.filter_date_from or data.filter_date_to:
+        filt.append(f"Zeitraum: {data.filter_date_from or '–'} bis {data.filter_date_to or '–'}")
+    if data.filter_kalkulationsart:
+        filt.append(f"Kalkulationsart: {data.filter_kalkulationsart}")
     ws["A4"] = "Filter: " + (", ".join(filt) if filt else "Keine")
     if data.empty_message:
         ws["A5"] = data.empty_message
