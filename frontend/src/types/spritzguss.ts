@@ -72,6 +72,12 @@ export interface SpritzgussFormData {
   projekt: string;
   jahresstueckzahl: number;
 
+  customer_id: number | null;
+  program_id: number | null;
+  project_id: number | null;
+  calculation_year: number | null;
+  project_volume: number | null;
+
   material_id: number | null;
   schussgewicht_g: number;
   teilegewicht_netto_g: number;
@@ -127,6 +133,11 @@ export const emptySpritzgussForm = (): SpritzgussFormData => ({
   kunde: "",
   projekt: "",
   jahresstueckzahl: 0,
+  customer_id: null,
+  program_id: null,
+  project_id: null,
+  calculation_year: null,
+  project_volume: null,
   material_id: null,
   schussgewicht_g: 0,
   teilegewicht_netto_g: 0,

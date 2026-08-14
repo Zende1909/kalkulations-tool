@@ -1,3 +1,6 @@
+export const COMPONENT_AREAS = ["Interior", "Exterior"] as const;
+export type ComponentArea = (typeof COMPONENT_AREAS)[number];
+
 export const PROGRAM_STATUSES = [
   "Anfrage",
   "Angebot",

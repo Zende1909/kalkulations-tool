@@ -37,10 +37,35 @@ from app.services.spritzguss_kalkulation import (
     SpritzgussValidationError,
     berechne_spritzguss,
 )
+from app.services.spritzguss_hierarchy import resolve_hierarchy_for_spritzguss
 from app.services.veredelung_kalkulation import berechne_veredelung
 from app.services.veredelung_kalkulation import VeredelungInput as VeredelungCalcInput
 
 router = APIRouter(prefix="/spritzguss", tags=["Spritzguss-Kalkulation"])
+
+
+def _apply_hierarchy_payload(db: Session, payload: dict) -> dict:
+    """Setzt kunde/projekt/jahresstueckzahl aus zentraler Hierarchie, wenn IDs gesetzt sind."""
+    cid = payload.get("customer_id")
+    pid = payload.get("program_id")
+    prid = payload.get("project_id")
+    year = payload.get("calculation_year")
+    if cid is None and pid is None and prid is None and year is None:
+        return payload
+    if None in (cid, pid, prid, year):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Kunde, Programm, Projekt und Kalkulationsjahr müssen gemeinsam angegeben werden.",
+        )
+    resolved = resolve_hierarchy_for_spritzguss(
+        db,
+        customer_id=int(cid),
+        program_id=int(pid),
+        project_id=int(prid),
+        calculation_year=int(year),
+    )
+    payload.update(resolved)
+    return payload
 
 
 def _normalize_veredelung_zuordnungen(
@@ -699,6 +724,7 @@ def create_kalkulation(
 ):
     zuordnungen = body.veredelung_zuordnungen
     payload = body.model_dump(exclude={"veredelung_zuordnungen"})
+    payload = _apply_hierarchy_payload(db, payload)
     if payload.get("werkzeug_abrechnungsart") == "einmalzahlung":
         payload["amortisationsvolumen"] = None
     obj = SpritzgussKalkulation(**payload)
@@ -730,6 +756,16 @@ def update_kalkulation(
 
     updates = body.model_dump(exclude_unset=True)
     zuordnungen = updates.pop("veredelung_zuordnungen", None)
+    hierarchy_keys = {"customer_id", "program_id", "project_id", "calculation_year"}
+    if hierarchy_keys.intersection(updates):
+        merged = {
+            "customer_id": updates.get("customer_id", obj.customer_id),
+            "program_id": updates.get("program_id", obj.program_id),
+            "project_id": updates.get("project_id", obj.project_id),
+            "calculation_year": updates.get("calculation_year", obj.calculation_year),
+        }
+        merged = _apply_hierarchy_payload(db, merged)
+        updates.update(merged)
     for field, value in updates.items():
         setattr(obj, field, value)
 

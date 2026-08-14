@@ -16,6 +16,10 @@ import {
 } from "../api/reports";
 import { listVeredelungsschritte } from "../api/veredelung";
 import { ExportButtons } from "../components/ExportButtons";
+import {
+  HierarchySelector,
+  type HierarchySelection,
+} from "../components/hierarchy/HierarchySelector";
 import { useAuth } from "../context/AuthContext";
 import type { Lohnkosten, Maschine, Material } from "../types/stammdaten";
 import type { Veredelungsschritt } from "../types/veredelung";
@@ -160,6 +164,19 @@ function TextInput({
 export function SpritzgussPage() {
   const { canWrite } = useAuth();
   const [form, setForm] = useState<SpritzgussFormData>(emptySpritzgussForm());
+  const [hierarchy, setHierarchy] = useState<HierarchySelection>({
+    customer_id: null,
+    program_id: null,
+    project_id: null,
+    calculation_year: null,
+    project_volume: null,
+    jahresstueckzahl: 0,
+  });
+  const [legacyHierarchy, setLegacyHierarchy] = useState<{
+    kunde: string;
+    projekt: string;
+    jahresstueckzahl: number;
+  } | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [bloecke, setBloecke] = useState<SpritzgussBloecke | null>(null);
   const [list, setList] = useState<SpritzgussListItem[]>([]);
@@ -383,8 +400,19 @@ export function SpritzgussPage() {
       if (!form.teilenummer.trim()) {
         throw new Error("Teilenummer ist für das Speichern erforderlich.");
       }
+      if (!legacyHierarchy && hierarchy.project_id == null) {
+        throw new Error("Bitte Kunde, Programm, Projekt und Kalkulationsjahr auswählen.");
+      }
       const payload = {
         ...form,
+        customer_id: hierarchy.customer_id,
+        program_id: hierarchy.program_id,
+        project_id: hierarchy.project_id,
+        calculation_year: hierarchy.calculation_year,
+        project_volume: hierarchy.project_volume,
+        jahresstueckzahl: hierarchy.jahresstueckzahl,
+        kunde: form.kunde,
+        projekt: form.projekt,
         werkzeugkosten_eur: 0,
         werkzeug_abrechnungsart: "einmalzahlung" as const,
         amortisationsvolumen: null,
@@ -417,12 +445,43 @@ export function SpritzgussPage() {
     try {
       const item = await getKalkulation(id);
       setEditId(item.id);
+      const hasHierarchy = item.project_id != null && item.customer_id != null;
+      if (hasHierarchy) {
+        setLegacyHierarchy(null);
+        setHierarchy({
+          customer_id: item.customer_id ?? null,
+          program_id: item.program_id ?? null,
+          project_id: item.project_id ?? null,
+          calculation_year: item.calculation_year ?? null,
+          project_volume: item.project_volume ?? null,
+          jahresstueckzahl: item.jahresstueckzahl,
+        });
+      } else {
+        setLegacyHierarchy({
+          kunde: item.kunde,
+          projekt: item.projekt,
+          jahresstueckzahl: item.jahresstueckzahl,
+        });
+        setHierarchy({
+          customer_id: null,
+          program_id: null,
+          project_id: null,
+          calculation_year: null,
+          project_volume: null,
+          jahresstueckzahl: 0,
+        });
+      }
       setForm({
         teilebezeichnung: item.teilebezeichnung,
         teilenummer: item.teilenummer,
         kunde: item.kunde,
         projekt: item.projekt,
         jahresstueckzahl: item.jahresstueckzahl,
+        customer_id: item.customer_id ?? null,
+        program_id: item.program_id ?? null,
+        project_id: item.project_id ?? null,
+        calculation_year: item.calculation_year ?? null,
+        project_volume: item.project_volume ?? null,
         material_id: item.material_id,
         schussgewicht_g: item.schussgewicht_g,
         teilegewicht_netto_g: item.teilegewicht_netto_g,
@@ -464,6 +523,15 @@ export function SpritzgussPage() {
   const handleNew = () => {
     setEditId(null);
     setForm(emptySpritzgussForm());
+    setHierarchy({
+      customer_id: null,
+      program_id: null,
+      project_id: null,
+      calculation_year: null,
+      project_volume: null,
+      jahresstueckzahl: 0,
+    });
+    setLegacyHierarchy(null);
     setSelectedVeredelung([]);
     setBloecke(null);
     setSuccess(null);
@@ -597,18 +665,23 @@ export function SpritzgussPage() {
                 value={form.teilenummer}
                 onChange={(v) => setField("teilenummer", v)}
               />
-              <TextInput label="Kunde" value={form.kunde} onChange={(v) => setField("kunde", v)} />
-              <TextInput
-                label="Projekt"
-                value={form.projekt}
-                onChange={(v) => setField("projekt", v)}
-              />
-              <NumberInput
-                label="Jahresstückzahl"
-                value={form.jahresstueckzahl}
-                min={0}
-                step="1"
-                onChange={(v) => setField("jahresstueckzahl", v)}
+            </div>
+            <div className="mt-4">
+              <HierarchySelector
+                value={hierarchy}
+                legacyText={legacyHierarchy}
+                onChange={(next) => {
+                  setHierarchy(next);
+                  setForm((f) => ({
+                    ...f,
+                    customer_id: next.customer_id,
+                    program_id: next.program_id,
+                    project_id: next.project_id,
+                    calculation_year: next.calculation_year,
+                    project_volume: next.project_volume,
+                    jahresstueckzahl: next.jahresstueckzahl,
+                  }));
+                }}
               />
             </div>
           </section>

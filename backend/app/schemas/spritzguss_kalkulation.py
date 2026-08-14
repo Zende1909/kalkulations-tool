@@ -137,6 +137,12 @@ class SpritzgussKalkulationBase(BaseModel):
     projekt: str = ""
     jahresstueckzahl: int = Field(ge=0, default=0)
 
+    customer_id: int | None = None
+    program_id: int | None = None
+    project_id: int | None = None
+    calculation_year: int | None = None
+    project_volume: float | None = None
+
     material_id: int | None = None
     schussgewicht_g: float = Field(ge=0, default=0)
     teilegewicht_netto_g: float = Field(ge=0)
@@ -186,6 +192,25 @@ class SpritzgussKalkulationBase(BaseModel):
 class SpritzgussKalkulationCreate(SpritzgussKalkulationBase):
     veredelung_zuordnungen: list[VeredelungZuordnungInput] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def require_hierarchy_for_new(self) -> "SpritzgussKalkulationCreate":
+        missing = [
+            name
+            for name, val in (
+                ("customer_id", self.customer_id),
+                ("program_id", self.program_id),
+                ("project_id", self.project_id),
+                ("calculation_year", self.calculation_year),
+            )
+            if val is None
+        ]
+        if missing:
+            raise ValueError(
+                "Neue Kalkulationen benötigen Kunde, Programm, Projekt und Kalkulationsjahr "
+                f"(fehlend: {', '.join(missing)})."
+            )
+        return self
+
 
 class SpritzgussKalkulationUpdate(BaseModel):
     teilebezeichnung: str | None = Field(default=None, min_length=1, max_length=255)
@@ -193,6 +218,12 @@ class SpritzgussKalkulationUpdate(BaseModel):
     kunde: str | None = None
     projekt: str | None = None
     jahresstueckzahl: int | None = Field(default=None, ge=0)
+
+    customer_id: int | None = None
+    program_id: int | None = None
+    project_id: int | None = None
+    calculation_year: int | None = None
+    project_volume: float | None = None
 
     material_id: int | None = None
     schussgewicht_g: float | None = Field(default=None, ge=0)

@@ -15,6 +15,8 @@ PROJECT_STATUSES = (
     "Inaktiv",
 )
 
+COMPONENT_AREAS = ("Interior", "Exterior")
+
 
 class Project(Base, TimestampMixin):
     __tablename__ = "projects"

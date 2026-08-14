@@ -1,10 +1,19 @@
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.program import PROGRAM_STATUSES
 from app.models.project import PROJECT_STATUSES
-from app.services.hierarchy import validate_calendar_year, validate_quantity_per_vehicle, validate_vehicle_volume
+from app.services.hierarchy import (
+    validate_calendar_year,
+    validate_component_area,
+    validate_quantity_per_vehicle,
+    validate_vehicle_volume,
+)
+
+ComponentArea = Literal["Interior", "Exterior"]
 
 
 class CustomerBase(BaseModel):
@@ -137,11 +146,16 @@ class ProjectBase(BaseModel):
     program_id: int
     project_number: str = Field(min_length=1, max_length=50)
     name: str = Field(min_length=1, max_length=255)
-    component_area: str = ""
+    component_area: ComponentArea
     quantity_per_vehicle: float = 1.0
     status: str = "Anfrage"
     notes: str = ""
     active: bool = True
+
+    @field_validator("component_area")
+    @classmethod
+    def check_component_area(cls, value: str) -> str:
+        return validate_component_area(value, strict=True)  # type: ignore[return-value]
 
     @field_validator("status")
     @classmethod
@@ -164,11 +178,18 @@ class ProjectUpdate(BaseModel):
     program_id: int | None = None
     project_number: str | None = Field(default=None, min_length=1, max_length=50)
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    component_area: str | None = None
+    component_area: ComponentArea | None = None
     quantity_per_vehicle: float | None = None
     status: str | None = None
     notes: str | None = None
     active: bool | None = None
+
+    @field_validator("component_area")
+    @classmethod
+    def check_component_area(cls, value: str | None) -> str | None:
+        if value is not None:
+            return validate_component_area(value, strict=True)  # type: ignore[return-value]
+        return value
 
     @field_validator("status")
     @classmethod

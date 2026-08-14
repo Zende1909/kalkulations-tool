@@ -22,6 +22,9 @@ class Baugruppe(Base, TimestampMixin):
     ergebnis: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ergebnis_bloecke: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    linked_project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
 
 class BaugruppeSpritzgussZuordnung(Base, TimestampMixin):

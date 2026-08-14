@@ -23,6 +23,7 @@ import {
 import { StammdatenFormModal, type FormField } from "../../components/stammdaten/StammdatenFormModal";
 import { useAuth } from "../../context/AuthContext";
 import {
+  COMPONENT_AREAS,
   PROGRAM_STATUSES,
   PROJECT_STATUSES,
   type Customer,
@@ -60,10 +61,16 @@ const volumeFields: FormField[] = [
 
 const projectFields: FormField[] = [
   { name: "project_number", label: "Projektnummer", type: "text", required: true },
-  { name: "name", label: "Name", type: "text", required: true },
-  { name: "component_area", label: "Bauteilbereich", type: "text", required: true },
-  { name: "quantity_per_vehicle", label: "Anzahl pro Fahrzeug", type: "number", required: true, step: "0.01" },
-  { name: "status", label: "Status", type: "select", required: true, options: [...PROJECT_STATUSES] },
+  { name: "name", label: "Projektname", type: "text", required: true },
+  {
+    name: "component_area",
+    label: "Bauteilbereich",
+    type: "select",
+    required: true,
+    options: [...COMPONENT_AREAS],
+  },
+  { name: "quantity_per_vehicle", label: "Anzahl pro Fahrzeug (z. B. 2 bei zwei Teilen pro Fahrzeug)", type: "number", required: true, step: "0.01" },
+  { name: "status", label: "Projektstatus", type: "select", required: true, options: [...PROJECT_STATUSES] },
   { name: "notes", label: "Notizen", type: "text" },
   { name: "active", label: "Aktiv", type: "checkbox" },
 ];
@@ -78,7 +85,6 @@ export function KundenProgrammeProjektePage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [volumes, setVolumes] = useState<ProgramVolume[]>([]);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | "">("");
   const [selectedProgramId, setSelectedProgramId] = useState<number | "">("");
@@ -96,6 +102,9 @@ export function KundenProgrammeProjektePage() {
   const [formValues, setFormValues] = useState<Record<string, string | number | boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [volumesModalProgram, setVolumesModalProgram] = useState<Program | null>(null);
+  const [modalVolumes, setModalVolumes] = useState<ProgramVolume[]>([]);
+  const [projectPreviewVolumes, setProjectPreviewVolumes] = useState<ProgramVolume[]>([]);
 
   const filteredCustomers = useMemo(() => {
     if (!search.trim()) return customers;
@@ -146,14 +155,9 @@ export function KundenProgrammeProjektePage() {
       setPrograms(p);
       setProjects(j);
       if (selectedProgramId !== "") {
-        const [vols, years] = await Promise.all([
-          listProgramVolumes(selectedProgramId),
-          listAvailableYears(selectedProgramId),
-        ]);
-        setVolumes(vols);
+        const years = await listAvailableYears(selectedProgramId);
         setAvailableYears(years);
       } else {
-        setVolumes([]);
         setAvailableYears([]);
       }
     } catch (err) {
@@ -201,9 +205,8 @@ export function KundenProgrammeProjektePage() {
         active: true,
       });
     } else if (kind === "volume") {
-      if (selectedProgramId === "") {
-        setError("Bitte zuerst ein Programm auswählen.");
-        return;
+      if (volumesModalProgram) {
+        setSelectedProgramId(volumesModalProgram.id);
       }
       setFormValues({ calendar_year: new Date().getFullYear(), vehicle_volume: 0 });
     } else {
@@ -214,12 +217,15 @@ export function KundenProgrammeProjektePage() {
       setFormValues({
         project_number: "",
         name: "",
-        component_area: "",
+        component_area: "Interior",
         quantity_per_vehicle: 1,
         status: "Anfrage",
         notes: "",
         active: true,
       });
+      listProgramVolumes(selectedProgramId)
+        .then(setProjectPreviewVolumes)
+        .catch(() => setProjectPreviewVolumes([]));
     }
     setFormOpen(true);
   };
@@ -258,15 +264,19 @@ export function KundenProgrammeProjektePage() {
       setFormValues({ calendar_year: r.calendar_year, vehicle_volume: r.vehicle_volume });
     } else {
       const r = row as Project;
+      const area = COMPONENT_AREAS.includes(r.component_area as (typeof COMPONENT_AREAS)[number])
+        ? r.component_area
+        : "Interior";
       setFormValues({
         project_number: r.project_number,
         name: r.name,
-        component_area: r.component_area,
+        component_area: area,
         quantity_per_vehicle: r.quantity_per_vehicle,
         status: r.status,
         notes: r.notes,
         active: r.active,
       });
+      listProgramVolumes(r.program_id).then(setProjectPreviewVolumes).catch(() => setProjectPreviewVolumes([]));
     }
     setFormOpen(true);
   };
@@ -306,8 +316,9 @@ export function KundenProgrammeProjektePage() {
           await createProgram(payload);
         }
       } else if (formKind === "volume") {
+        const programId = volumesModalProgram?.id ?? (selectedProgramId as number);
         const payload = {
-          program_id: selectedProgramId as number,
+          program_id: programId,
           calendar_year: Number(formValues.calendar_year),
           vehicle_volume: Number(formValues.vehicle_volume),
         };
@@ -316,6 +327,10 @@ export function KundenProgrammeProjektePage() {
         } else {
           await createProgramVolume(payload);
         }
+        setFormOpen(false);
+        setSuccess("Erfolgreich gespeichert.");
+        await reloadModalVolumes();
+        return;
       } else {
         const payload = {
           program_id: selectedProgramId as number,
@@ -356,11 +371,29 @@ export function KundenProgrammeProjektePage() {
     }
   };
 
+  const openVolumesModal = async (program: Program) => {
+    setVolumesModalProgram(program);
+    setSelectedProgramId(program.id);
+    try {
+      const vols = await listProgramVolumes(program.id);
+      setModalVolumes(vols);
+    } catch {
+      setModalVolumes([]);
+    }
+  };
+
+  const reloadModalVolumes = async () => {
+    if (!volumesModalProgram) return;
+    const vols = await listProgramVolumes(volumesModalProgram.id);
+    setModalVolumes(vols);
+    await reloadAll();
+  };
+
   const handleDeleteVolume = async (id: number) => {
     try {
       await deleteProgramVolume(id);
       setSuccess("Jahresstückzahl gelöscht.");
-      await reloadAll();
+      await reloadModalVolumes();
     } catch (err) {
       setError(errMsg(err));
     }
@@ -553,77 +586,62 @@ export function KundenProgrammeProjektePage() {
           )}
 
           {tab === "programs" && (
-            <>
-              <DataTable
-                headers={["Nr.", "Name", "Serie", "Status", "Aktiv", "Aktionen"]}
-                rows={filteredPrograms.map((p) => [
-                  p.program_number,
-                  p.name,
-                  p.vehicle_series,
-                  p.status,
-                  p.active ? "Ja" : "Nein",
-                  p,
-                ])}
-                canWrite={canWrite}
-                onEdit={(row) => openEdit("program", row as Program)}
-                onDeactivate={(row) => handleDeactivate("program", (row as Program).id)}
-              />
-              {selectedProgramId !== "" && (
-                <section className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="font-semibold">Programmstückzahlen je Kalenderjahr</h3>
-                    {canWrite && (
-                      <button
-                        type="button"
-                        onClick={() => openCreate("volume")}
-                        className="rounded border px-3 py-1 text-sm hover:bg-gray-50"
-                      >
-                        Jahr anlegen
-                      </button>
-                    )}
-                  </div>
-                  {volumes.length === 0 ? (
-                    <p className="text-sm text-gray-600">Keine Jahresstückzahlen hinterlegt.</p>
-                  ) : (
-                    <table className="min-w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left text-gray-600">
-                          <th className="py-2 pr-4">Jahr</th>
-                          <th className="py-2 pr-4">Fahrzeugstückzahl</th>
-                          {canWrite && <th className="py-2">Aktionen</th>}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {volumes.map((v) => (
-                          <tr key={v.id} className="border-b border-gray-100">
-                            <td className="py-2 pr-4">{v.calendar_year}</td>
-                            <td className="py-2 pr-4">{v.vehicle_volume.toLocaleString("de-DE")}</td>
-                            {canWrite && (
-                              <td className="py-2 space-x-2">
-                                <button
-                                  type="button"
-                                  className="text-blue-700 underline"
-                                  onClick={() => openEdit("volume", v)}
-                                >
-                                  Bearbeiten
-                                </button>
-                                <button
-                                  type="button"
-                                  className="text-red-700 underline"
-                                  onClick={() => handleDeleteVolume(v.id)}
-                                >
-                                  Löschen
-                                </button>
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </section>
+            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+              {filteredPrograms.length === 0 ? (
+                <div className="px-4 py-10 text-center text-sm text-gray-600">Keine Programme vorhanden.</div>
+              ) : (
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-gray-50 text-left text-gray-600">
+                      <th className="px-4 py-2">Nr.</th>
+                      <th className="px-4 py-2">Name</th>
+                      <th className="px-4 py-2">Serie</th>
+                      <th className="px-4 py-2">Status</th>
+                      <th className="px-4 py-2">Aktiv</th>
+                      <th className="px-4 py-2">Aktionen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPrograms.map((p) => (
+                      <tr key={p.id} className="border-b border-gray-100">
+                        <td className="px-4 py-2">{p.program_number}</td>
+                        <td className="px-4 py-2">{p.name}</td>
+                        <td className="px-4 py-2">{p.vehicle_series}</td>
+                        <td className="px-4 py-2">{p.status}</td>
+                        <td className="px-4 py-2">{p.active ? "Ja" : "Nein"}</td>
+                        <td className="px-4 py-2 space-x-2">
+                          <button
+                            type="button"
+                            className="text-slate-800 underline"
+                            onClick={() => openVolumesModal(p)}
+                          >
+                            Stückzahlen
+                          </button>
+                          {canWrite && (
+                            <>
+                              <button
+                                type="button"
+                                className="text-blue-700 underline"
+                                onClick={() => openEdit("program", p)}
+                              >
+                                Bearbeiten
+                              </button>
+                              <button
+                                type="button"
+                                className="text-amber-800 underline"
+                                onClick={() => handleDeactivate("program", p.id)}
+                              >
+                                Deaktivieren
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               )}
-            </>
+            </div>
           )}
 
           {tab === "projects" && (
@@ -647,16 +665,122 @@ export function KundenProgrammeProjektePage() {
       )}
 
       {formOpen && (
-        <StammdatenFormModal
-          title={formTitle}
-          fields={formFields}
-          values={formValues}
-          submitting={submitting}
-          error={formError}
-          onChange={(name, value) => setFormValues((c) => ({ ...c, [name]: value }))}
-          onClose={() => setFormOpen(false)}
-          onSubmit={handleSubmit}
-        />
+        <>
+          <StammdatenFormModal
+            title={formTitle}
+            fields={formFields}
+            values={formValues}
+            submitting={submitting}
+            error={formError}
+            onChange={(name, value) => setFormValues((c) => ({ ...c, [name]: value }))}
+            onClose={() => {
+              setFormOpen(false);
+              setProjectPreviewVolumes([]);
+            }}
+            onSubmit={handleSubmit}
+          />
+          {formKind === "project" && projectPreviewVolumes.length > 0 && (
+            <div className="fixed inset-0 z-40 flex items-end justify-center pointer-events-none">
+              <div className="pointer-events-auto mb-8 w-full max-w-lg rounded-lg border bg-white p-4 shadow-lg">
+                <h4 className="mb-2 text-sm font-semibold">Mengenübersicht (berechnet)</h4>
+                <table className="min-w-full text-xs">
+                  <thead>
+                    <tr className="border-b text-left text-gray-600">
+                      <th className="py-1 pr-2">Jahr</th>
+                      <th className="py-1 pr-2">Fahrzeug-STZ.</th>
+                      <th className="py-1 pr-2">Anzahl/Fzg.</th>
+                      <th className="py-1">Projekt-STZ.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projectPreviewVolumes.map((v) => (
+                      <tr key={v.id} className="border-b border-gray-100">
+                        <td className="py-1 pr-2">{v.calendar_year}</td>
+                        <td className="py-1 pr-2">{v.vehicle_volume.toLocaleString("de-DE")}</td>
+                        <td className="py-1 pr-2">{Number(formValues.quantity_per_vehicle ?? 0)}</td>
+                        <td className="py-1">
+                          {(v.vehicle_volume * Number(formValues.quantity_per_vehicle ?? 0)).toLocaleString(
+                            "de-DE",
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {volumesModalProgram && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xl rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">
+                Fahrzeugstückzahlen – {volumesModalProgram.name}
+              </h3>
+              <button
+                type="button"
+                className="text-gray-400 hover:text-gray-600"
+                onClick={() => setVolumesModalProgram(null)}
+              >
+                ✕
+              </button>
+            </div>
+            {canWrite && (
+              <button
+                type="button"
+                className="mb-3 rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
+                onClick={() => {
+                  setVolumesModalProgram(volumesModalProgram);
+                  openCreate("volume");
+                }}
+              >
+                Jahr hinzufügen
+              </button>
+            )}
+            {modalVolumes.length === 0 ? (
+              <p className="text-sm text-gray-600">Keine Jahresstückzahlen hinterlegt.</p>
+            ) : (
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-gray-600">
+                    <th className="py-2 pr-4">Kalenderjahr</th>
+                    <th className="py-2 pr-4">Fahrzeugstückzahl</th>
+                    {canWrite && <th className="py-2">Aktionen</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {modalVolumes.map((v) => (
+                    <tr key={v.id} className="border-b border-gray-100">
+                      <td className="py-2 pr-4">{v.calendar_year}</td>
+                      <td className="py-2 pr-4">{v.vehicle_volume.toLocaleString("de-DE")}</td>
+                      {canWrite && (
+                        <td className="py-2 space-x-2">
+                          <button
+                            type="button"
+                            className="text-blue-700 underline"
+                            onClick={() => openEdit("volume", v)}
+                          >
+                            Bearbeiten
+                          </button>
+                          <button
+                            type="button"
+                            className="text-red-700 underline"
+                            onClick={() => handleDeleteVolume(v.id)}
+                          >
+                            Löschen
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

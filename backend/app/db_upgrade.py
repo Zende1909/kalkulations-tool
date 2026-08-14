@@ -30,6 +30,50 @@ def ensure_spritzguss_schema(engine: Engine) -> None:
                 pass
 
 
+def ensure_spritzguss_hierarchy_schema(engine: Engine) -> None:
+    statements = [
+        """
+        ALTER TABLE spritzguss_kalkulationen
+        ADD COLUMN IF NOT EXISTS customer_id INTEGER
+        REFERENCES customers(id) ON DELETE SET NULL
+        """,
+        """
+        ALTER TABLE spritzguss_kalkulationen
+        ADD COLUMN IF NOT EXISTS program_id INTEGER
+        REFERENCES programs(id) ON DELETE SET NULL
+        """,
+        """
+        ALTER TABLE spritzguss_kalkulationen
+        ADD COLUMN IF NOT EXISTS project_id INTEGER
+        REFERENCES projects(id) ON DELETE SET NULL
+        """,
+        """
+        ALTER TABLE spritzguss_kalkulationen
+        ADD COLUMN IF NOT EXISTS calculation_year INTEGER
+        """,
+        """
+        ALTER TABLE spritzguss_kalkulationen
+        ADD COLUMN IF NOT EXISTS project_volume DOUBLE PRECISION
+        """,
+        """
+        ALTER TABLE investitionen
+        ADD COLUMN IF NOT EXISTS linked_project_id INTEGER
+        REFERENCES projects(id) ON DELETE SET NULL
+        """,
+        """
+        ALTER TABLE baugruppen
+        ADD COLUMN IF NOT EXISTS linked_project_id INTEGER
+        REFERENCES projects(id) ON DELETE SET NULL
+        """,
+    ]
+    with engine.begin() as conn:
+        for stmt in statements:
+            try:
+                conn.execute(text(stmt))
+            except Exception:
+                pass
+
+
 def ensure_investition_schema(engine: Engine) -> None:
     statements = [
         """

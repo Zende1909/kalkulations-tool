@@ -28,7 +28,11 @@ from app.models import (  # noqa: F401
     Zuschlagssatz,
 )
 from app.scripts.seed_admin import seed_admin_user
-from app.db_upgrade import ensure_investition_schema, ensure_spritzguss_schema
+from app.db_upgrade import (
+    ensure_investition_schema,
+    ensure_spritzguss_hierarchy_schema,
+    ensure_spritzguss_schema,
+)
 
 
 @asynccontextmanager
@@ -36,6 +40,7 @@ async def lifespan(app: FastAPI):
     verify_database_connection()
     Base.metadata.create_all(bind=engine)
     ensure_spritzguss_schema(engine)
+    ensure_spritzguss_hierarchy_schema(engine)
     ensure_investition_schema(engine)
     db = SessionLocal()
     try:

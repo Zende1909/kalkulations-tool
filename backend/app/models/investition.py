@@ -36,3 +36,6 @@ class Investition(Base, TimestampMixin):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     included_in_unit_price: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    linked_project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )

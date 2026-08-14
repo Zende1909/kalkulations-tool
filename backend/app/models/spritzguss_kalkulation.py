@@ -18,6 +18,18 @@ class SpritzgussKalkulation(Base, TimestampMixin):
     projekt: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     jahresstueckzahl: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    program_id: Mapped[int | None] = mapped_column(
+        ForeignKey("programs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    calculation_year: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    project_volume: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     # Material
     material_id: Mapped[int | None] = mapped_column(ForeignKey("materialien.id"), nullable=True)
     schussgewicht_g: Mapped[float] = mapped_column(Float, nullable=False, default=0)
