@@ -164,6 +164,34 @@ def test_recalculate_http_zero_percent_markups_200(client, db):
     assert not any(warning["code"] == "MISSING_MARKUP_RATE" for warning in body["warnings"])
 
 
+def test_recalculate_http_top_level_markups_10_15_0_200(client, db):
+    top = _seed_structure_with_part_snapshot(db)
+    _seed_markups(db, vvgk_pct=10, gewinn_pct=15, skonto_pct=0)
+
+    response = _post_recalculate(client, top.id)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["calculation"]["herstellkosten"] == pytest.approx(4.2)
+    assert body["calculation"]["vvgk"] == pytest.approx(0.42)
+    assert body["calculation"]["selbstkosten"] == pytest.approx(4.62)
+    assert body["calculation"]["gewinn"] == pytest.approx(0.69)
+    assert body["calculation"]["skonto"] == pytest.approx(0.0)
+    assert body["calculation"]["endpreis_je_stueck"] == pytest.approx(5.31)
+    assert body["calculation"]["markup_applied"] is True
+
+
+def test_recalculate_http_inactive_vvgk_422(client, db):
+    top = _seed_structure_with_part_snapshot(db)
+    _seed_markups(db, vvgk_pct=10, gewinn_pct=15, skonto_pct=0)
+    db.execute(text("UPDATE zuschlagssaetze SET aktiv = 0 WHERE typ = 'vvgk'"))
+    db.commit()
+
+    response = _post_recalculate(client, top.id)
+
+    _assert_missing_rate_422(response, "VVGK", ("Gewinn", "Skonto"))
+
+
 def test_recalculate_http_duplicate_process_200(client, db):
     _seed_project(db)
     top = _top(db)

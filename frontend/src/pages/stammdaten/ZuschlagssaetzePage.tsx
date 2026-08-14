@@ -2,6 +2,7 @@ import type { ColDef } from "ag-grid-community";
 
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
+import { ZUSCHLAGSSATZ_TYP_OPTIONS } from "../../constants/zuschlagssatzTypen";
 import type { Zuschlagssatz } from "../../types/stammdaten";
 
 const columnDefs: ColDef<Zuschlagssatz>[] = [
@@ -19,7 +20,7 @@ const formFields: FormField[] = [
     label: "Typ",
     type: "select",
     required: true,
-    options: ["GEMEINKOSTEN", "GEWINN", "VERSCHROTTUNG"],
+    options: ZUSCHLAGSSATZ_TYP_OPTIONS,
   },
   { name: "aktiv", label: "Aktiv", type: "checkbox" },
 ];

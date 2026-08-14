@@ -217,7 +217,7 @@ def load_global_markup_rates(db: Session) -> MarkupRates:
     values: dict[str, float | None] = dict(vvgk_pct=None, gewinn_pct=None, skonto_pct=None)
     mapping = {"vvgk": "vvgk_pct", "gewinn": "gewinn_pct", "skonto": "skonto_pct"}
     for row in db.scalars(select(Zuschlagssatz).where(Zuschlagssatz.aktiv.is_(True))).all():
-        key = row.typ.strip().lower()
+        key = row.typ.strip()
         if key in mapping:
             values[mapping[key]] = row.satz_prozent
     return MarkupRates(**values)

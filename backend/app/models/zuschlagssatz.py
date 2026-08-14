@@ -4,6 +4,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 from app.models.user import TimestampMixin
 
+STAMMDATEN_ZUSCHLAGSSATZ_TYPEN = ("GEMEINKOSTEN", "GEWINN", "VERSCHROTTUNG")
+ASSEMBLY_MARKUP_TYPEN = ("vvgk", "gewinn", "skonto")
+ALLOWED_ZUSCHLAGSSATZ_TYPEN = STAMMDATEN_ZUSCHLAGSSATZ_TYPEN + ASSEMBLY_MARKUP_TYPEN
+
 
 class Zuschlagssatz(Base, TimestampMixin):
     __tablename__ = "zuschlagssaetze"
