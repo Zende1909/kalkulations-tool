@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    assembly_structure,
     auth,
     baugruppen,
     business_cases,
@@ -32,6 +33,7 @@ api_router.include_router(spritzguss.router)
 api_router.include_router(veredelung.router)
 api_router.include_router(kaufteile.router)
 api_router.include_router(baugruppen.router)
+api_router.include_router(assembly_structure.router)
 api_router.include_router(business_cases.router)
 api_router.include_router(customers.router)
 api_router.include_router(programs.router)
