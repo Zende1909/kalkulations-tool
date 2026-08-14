@@ -144,14 +144,14 @@ def test_keine_doppelte_addition():
         berechne_gesamt(sg, [_veredelung(1, 1.0), _veredelung(1, 2.0)], **DEFAULT_RATES)
 
 
-def test_einmalzahlung_bleibt_separat():
+def test_werkzeug_beeinflusst_endpreis_nicht():
     sg = _spritzguss(
         werkzeug_abrechnungsart="einmalzahlung",
         amortisationsvolumen=None,
         werkzeugkosten_eur=5000,
     )
     result = berechne_gesamt(sg, [_veredelung(1, 1.0)], **DEFAULT_RATES)
-    assert result.werkzeug_einmalzahlung == 5000.0
+    assert result.werkzeug_einmalzahlung == 0.0
     assert result.werkzeugkostenanteil == 0.0
     expected = _expected_endpreis(sg["herstellkosten"], 1.0)
     assert result.endpreis_je_stueck == pytest.approx(expected)
@@ -185,14 +185,10 @@ def test_gewinn_auf_selbstkosten_mit_veredelung():
     assert result.selbstkosten == pytest.approx(result.gesamte_herstellkosten + result.vvgk)
 
 
-def test_ergebnisuebersicht_mit_werkzeuganteil():
+def test_ergebnisuebersicht_ohne_werkzeugabschnitt():
     sg = _spritzguss()
     result = berechne_gesamt(sg, [_veredelung(1, 1.0)], **DEFAULT_RATES)
     overview = result.as_ergebnisuebersicht()
-    assert overview["werkzeugkostenanteil"] == pytest.approx(sg["werkzeugkostenanteil"])
-    assert overview["gesamte_herstellkosten"] == pytest.approx(
-        sg["herstellkosten"] + 1.0
-    )
-    assert overview["spritzguss_herstellkosten"] == pytest.approx(
-        sg["herstellkosten"] - sg["werkzeugkostenanteil"]
-    )
+    assert "werkzeugkostenanteil" not in overview
+    assert overview["gesamte_herstellkosten"] == pytest.approx(sg["herstellkosten"] + 1.0)
+    assert overview["spritzguss_herstellkosten"] == pytest.approx(sg["herstellkosten"])

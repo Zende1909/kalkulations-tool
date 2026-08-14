@@ -1,10 +1,5 @@
 import { api } from "./client";
-import type {
-  BusinessCaseFilters,
-  BusinessCaseSummary,
-  Investition,
-  InvestitionPayload,
-} from "../types/investition";
+import type { BusinessCaseFilters, Investition, InvestitionPayload } from "../types/investition";
 
 function buildQuery(filters: BusinessCaseFilters = {}): string {
   const params = new URLSearchParams();
@@ -18,11 +13,10 @@ function buildQuery(filters: BusinessCaseFilters = {}): string {
 }
 
 export async function listInvestitionen(filters?: BusinessCaseFilters): Promise<Investition[]> {
+  if (!filters?.project) {
+    return [];
+  }
   return api.get<Investition[]>(`/investitionen${buildQuery(filters)}`);
-}
-
-export async function getBusinessCase(filters?: BusinessCaseFilters): Promise<BusinessCaseSummary> {
-  return api.get<BusinessCaseSummary>(`/investitionen/business-case${buildQuery(filters)}`);
 }
 
 export async function getInvestition(id: number): Promise<Investition> {

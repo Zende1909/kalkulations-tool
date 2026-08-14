@@ -17,6 +17,7 @@ const navItems = [
   { to: "/veredelung", label: "Veredelung" },
   { to: "/baugruppen", label: "Baugruppen" },
   { to: "/investitionen", label: "Investitionen" },
+  { to: "/business-case", label: "Business Case" },
 ];
 
 function linkClass(isActive: boolean) {

@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     auth,
     baugruppen,
+    business_cases,
     dashboard,
     investitionen,
     kaufteile,
@@ -27,6 +28,7 @@ api_router.include_router(spritzguss.router)
 api_router.include_router(veredelung.router)
 api_router.include_router(kaufteile.router)
 api_router.include_router(baugruppen.router)
+api_router.include_router(business_cases.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(investitionen.router)
 api_router.include_router(reports.router)

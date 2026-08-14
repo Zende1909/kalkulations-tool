@@ -141,8 +141,6 @@ def build_business_case(
         for inv in scoped:
             if inv.payment_type != "Amortisation":
                 continue
-            if not inv.included_in_unit_price:
-                continue
             if not _investition_applies_to_scope(
                 inv, calculation_id=calculation_id, baugruppe_id=baugruppe_id
             ):
@@ -155,9 +153,8 @@ def build_business_case(
     amort_anteil = round(amort_anteil, 2)
 
     basis_preis = baugruppenpreis if baugruppe_id is not None else teilepreis
-    preis_inkl_amort = (
-        round(basis_preis + amort_anteil, 2) if basis_preis is not None else None
-    )
+    # Investitionen werden separat ausgewiesen und nicht zum Teile-/Baugruppenpreis addiert.
+    preis_inkl_amort = round(basis_preis, 2) if basis_preis is not None else None
 
     einmal_positionen = [
         {

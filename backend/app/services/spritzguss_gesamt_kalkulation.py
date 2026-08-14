@@ -84,10 +84,9 @@ class GesamtErgebnis:
         }
 
     def as_ergebnisuebersicht(self) -> dict[str, float]:
-        """Fachliche Kurzübersicht für die Ergebnisanzeige (ohne Einzelposten)."""
+        """Fachliche Kurzübersicht für die Ergebnisanzeige (ohne Investitionsanteil)."""
         return {
             "spritzguss_herstellkosten": self.spritzguss_herstellkosten,
-            "werkzeugkostenanteil": self.werkzeugkostenanteil,
             "veredelung_gesamt": self.veredelung_gesamt,
             "gesamte_herstellkosten": self.gesamte_herstellkosten,
             "vvgk": self.vvgk,
@@ -146,13 +145,10 @@ def berechne_gesamt(
     """Kombiniert Spritzguss-Ergebnis mit Veredelungsschritten.
 
     VVGK, Gewinn und Skonto werden einmal auf die gesamten Herstellkosten
-    (Spritzguss inkl. Werkzeuganteil + Veredelung) angewendet.
+    (Spritzguss ohne Investitionsanteil + Veredelung) angewendet.
     """
     spritzguss_vp = float(spritzguss_ergebnis["verkaufspreis"])
-    werkzeug_einmal = float(spritzguss_ergebnis.get("werkzeug_einmalzahlung", 0))
-    werkzeug_anteil = float(spritzguss_ergebnis.get("werkzeugkostenanteil", 0))
-    hk_mit_werkzeug = _d(spritzguss_ergebnis["herstellkosten"])
-    spritzguss_hk_ohne_werkzeug = _money(hk_mit_werkzeug - _d(werkzeug_anteil))
+    spritzguss_hk = _d(spritzguss_ergebnis["herstellkosten"])
 
     sorted_steps = sorted(veredelung_schritte, key=lambda s: s.reihenfolge)
     ergebnis_schritte: list[VeredelungSchrittErgebnis] = []
@@ -171,7 +167,7 @@ def berechne_gesamt(
             veredelung_summe += _d(ergebnis.kosten_gesamt)
 
     veredelung_gesamt = _money(veredelung_summe)
-    gesamte_hk = _money(hk_mit_werkzeug + veredelung_gesamt)
+    gesamte_hk = _money(spritzguss_hk + veredelung_gesamt)
 
     vvgk_rate = _pct_to_rate(vvgk_pct)
     gewinn_rate = _pct_to_rate(gewinn_pct)
@@ -185,9 +181,9 @@ def berechne_gesamt(
     endpreis = _money(nettoverkaufspreis + skonto)
 
     return GesamtErgebnis(
-        spritzguss_herstellkosten=float(spritzguss_hk_ohne_werkzeug),
+        spritzguss_herstellkosten=float(spritzguss_hk),
         spritzguss_verkaufspreis=spritzguss_vp,
-        werkzeug_einmalzahlung=werkzeug_einmal,
+        werkzeug_einmalzahlung=0.0,
         vvgk=float(vvgk),
         selbstkosten=float(selbstkosten),
         gewinn=float(gewinn),
@@ -197,7 +193,7 @@ def berechne_gesamt(
         maschinenkosten=float(spritzguss_ergebnis.get("maschinenkosten", 0)),
         fertigungslohn=float(spritzguss_ergebnis.get("fertigungslohn", 0)),
         fertigungsgemeinkosten=float(spritzguss_ergebnis.get("fertigungsgemeinkosten", 0)),
-        werkzeugkostenanteil=werkzeug_anteil,
+        werkzeugkostenanteil=0.0,
         veredelung_schritte=ergebnis_schritte,
         veredelung_gesamt=float(veredelung_gesamt),
         gesamte_herstellkosten=float(gesamte_hk),

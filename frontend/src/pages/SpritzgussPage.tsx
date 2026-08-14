@@ -47,7 +47,6 @@ function euro(value: number | undefined | null): string {
 const BLOCK_LABELS: Record<string, string> = {
   material: "Material",
   fertigung: "Fertigung",
-  werkzeug: "Werkzeug",
   veredelung: "Veredelung",
   gemeinkosten: "Gemeinkosten / Selbstkosten",
   verkaufspreis: "Verkaufspreis",
@@ -56,7 +55,6 @@ const BLOCK_LABELS: Record<string, string> = {
 const DETAIL_BLOCK_ORDER = [
   "material",
   "fertigung",
-  "werkzeug",
   "veredelung",
   "gemeinkosten",
   "verkaufspreis",
@@ -68,13 +66,12 @@ const ERGEBNISUEBERSICHT: Array<{
   highlight?: boolean;
 }> = [
   { key: "spritzguss_herstellkosten", label: "Spritzguss-Herstellkosten (€)" },
-  { key: "werkzeugkostenanteil", label: "Werkzeugkostenanteil je Stück (€)" },
-  { key: "veredelung_gesamt", label: "Veredelungskosten gesamt (€)" },
-  { key: "gesamte_herstellkosten", label: "Gesamte Herstellkosten (€)" },
+  { key: "veredelung_gesamt", label: "Veredelungskosten (€)" },
+  { key: "gesamte_herstellkosten", label: "Herstellkosten gesamt (€)" },
   { key: "vvgk", label: "VVGK (€)" },
   { key: "selbstkosten", label: "Selbstkosten (€)" },
   { key: "gewinn", label: "Gewinn (€)" },
-  { key: "nettoverkaufspreis_gesamt", label: "Nettoverkaufspreis gesamt (€)" },
+  { key: "nettoverkaufspreis_gesamt", label: "Nettoverkaufspreis (€)" },
   { key: "skonto", label: "Skonto (€)" },
   { key: "endpreis_je_stueck", label: "Endpreis je Stück (€)", highlight: true },
 ];
@@ -226,12 +223,9 @@ export function SpritzgussPage() {
       kavitaeten: form.kavitaeten,
       lohnstundensatz: form.lohnstundensatz,
       fgk_pct: form.fgk_pct,
-      werkzeugkosten_eur: form.werkzeugkosten_eur,
-      werkzeug_abrechnungsart: form.werkzeug_abrechnungsart,
-      amortisationsvolumen:
-        form.werkzeug_abrechnungsart === "amortisation"
-          ? form.amortisationsvolumen
-          : null,
+      werkzeugkosten_eur: 0,
+      werkzeug_abrechnungsart: "einmalzahlung" as const,
+      amortisationsvolumen: null,
       vvgk_pct: form.vvgk_pct,
       gewinn_pct: form.gewinn_pct,
       skonto_pct: form.skonto_pct,
@@ -366,14 +360,6 @@ export function SpritzgussPage() {
     setError(null);
     setSuccess(null);
     try {
-      if (form.werkzeug_abrechnungsart === "amortisation") {
-        const vol = form.amortisationsvolumen;
-        if (vol == null || !Number.isInteger(vol) || vol < 1) {
-          throw new Error(
-            "Amortisationsvolumen muss eine positive ganze Zahl >= 1 sein (z. B. 1 oder 20000).",
-          );
-        }
-      }
       const result = await berechnen(calcPayload);
       setBloecke(result.bloecke);
       updateSelectedFromResponse(result.veredelung_zuordnungen);
@@ -397,20 +383,11 @@ export function SpritzgussPage() {
       if (!form.teilenummer.trim()) {
         throw new Error("Teilenummer ist für das Speichern erforderlich.");
       }
-      if (form.werkzeug_abrechnungsart === "amortisation") {
-        const vol = form.amortisationsvolumen;
-        if (vol == null || !Number.isInteger(vol) || vol < 1) {
-          throw new Error(
-            "Amortisationsvolumen muss eine positive ganze Zahl >= 1 sein (z. B. 1 oder 20000).",
-          );
-        }
-      }
       const payload = {
         ...form,
-        amortisationsvolumen:
-          form.werkzeug_abrechnungsart === "amortisation"
-            ? form.amortisationsvolumen
-            : null,
+        werkzeugkosten_eur: 0,
+        werkzeug_abrechnungsart: "einmalzahlung" as const,
+        amortisationsvolumen: null,
         veredelung_zuordnungen: veredelungZuordnungen,
       };
       const wasNew = editId == null;
@@ -743,93 +720,6 @@ export function SpritzgussPage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Werkzeug</h3>
-
-            <fieldset className="mb-4">
-              <legend className="text-sm font-medium text-gray-700">Abrechnungsart</legend>
-              <div className="mt-2 flex flex-wrap gap-4">
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="werkzeug_abrechnungsart"
-                    checked={form.werkzeug_abrechnungsart === "amortisation"}
-                    onChange={() =>
-                      setForm((current) => ({
-                        ...current,
-                        werkzeug_abrechnungsart: "amortisation",
-                        amortisationsvolumen:
-                          current.amortisationsvolumen != null &&
-                          current.amortisationsvolumen >= 1
-                            ? Math.round(current.amortisationsvolumen)
-                            : 1,
-                      }))
-                    }
-                  />
-                  Amortisation
-                </label>
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="werkzeug_abrechnungsart"
-                    checked={form.werkzeug_abrechnungsart === "einmalzahlung"}
-                    onChange={() =>
-                      setForm((current) => ({
-                        ...current,
-                        werkzeug_abrechnungsart: "einmalzahlung",
-                        amortisationsvolumen: null,
-                      }))
-                    }
-                  />
-                  Einmalzahlung
-                </label>
-              </div>
-            </fieldset>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <NumberInput
-                label={
-                  form.werkzeug_abrechnungsart === "einmalzahlung"
-                    ? "Einmalzahlung / Werkzeugkosten (€)"
-                    : "Werkzeugkosten (€)"
-                }
-                value={form.werkzeugkosten_eur}
-                min={0}
-                onChange={(v) => setField("werkzeugkosten_eur", v)}
-              />
-              {form.werkzeug_abrechnungsart === "amortisation" && (
-                <label className="block text-sm">
-                  <span className="font-medium text-gray-700">
-                    Amortisationsvolumen (Stück)
-                  </span>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    step={1}
-                    min={1}
-                    required
-                    value={form.amortisationsvolumen ?? ""}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      if (raw === "") {
-                        setField("amortisationsvolumen", null);
-                        return;
-                      }
-                      const parsed = Number.parseInt(raw, 10);
-                      setField(
-                        "amortisationsvolumen",
-                        Number.isFinite(parsed) ? parsed : null,
-                      );
-                    }}
-                    className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                  />
-                  <span className="mt-1 block text-xs text-gray-500">
-                    Positive ganze Zahl, z. B. 1 oder 20000
-                  </span>
-                </label>
-              )}
-            </div>
-          </section>
-          <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 font-semibold text-gray-900">Veredelungsschritte</h3>
             <p className="mb-3 text-sm text-gray-600">
               Aktive Veredelungsschritte auswählen und in der gewünschten Reihenfolge anordnen.
@@ -1027,20 +917,6 @@ export function SpritzgussPage() {
                         </h4>
                         <dl className="space-y-1 text-sm">
                           {Object.entries(fields).map(([field, value]) => {
-                            if (
-                              blockKey === "werkzeug" &&
-                              form.werkzeug_abrechnungsart === "amortisation" &&
-                              field === "werkzeug_einmalzahlung"
-                            ) {
-                              return null;
-                            }
-                            if (
-                              blockKey === "werkzeug" &&
-                              form.werkzeug_abrechnungsart === "einmalzahlung" &&
-                              field === "werkzeugkostenanteil"
-                            ) {
-                              return null;
-                            }
                             const label =
                               blockKey === "veredelung"
                                 ? veredelungDetailLabel(field, selectedVeredelung)

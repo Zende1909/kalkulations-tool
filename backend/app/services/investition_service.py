@@ -61,11 +61,8 @@ def resolve_included_in_unit_price(
     baugruppe_id: int | None = None,
     explicit: bool | None = None,
 ) -> bool:
-    if payment_type == "Einmalzahlung":
-        return False
-    if explicit is not None:
-        return explicit
-    return calculation_id is not None or baugruppe_id is not None
+    """Investitionen fließen nicht automatisch in den Teilepreis ein."""
+    return False
 
 
 def validate_investition_input(

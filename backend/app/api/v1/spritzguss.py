@@ -708,7 +708,8 @@ def create_kalkulation(
     _apply_calculation(db, obj, zuordnungen, use_snapshots=True)
     db.commit()
     db.refresh(obj)
-    _sync_werkzeug_investition(db, obj)
+    # Werkzeug-Investitionen werden separat im Modul Investitionen / Business Case gepflegt.
+    # _sync_werkzeug_investition(db, obj)
     db.commit()
     db.refresh(obj)
     return _kalkulation_to_read(db, obj)
@@ -751,7 +752,8 @@ def update_kalkulation(
     db.add(obj)
     db.commit()
     db.refresh(obj)
-    _sync_werkzeug_investition(db, obj)
+    # Werkzeug-Investitionen werden separat im Modul Investitionen / Business Case gepflegt.
+    # _sync_werkzeug_investition(db, obj)
     db.commit()
     db.refresh(obj)
     return _kalkulation_to_read(db, obj)

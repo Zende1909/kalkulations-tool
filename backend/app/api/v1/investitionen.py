@@ -10,16 +10,9 @@ from app.models.investition import Investition
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.user import User
 from app.schemas.investition import (
-    BusinessCaseSummary,
     InvestitionCreate,
     InvestitionRead,
     InvestitionUpdate,
-)
-from app.services.business_case import (
-    BaugruppeSnapshot,
-    CalcSnapshot,
-    InvestitionSnapshot,
-    build_business_case,
 )
 from app.services.investition_service import EINMALZAHLUNG_HINWEIS, validate_investition_input, zuordnung_label
 
@@ -30,24 +23,6 @@ def _load_link_maps(db: Session) -> tuple[dict[int, SpritzgussKalkulation], dict
     sg_map = {row.id: row for row in db.scalars(select(SpritzgussKalkulation)).all()}
     bg_map = {row.id: row for row in db.scalars(select(Baugruppe)).all()}
     return sg_map, bg_map
-
-
-def _to_snapshot(row: Investition) -> InvestitionSnapshot:
-    return InvestitionSnapshot(
-        id=row.id,
-        name=row.name or row.description or row.part_name or f"Investition #{row.id}",
-        investment_type=row.investment_type,
-        payment_type=row.payment_type,
-        amount=float(row.amount),
-        amortization_volume=row.amortization_volume,
-        cost_per_piece=row.cost_per_piece,
-        project_id=row.project_id or "",
-        customer=row.customer or "",
-        calculation_id=row.calculation_id,
-        baugruppe_id=row.baugruppe_id,
-        included_in_unit_price=bool(row.included_in_unit_price),
-        archived=bool(row.archived),
-    )
 
 
 def _to_read(
@@ -207,71 +182,6 @@ def _apply_filters(
     return stmt
 
 
-def _load_all_snapshots(db: Session) -> list[InvestitionSnapshot]:
-    rows = db.scalars(select(Investition)).all()
-    return [_to_snapshot(row) for row in rows]
-
-
-@router.get("/business-case", response_model=BusinessCaseSummary)
-def get_business_case(
-    project: str | None = Query(default=None),
-    customer: str | None = Query(default=None),
-    calculation_id: int | None = Query(default=None),
-    baugruppe_id: int | None = Query(default=None),
-    scope: str | None = Query(default=None, description="gesamtprojekt|einzelteil|baugruppe"),
-    db: Session = Depends(get_db),
-    _: User = Depends(require_viewer),
-):
-    if calculation_id is not None and baugruppe_id is not None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Einzelteil und Baugruppe können nicht gleichzeitig gefiltert werden.",
-        )
-
-    calc_obj = db.get(SpritzgussKalkulation, calculation_id) if calculation_id else None
-    bg_obj = db.get(Baugruppe, baugruppe_id) if baugruppe_id else None
-
-    calc_snap = (
-        CalcSnapshot(
-            id=calc_obj.id,
-            teilenummer=calc_obj.teilenummer,
-            teilebezeichnung=calc_obj.teilebezeichnung,
-            kunde=calc_obj.kunde,
-            projekt=calc_obj.projekt,
-            jahresstueckzahl=calc_obj.jahresstueckzahl,
-            ergebnis=calc_obj.ergebnis if isinstance(calc_obj.ergebnis, dict) else None,
-        )
-        if calc_obj
-        else None
-    )
-    bg_snap = (
-        BaugruppeSnapshot(
-            id=bg_obj.id,
-            name=bg_obj.name,
-            teilenummer=bg_obj.teilenummer,
-            kunde=bg_obj.kunde,
-            projekt=bg_obj.projekt,
-            jahresstueckzahl=bg_obj.jahresstueckzahl,
-            ergebnis=bg_obj.ergebnis if isinstance(bg_obj.ergebnis, dict) else None,
-        )
-        if bg_obj
-        else None
-    )
-
-    snapshots = _load_all_snapshots(db)
-    result = build_business_case(
-        snapshots,
-        project=project,
-        customer=customer,
-        calculation_id=calculation_id,
-        baugruppe_id=baugruppe_id,
-        scope=scope,
-        calc=calc_snap,
-        baugruppe=bg_snap,
-    )
-    return BusinessCaseSummary(**result)
-
-
 @router.get("", response_model=list[InvestitionRead])
 def list_investitionen(
     skip: int = Query(0, ge=0),
@@ -288,6 +198,11 @@ def list_investitionen(
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
+    if not project or not project.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Projekt ist erforderlich, um Investitionen zu laden.",
+        )
     stmt = select(Investition)
     stmt = _apply_filters(
         stmt,

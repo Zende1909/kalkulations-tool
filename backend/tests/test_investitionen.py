@@ -10,6 +10,7 @@ from app.services.business_case import (
     CalcSnapshot,
     InvestitionSnapshot,
     build_business_case,
+    filter_investitionen,
 )
 from app.services.investition_service import (
     EINMALZAHLUNG_HINWEIS,
@@ -57,7 +58,13 @@ def _calc(**kw) -> CalcSnapshot:
 
 def test_projekt_mit_teilepreis_und_einmalinvestition():
     rows = [
-        _inv(payment_type="Einmalzahlung", amount=50_000, cost_per_piece=None, amortization_volume=None, included_in_unit_price=False),
+        _inv(
+            payment_type="Einmalzahlung",
+            amount=50_000,
+            cost_per_piece=None,
+            amortization_volume=None,
+            included_in_unit_price=False,
+        ),
         _inv(),
     ]
     result = build_business_case(
@@ -69,7 +76,7 @@ def test_projekt_mit_teilepreis_und_einmalinvestition():
     assert result["teilepreis_je_stueck"] == 12.50
     assert result["einmalinvestitionen_gesamt"] == 50_000.0
     assert result["investitionen_gesamt"] == 250_000.0
-    assert result["preis_inkl_amortisation_je_stueck"] == 22.50
+    assert result["preis_inkl_amortisation_je_stueck"] == 12.50
 
 
 def test_projekt_mit_amortisierter_investition():
@@ -81,6 +88,7 @@ def test_projekt_mit_amortisierter_investition():
     )
     assert result["amortisationsinvestitionen_gesamt"] == 200_000.0
     assert result["amortisationsanteil_je_stueck"] == 10.0
+    assert result["preis_inkl_amortisation_je_stueck"] == 12.50
 
 
 def test_amortisation_20000_ok():
@@ -126,14 +134,15 @@ def test_einmalzahlung_nicht_im_teilepreis():
     assert result["amortisationsanteil_je_stueck"] == 0.0
 
 
-def test_amortisationsanteil_im_teilepreis():
+def test_amortisationsanteil_nicht_im_teilepreis():
     assert compute_cost_per_piece(200_000, "Amortisation", 20_000) == 10.0
     result = build_business_case([_inv()], calc=_calc(), calculation_id=5)
-    assert result["preis_inkl_amortisation_je_stueck"] == 22.50
+    assert result["amortisationsanteil_je_stueck"] == 10.0
+    assert result["preis_inkl_amortisation_je_stueck"] == 12.50
 
 
 def test_filter_standardmaessig_alle():
-    response = client.get("/api/v1/investitionen/business-case")
+    response = client.get("/api/v1/business-cases")
     assert response.status_code == 401
 
 
@@ -161,6 +170,7 @@ def test_business_case_mehrere_investitionen():
     assert result["anzahl_investitionen"] == 3
     assert result["investitionen_gesamt"] == 150_000.0
     assert result["amortisationsanteil_je_stueck"] == 8.0
+    assert result["preis_inkl_amortisation_je_stueck"] == 12.50
 
 
 def test_investition_einzelteil_zuordnen():
@@ -173,7 +183,7 @@ def test_investition_einzelteil_zuordnen():
         project="Projekt Alpha",
         calculation_id=5,
     )
-    assert result["included_in_unit_price"] is True
+    assert result["included_in_unit_price"] is False
 
 
 def test_investition_baugruppe_zuordnen():
@@ -186,7 +196,7 @@ def test_investition_baugruppe_zuordnen():
         project="Projekt Alpha",
         baugruppe_id=3,
     )
-    assert result["included_in_unit_price"] is True
+    assert result["included_in_unit_price"] is False
     bg = BaugruppeSnapshot(
         id=3,
         name="Front",
@@ -199,7 +209,18 @@ def test_investition_baugruppe_zuordnen():
     inv = _inv(baugruppe_id=3, calculation_id=None, cost_per_piece=20.0, amount=80_000, amortization_volume=4_000)
     bc = build_business_case([inv], project="Projekt Alpha", baugruppe=bg, baugruppe_id=3)
     assert bc["baugruppenpreis_je_stueck"] == 25.0
-    assert bc["preis_inkl_amortisation_je_stueck"] == 45.0
+    assert bc["preis_inkl_amortisation_je_stueck"] == 25.0
+
+
+def test_filter_nach_kunde_und_projekt():
+    rows = [
+        _inv(id=1, project_id="Gap Hider", customer="Lucid"),
+        _inv(id=2, project_id="Andere", customer="Lucid"),
+        _inv(id=3, project_id="Gap Hider", customer="Andere"),
+    ]
+    filtered = filter_investitionen(rows, project="Gap Hider", customer="Lucid")
+    assert len(filtered) == 1
+    assert filtered[0].id == 1
 
 
 def test_einmalzahlung_hinweis():

@@ -140,18 +140,7 @@ def validate_spritzguss_input(data: SpritzgussInput) -> None:
     if data.kavitaeten < 1:
         raise SpritzgussValidationError("kavitaeten muss mindestens 1 sein")
 
-    if data.werkzeug_abrechnungsart not in ("amortisation", "einmalzahlung"):
-        raise SpritzgussValidationError(
-            "werkzeug_abrechnungsart muss 'amortisation' oder 'einmalzahlung' sein"
-        )
-
-    if data.werkzeug_abrechnungsart == "amortisation":
-        if not _is_positive_int(data.amortisationsvolumen):
-            raise SpritzgussValidationError(
-                "amortisationsvolumen muss eine positive ganze Zahl >= 1 sein "
-                "(z. B. 1 oder 20000; Dezimalwerte wie 20000.0001 sind ungültig)"
-            )
-    # Bei Einmalzahlung wird amortisationsvolumen ignoriert.
+    # Werkzeugfelder werden für Abwärtskompatibilität gespeichert, aber nicht mehr kalkuliert.
 
 
 def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
@@ -200,16 +189,11 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
     # 8 Fertigungsgemeinkosten
     fertigungsgemeinkosten = _money(fertigungslohn * fgk)
 
-    # 9 Werkzeug: Amortisation → Stückanteil; Einmalzahlung → nicht im Teilepreis
-    if data.werkzeug_abrechnungsart == "amortisation":
-        volumen = int(data.amortisationsvolumen)  # type: ignore[arg-type]
-        werkzeugkostenanteil = _money(werkzeugkosten / _d(volumen))
-        werkzeug_einmalzahlung = _money(Decimal("0"))
-    else:
-        werkzeugkostenanteil = _money(Decimal("0"))
-        werkzeug_einmalzahlung = _money(werkzeugkosten)
+    # 9 Werkzeug – Investitionen werden separat im Business Case geplant (nicht im Teilepreis)
+    werkzeugkostenanteil = _money(Decimal("0"))
+    werkzeug_einmalzahlung = _money(Decimal("0"))
 
-    # 10 Herstellkosten (ohne Einmalzahlung)
+    # 10 Herstellkosten (ohne Investitions-/Werkzeuganteil)
     herstellkosten = _money(
         materialkosten_gesamt
         + maschinenkosten

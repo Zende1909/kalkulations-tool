@@ -101,12 +101,6 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
         ExportRow("Maschine", maschine_name),
         ExportRow("Zykluszeit", f"{obj.zykluszeit_s:.2f} s"),
         ExportRow("Kavitäten", str(obj.kavitaeten)),
-        ExportRow("Werkzeugmodus", _werkzeug_label(obj.werkzeug_abrechnungsart)),
-        ExportRow("Werkzeugkosten", _euro_str(obj.werkzeugkosten_eur)),
-        ExportRow(
-            "Amortisationsvolumen",
-            str(obj.amortisationsvolumen) if obj.amortisationsvolumen else "–",
-        ),
         ExportRow("Jahresstückzahl", str(obj.jahresstueckzahl)),
         ExportRow("MGK", _pct_str(obj.mgk_pct)),
         ExportRow("FGK", _pct_str(obj.fgk_pct)),
@@ -131,13 +125,13 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
         money("Maschinenkosten", "maschinenkosten"),
         money("Fertigungslohn", "fertigungslohn"),
         money("Fertigungsgemeinkosten", "fertigungsgemeinkosten"),
-        money("Werkzeugkostenanteil je Stück", "werkzeugkostenanteil"),
+        money("Spritzguss-Herstellkosten", "spritzguss_herstellkosten"),
         money("Veredelungskosten gesamt", "veredelung_gesamt"),
-        money("Gesamte Herstellkosten", "gesamte_herstellkosten"),
+        money("Herstellkosten gesamt", "gesamte_herstellkosten"),
         money("VVGK", "vvgk"),
         money("Selbstkosten", "selbstkosten"),
         money("Gewinn", "gewinn"),
-        money("Nettoverkaufspreis gesamt", "nettoverkaufspreis_gesamt"),
+        money("Nettoverkaufspreis", "nettoverkaufspreis_gesamt"),
         money("Skonto", "skonto"),
         ExportMoneyRow(
             "Endpreis je Stück",
@@ -178,12 +172,8 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
     ]
 
     werkzeug_hinweis = None
-    if obj.werkzeug_abrechnungsart == "einmalzahlung" and obj.werkzeugkosten_eur > 0:
-        werkzeug_hinweis = "Separat, nicht im Stückpreis enthalten"
-    elif _float_from(ergebnis, "werkzeug_einmalzahlung"):
-        einmal = _float_from(ergebnis, "werkzeug_einmalzahlung") or 0
-        if einmal > 0:
-            werkzeug_hinweis = "Separat, nicht im Stückpreis enthalten"
+    if investitionen:
+        werkzeug_hinweis = "Investitionen separat ausgewiesen, nicht im Stückpreis enthalten"
 
     return SpritzgussExportData(
         company_name=settings.COMPANY_NAME,

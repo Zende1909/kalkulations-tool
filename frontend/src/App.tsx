@@ -7,6 +7,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import {
   BaugruppenPage,
+  BusinessCasePage,
   InvestitionenPage,
   SpritzgussPage,
   VeredelungPage,
@@ -35,6 +36,7 @@ export default function App() {
               <Route path="veredelung" element={<VeredelungPage />} />
               <Route path="baugruppen" element={<BaugruppenPage />} />
               <Route path="investitionen" element={<InvestitionenPage />} />
+              <Route path="business-case" element={<BusinessCasePage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -47,68 +47,31 @@ def test_validate_kavitaeten_min_1():
         validate_spritzguss_input(_sample(kavitaeten=0))
 
 
-def test_amortisationsvolumen_1_valid():
-    validate_spritzguss_input(_sample(amortisationsvolumen=1))
-    result = berechne_spritzguss(_sample(amortisationsvolumen=1, werkzeugkosten_eur=100))
-    assert result.werkzeugkostenanteil == 100.0
-    assert result.werkzeug_einmalzahlung == 0.0
-
-
-def test_amortisationsvolumen_20000_valid():
-    validate_spritzguss_input(_sample(amortisationsvolumen=20000))
-    result = berechne_spritzguss(
-        _sample(amortisationsvolumen=20000, werkzeugkosten_eur=20000)
+def test_werkzeugfelder_beeinflussen_teilepreis_nicht():
+    """Historische Werkzeugwerte werden gespeichert, aber nicht mehr kalkuliert."""
+    result_amort = berechne_spritzguss(
+        _sample(amortisationsvolumen=1, werkzeugkosten_eur=100)
     )
-    assert result.werkzeugkostenanteil == 1.0
+    assert result_amort.werkzeugkostenanteil == 0.0
+    assert result_amort.werkzeug_einmalzahlung == 0.0
 
-
-def test_amortisationsvolumen_0_invalid():
-    with pytest.raises(SpritzgussValidationError, match="positive ganze Zahl"):
-        validate_spritzguss_input(_sample(amortisationsvolumen=0))
-
-
-def test_amortisationsvolumen_decimal_invalid():
-    with pytest.raises(SpritzgussValidationError, match="positive ganze Zahl"):
-        validate_spritzguss_input(_sample(amortisationsvolumen=20000.0001))
-
-
-def test_einmalzahlung_ohne_amortisationsvolumen():
-    validate_spritzguss_input(
-        _sample(werkzeug_abrechnungsart="einmalzahlung", amortisationsvolumen=None)
-    )
-    result = berechne_spritzguss(
+    result_einmal = berechne_spritzguss(
         _sample(
             werkzeug_abrechnungsart="einmalzahlung",
             amortisationsvolumen=None,
             werkzeugkosten_eur=5000,
         )
     )
-    assert result.werkzeugkostenanteil == 0.0
-    assert result.werkzeug_einmalzahlung == 5000.0
+    assert result_einmal.werkzeugkostenanteil == 0.0
+    assert result_einmal.werkzeug_einmalzahlung == 0.0
+    assert result_einmal.herstellkosten == result_amort.herstellkosten
 
 
-def test_amortisation_ohne_volumen_invalid():
-    with pytest.raises(SpritzgussValidationError, match="positive ganze Zahl"):
-        validate_spritzguss_input(
-            _sample(werkzeug_abrechnungsart="amortisation", amortisationsvolumen=None)
-        )
-
-
-def test_werkzeuganteil_bei_amortisation():
-    # 10000 / 10000 = 1.00 → geht in Herstellkosten
+def test_teilepreis_ohne_investitionsanteil():
     result = berechne_spritzguss(_sample())
-    assert result.werkzeugkostenanteil == 1.0
-    assert result.herstellkosten == 2.97
-
-
-def test_teilepreis_ohne_werkzeuganteil_bei_einmalzahlung():
-    # Ohne Werkzeuganteil: Herstellkosten = 1.17+0.50+0.25+0.05+0 = 1.97
-    result = berechne_spritzguss(
-        _sample(werkzeug_abrechnungsart="einmalzahlung", amortisationsvolumen=None)
-    )
     assert result.werkzeugkostenanteil == 0.0
     assert result.herstellkosten == 1.97
-    assert result.verkaufspreis == pytest.approx(2.43, abs=0.01)
+    assert result.verkaufspreis == pytest.approx(2.44, abs=0.01)
 
 
 def test_stufe_1_materialgewicht():
@@ -151,44 +114,44 @@ def test_stufe_8_fertigungsgemeinkosten():
     assert result.fertigungsgemeinkosten == 0.05
 
 
-def test_stufe_9_werkzeugkostenanteil():
+def test_stufe_9_werkzeugkostenanteil_null():
     result = berechne_spritzguss(_sample())
-    assert result.werkzeugkostenanteil == 1.0
+    assert result.werkzeugkostenanteil == 0.0
 
 
 def test_stufe_10_herstellkosten():
     result = berechne_spritzguss(_sample())
-    assert result.herstellkosten == 2.97
+    assert result.herstellkosten == 1.97
 
 
 def test_stufe_11_vvgk():
     result = berechne_spritzguss(_sample())
-    assert result.vvgk == 0.30
+    assert result.vvgk == 0.20
 
 
 def test_stufe_12_selbstkosten():
     result = berechne_spritzguss(_sample())
-    assert result.selbstkosten == 3.27
+    assert result.selbstkosten == 2.17
 
 
 def test_stufe_13_gewinn():
     result = berechne_spritzguss(_sample())
-    assert result.gewinn == 0.33
+    assert result.gewinn == 0.22
 
 
 def test_stufe_14_nettoverkaufspreis():
     result = berechne_spritzguss(_sample())
-    assert result.nettoverkaufspreis == 3.60
+    assert result.nettoverkaufspreis == 2.39
 
 
 def test_stufe_15_skonto():
     result = berechne_spritzguss(_sample())
-    assert result.skonto == 0.07
+    assert result.skonto == 0.05
 
 
 def test_stufe_16_verkaufspreis():
     result = berechne_spritzguss(_sample())
-    assert result.verkaufspreis == 3.67
+    assert result.verkaufspreis == 2.44
 
 
 def test_as_blocks_structure():
@@ -200,4 +163,5 @@ def test_as_blocks_structure():
         "gemeinkosten",
         "verkaufspreis",
     }
-    assert "werkzeug_einmalzahlung" in blocks["werkzeug"]
+    assert blocks["werkzeug"]["werkzeugkostenanteil"] == 0.0
+    assert blocks["werkzeug"]["werkzeug_einmalzahlung"] == 0.0
