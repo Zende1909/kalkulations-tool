@@ -27,7 +27,7 @@ export class NetworkError extends Error {
   }
 }
 
-function getToken(): string | null {
+export function getToken(): string | null {
   return localStorage.getItem("access_token");
 }
 

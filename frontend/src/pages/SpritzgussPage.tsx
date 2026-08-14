@@ -9,7 +9,13 @@ import {
   listKalkulationen,
   updateKalkulation,
 } from "../api/spritzguss";
+import {
+  downloadReport,
+  spritzgussPdfUrl,
+  spritzgussXlsxUrl,
+} from "../api/reports";
 import { listVeredelungsschritte } from "../api/veredelung";
+import { ExportButtons } from "../components/ExportButtons";
 import { useAuth } from "../context/AuthContext";
 import type { Lohnkosten, Maschine, Material } from "../types/stammdaten";
 import type { Veredelungsschritt } from "../types/veredelung";
@@ -168,6 +174,7 @@ export function SpritzgussPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
 
   const setField = <K extends keyof SpritzgussFormData>(key: K, value: SpritzgussFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -506,6 +513,23 @@ export function SpritzgussPage() {
     };
   }, [bloecke]);
 
+  const handleExport = async (format: "pdf" | "xlsx") => {
+    if (editId == null) return;
+    setExportBusy(true);
+    setError(null);
+    try {
+      const nummer = form.teilenummer.trim() || String(editId);
+      const filename = `einzelteil_${nummer}.${format === "pdf" ? "pdf" : "xlsx"}`;
+      const path = format === "pdf" ? spritzgussPdfUrl(editId) : spritzgussXlsxUrl(editId);
+      await downloadReport(path, filename);
+      setSuccess(`Export ${format.toUpperCase()} erfolgreich.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   const handleDelete = async (id: number) => {
     if (!canWrite) return;
     setBusy(true);
@@ -557,6 +581,14 @@ export function SpritzgussPage() {
             >
               Kalkulation speichern
             </button>
+          )}
+          {editId != null && (
+            <ExportButtons
+              busy={exportBusy}
+              disabled={editId == null}
+              onPdf={() => handleExport("pdf")}
+              onExcel={() => handleExport("xlsx")}
+            />
           )}
         </div>
       </div>

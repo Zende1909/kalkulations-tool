@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { getDashboardSummary } from "../api/dashboard";
+import {
+  dashboardPdfUrl,
+  dashboardXlsxUrl,
+  downloadReport,
+} from "../api/reports";
+import { ExportButtons } from "../components/ExportButtons";
 import type { DashboardSummary } from "../types/dashboard";
 
 function euro(value: number | null | undefined): string {
@@ -120,6 +126,7 @@ export function DashboardPage() {
   const [appliedProject, setAppliedProject] = useState<string | undefined>();
   const [appliedCustomer, setAppliedCustomer] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
+  const [exportBusy, setExportBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (project?: string, customer?: string) => {
@@ -155,6 +162,24 @@ export function DashboardPage() {
     setAppliedCustomer(undefined);
   };
 
+  const handleExport = async (format: "pdf" | "xlsx") => {
+    setExportBusy(true);
+    setError(null);
+    try {
+      const projectPart = appliedProject?.replace(/[^\w\-]+/g, "_") || "gesamt";
+      const filename = `dashboard_${projectPart}.${format === "pdf" ? "pdf" : "xlsx"}`;
+      const path =
+        format === "pdf"
+          ? dashboardPdfUrl(appliedProject, appliedCustomer)
+          : dashboardXlsxUrl(appliedProject, appliedCustomer);
+      await downloadReport(path, filename);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   const formatKpi = (key: keyof DashboardSummary["kpis"], format: "int" | "euro" | "avg") => {
     if (!data) return format === "avg" ? "Keine Daten" : "0";
     const value = data.kpis[key];
@@ -172,14 +197,22 @@ export function DashboardPage() {
             Management- und Kalkulationsübersicht für Projekte und Kunden
           </p>
         </div>
-        <button
-          type="button"
-          disabled={loading}
-          onClick={() => load(appliedProject, appliedCustomer)}
-          className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
-        >
-          Aktualisieren
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => load(appliedProject, appliedCustomer)}
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+          >
+            Aktualisieren
+          </button>
+          <ExportButtons
+            busy={exportBusy}
+            disabled={loading}
+            onPdf={() => handleExport("pdf")}
+            onExcel={() => handleExport("xlsx")}
+          />
+        </div>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">

@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     )
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    COMPANY_NAME: str = "Kalkulations-Tool Automotive"
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

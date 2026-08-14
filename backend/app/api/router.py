@@ -8,6 +8,7 @@ from app.api.v1 import (
     lohnkosten,
     maschinen,
     materialien,
+    reports,
     spritzguss,
     users,
     veredelung,
@@ -26,3 +27,4 @@ api_router.include_router(veredelung.router)
 api_router.include_router(kaufteile.router)
 api_router.include_router(baugruppen.router)
 api_router.include_router(dashboard.router)
+api_router.include_router(reports.router)

@@ -8,9 +8,15 @@ import {
   listBaugruppen,
   updateBaugruppe,
 } from "../api/baugruppen";
+import {
+  baugruppePdfUrl,
+  baugruppeXlsxUrl,
+  downloadReport,
+} from "../api/reports";
 import { listKaufteile } from "../api/kaufteile";
 import { listKalkulationen } from "../api/spritzguss";
 import { listVeredelungsschritte } from "../api/veredelung";
+import { ExportButtons } from "../components/ExportButtons";
 import { useAuth } from "../context/AuthContext";
 import type { SpritzgussListItem } from "../types/spritzguss";
 import type { Veredelungsschritt } from "../types/veredelung";
@@ -61,6 +67,7 @@ export function BaugruppenPage() {
   const [bloecke, setBloecke] = useState<BaugruppeBloecke | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -332,6 +339,23 @@ export function BaugruppenPage() {
     }
   };
 
+  const handleExport = async (format: "pdf" | "xlsx") => {
+    if (editId == null) return;
+    setExportBusy(true);
+    setError(null);
+    try {
+      const nummer = form.teilenummer.trim() || form.name.trim() || String(editId);
+      const filename = `baugruppe_${nummer}.${format === "pdf" ? "pdf" : "xlsx"}`;
+      const path = format === "pdf" ? baugruppePdfUrl(editId) : baugruppeXlsxUrl(editId);
+      await downloadReport(path, filename);
+      setSuccess(`Export ${format.toUpperCase()} erfolgreich.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
   const zusammenfassung = bloecke?.zusammenfassung ?? ergebnis;
 
   return (
@@ -369,6 +393,13 @@ export function BaugruppenPage() {
             >
               Baugruppe speichern
             </button>
+          )}
+          {editId != null && (
+            <ExportButtons
+              busy={exportBusy}
+              onPdf={() => handleExport("pdf")}
+              onExcel={() => handleExport("xlsx")}
+            />
           )}
         </div>
       </div>
