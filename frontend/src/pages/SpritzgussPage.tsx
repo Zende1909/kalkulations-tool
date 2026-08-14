@@ -9,15 +9,26 @@ import {
   listKalkulationen,
   updateKalkulation,
 } from "../api/spritzguss";
+import { listVeredelungsschritte } from "../api/veredelung";
 import { useAuth } from "../context/AuthContext";
 import type { Lohnkosten, Maschine, Material } from "../types/stammdaten";
+import type { Veredelungsschritt } from "../types/veredelung";
 import {
   emptySpritzgussForm,
   type SpritzgussBloecke,
   type SpritzgussFormData,
   type SpritzgussListItem,
+  type VeredelungZuordnung,
+  type VeredelungZuordnungInput,
   type WerkzeugAbrechnungsart,
 } from "../types/spritzguss";
+
+interface SelectedVeredelung extends VeredelungZuordnungInput {
+  bezeichnung: string;
+  veredelungsart: string;
+  kosten_inkl_ausschuss: number;
+  kosten_gesamt?: number;
+}
 
 function euro(value: number | undefined | null): string {
   if (value == null || Number.isNaN(value)) return "–";
@@ -31,9 +42,35 @@ const BLOCK_LABELS: Record<string, string> = {
   material: "Material",
   fertigung: "Fertigung",
   werkzeug: "Werkzeug",
+  veredelung: "Veredelung",
   gemeinkosten: "Gemeinkosten / Selbstkosten",
-  verkaufspreis: "Verkaufspreis",
+  verkaufspreis: "Verkaufspreis (Spritzguss)",
 };
+
+const DETAIL_BLOCK_ORDER = [
+  "material",
+  "fertigung",
+  "werkzeug",
+  "veredelung",
+  "gemeinkosten",
+  "verkaufspreis",
+] as const;
+
+const ERGEBNISUEBERSICHT: Array<{
+  key: string;
+  label: string;
+  highlight?: boolean;
+}> = [
+  { key: "spritzguss_herstellkosten", label: "Spritzguss-Herstellkosten (€)" },
+  { key: "veredelung_gesamt", label: "Veredelungskosten gesamt (€)" },
+  { key: "gesamte_herstellkosten", label: "Gesamte Herstellkosten (€)" },
+  { key: "vvgk", label: "VVGK (€)" },
+  { key: "selbstkosten", label: "Selbstkosten (€)" },
+  { key: "gewinn", label: "Gewinn (€)" },
+  { key: "nettoverkaufspreis_gesamt", label: "Nettoverkaufspreis gesamt (€)" },
+  { key: "skonto", label: "Skonto (€)" },
+  { key: "endpreis_je_stueck", label: "Endpreis je Stück (€)", highlight: true },
+];
 
 const FIELD_LABELS: Record<string, string> = {
   materialgewicht_kg: "Materialgewicht je Gutteil (kg)",
@@ -52,8 +89,19 @@ const FIELD_LABELS: Record<string, string> = {
   gewinn: "Gewinn (€)",
   nettoverkaufspreis: "Nettoverkaufspreis (€)",
   skonto: "Skonto (€)",
-  verkaufspreis: "Verkaufspreis (€)",
+  verkaufspreis: "Spritzguss-Verkaufspreis (€)",
 };
+
+function veredelungDetailLabel(
+  field: string,
+  selectedVeredelung: SelectedVeredelung[],
+): string {
+  if (field === "veredelung_gesamt") return "Veredelungskosten gesamt (€)";
+  const match = /^schritt_(\d+)$/.exec(field);
+  if (!match) return field;
+  const schritt = selectedVeredelung.find((s) => s.reihenfolge === Number(match[1]));
+  return schritt ? `${schritt.bezeichnung} (€)` : `Veredelungsschritt ${match[1]} (€)`;
+}
 
 function NumberInput({
   label,
@@ -114,6 +162,8 @@ export function SpritzgussPage() {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [machines, setMachines] = useState<Maschine[]>([]);
   const [lohns, setLohns] = useState<Lohnkosten[]>([]);
+  const [veredelungPool, setVeredelungPool] = useState<Veredelungsschritt[]>([]);
+  const [selectedVeredelung, setSelectedVeredelung] = useState<SelectedVeredelung[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -123,14 +173,16 @@ export function SpritzgussPage() {
   };
 
   const loadStammdaten = useCallback(async () => {
-    const [mats, masch, lohn] = await Promise.all([
+    const [mats, masch, lohn, veredelung] = await Promise.all([
       api.get<Material[]>("/materialien"),
       api.get<Maschine[]>("/maschinen"),
       api.get<Lohnkosten[]>("/lohnkosten"),
+      listVeredelungsschritte(),
     ]);
     setMaterials(mats.filter((m) => m.aktiv));
     setMachines(masch.filter((m) => m.aktiv));
     setLohns(lohn.filter((l) => l.aktiv));
+    setVeredelungPool(veredelung.filter((v) => v.aktiv));
   }, []);
 
   const loadList = useCallback(async () => {
@@ -143,6 +195,17 @@ export function SpritzgussPage() {
       setError(err instanceof Error ? err.message : "Stammdaten konnten nicht geladen werden");
     });
   }, [loadList, loadStammdaten]);
+
+  const veredelungZuordnungen = useMemo<VeredelungZuordnungInput[]>(
+    () =>
+      selectedVeredelung.map((s) => ({
+        veredelungsschritt_id: s.veredelungsschritt_id,
+        reihenfolge: s.reihenfolge,
+        aktiv: s.aktiv,
+        mengenfaktor: s.mengenfaktor,
+      })),
+    [selectedVeredelung],
+  );
 
   const calcPayload = useMemo(
     () => ({
@@ -164,9 +227,89 @@ export function SpritzgussPage() {
       vvgk_pct: form.vvgk_pct,
       gewinn_pct: form.gewinn_pct,
       skonto_pct: form.skonto_pct,
+      veredelung_zuordnungen: veredelungZuordnungen,
     }),
-    [form],
+    [form, veredelungZuordnungen],
   );
+
+  const veredelungGesamtAktiv = useMemo(
+    () =>
+      selectedVeredelung
+        .filter((s) => s.aktiv)
+        .reduce((sum, s) => sum + (s.kosten_gesamt ?? s.kosten_inkl_ausschuss * s.mengenfaktor), 0),
+    [selectedVeredelung],
+  );
+
+  const addVeredelungSchritt = (schritt: Veredelungsschritt) => {
+    if (selectedVeredelung.some((s) => s.veredelungsschritt_id === schritt.id)) return;
+    const nextOrder =
+      selectedVeredelung.length === 0
+        ? 1
+        : Math.max(...selectedVeredelung.map((s) => s.reihenfolge)) + 1;
+    setSelectedVeredelung((current) => [
+      ...current,
+      {
+        veredelungsschritt_id: schritt.id,
+        bezeichnung: schritt.bezeichnung,
+        veredelungsart: schritt.veredelungsart,
+        reihenfolge: nextOrder,
+        aktiv: true,
+        mengenfaktor: 1,
+        kosten_inkl_ausschuss: schritt.kosten_inkl_ausschuss,
+      },
+    ]);
+  };
+
+  const removeVeredelungSchritt = (id: number) => {
+    setSelectedVeredelung((current) => {
+      const filtered = current.filter((s) => s.veredelungsschritt_id !== id);
+      return filtered
+        .sort((a, b) => a.reihenfolge - b.reihenfolge)
+        .map((s, index) => ({ ...s, reihenfolge: index + 1 }));
+    });
+  };
+
+  const moveVeredelung = (id: number, direction: "up" | "down") => {
+    setSelectedVeredelung((current) => {
+      const sorted = [...current].sort((a, b) => a.reihenfolge - b.reihenfolge);
+      const index = sorted.findIndex((s) => s.veredelungsschritt_id === id);
+      if (index < 0) return current;
+      const swapWith = direction === "up" ? index - 1 : index + 1;
+      if (swapWith < 0 || swapWith >= sorted.length) return current;
+      const tmp = sorted[index].reihenfolge;
+      sorted[index] = { ...sorted[index], reihenfolge: sorted[swapWith].reihenfolge };
+      sorted[swapWith] = { ...sorted[swapWith], reihenfolge: tmp };
+      return sorted;
+    });
+  };
+
+  const updateSelectedFromResponse = (
+    zuordnungen: VeredelungZuordnung[] | undefined,
+  ) => {
+    if (!zuordnungen?.length) return;
+    setSelectedVeredelung(
+      zuordnungen
+        .map((z) => ({
+          veredelungsschritt_id: z.veredelungsschritt_id,
+          bezeichnung: z.snapshot_bezeichnung,
+          veredelungsart: z.snapshot_veredelungsart,
+          reihenfolge: z.reihenfolge,
+          aktiv: z.aktiv,
+          mengenfaktor: z.mengenfaktor,
+          kosten_inkl_ausschuss: z.snapshot_kosten_inkl_ausschuss,
+          kosten_gesamt: z.kosten_gesamt,
+        }))
+        .sort((a, b) => a.reihenfolge - b.reihenfolge),
+    );
+  };
+
+  const loadVeredelungFromSaved = (zuordnungen: VeredelungZuordnung[] | undefined) => {
+    if (!zuordnungen?.length) {
+      setSelectedVeredelung([]);
+      return;
+    }
+    updateSelectedFromResponse(zuordnungen);
+  };
 
   const handleMaterialChange = (id: string) => {
     if (!id) {
@@ -225,6 +368,7 @@ export function SpritzgussPage() {
       }
       const result = await berechnen(calcPayload);
       setBloecke(result.bloecke);
+      updateSelectedFromResponse(result.veredelung_zuordnungen);
       setSuccess("Berechnung erfolgreich.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Berechnung fehlgeschlagen");
@@ -254,6 +398,7 @@ export function SpritzgussPage() {
           form.werkzeug_abrechnungsart === "amortisation"
             ? form.amortisationsvolumen
             : null,
+        veredelung_zuordnungen: veredelungZuordnungen,
       };
       const saved =
         editId == null
@@ -261,6 +406,7 @@ export function SpritzgussPage() {
           : await updateKalkulation(editId, payload);
       setEditId(saved.id);
       setBloecke((saved.ergebnis_bloecke as SpritzgussBloecke) ?? null);
+      loadVeredelungFromSaved(saved.veredelung_zuordnungen);
       setSuccess(editId == null ? "Kalkulation gespeichert." : "Kalkulation aktualisiert.");
       await loadList();
     } catch (err) {
@@ -311,6 +457,7 @@ export function SpritzgussPage() {
         aktiv: item.aktiv,
       });
       setBloecke((item.ergebnis_bloecke as SpritzgussBloecke) ?? null);
+      loadVeredelungFromSaved(item.veredelung_zuordnungen);
       setSuccess(`Kalkulation #${item.id} geladen.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Laden fehlgeschlagen");
@@ -322,10 +469,31 @@ export function SpritzgussPage() {
   const handleNew = () => {
     setEditId(null);
     setForm(emptySpritzgussForm());
+    setSelectedVeredelung([]);
     setBloecke(null);
     setSuccess(null);
     setError(null);
   };
+
+  const ergebnisUebersicht = useMemo(() => {
+    if (!bloecke) return null;
+    if (bloecke.zusammenfassung) return bloecke.zusammenfassung;
+    const g = bloecke.gemeinkosten;
+    const v = bloecke.verkaufspreis;
+    if (!g || !v) return null;
+    const hk = g.herstellkosten ?? 0;
+    return {
+      spritzguss_herstellkosten: hk,
+      veredelung_gesamt: 0,
+      gesamte_herstellkosten: hk,
+      vvgk: g.vvgk ?? 0,
+      selbstkosten: g.selbstkosten ?? 0,
+      gewinn: g.gewinn ?? 0,
+      nettoverkaufspreis_gesamt: v.nettoverkaufspreis ?? 0,
+      skonto: v.skonto ?? 0,
+      endpreis_je_stueck: v.verkaufspreis ?? 0,
+    };
+  }, [bloecke]);
 
   const handleDelete = async (id: number) => {
     if (!canWrite) return;
@@ -619,6 +787,126 @@ export function SpritzgussPage() {
             </div>
           </section>
           <section className="rounded-lg border border-gray-200 bg-white p-4">
+            <h3 className="mb-3 font-semibold text-gray-900">Veredelungsschritte</h3>
+            <p className="mb-3 text-sm text-gray-600">
+              Aktive Veredelungsschritte auswählen und in der gewünschten Reihenfolge anordnen.
+            </p>
+
+            {veredelungPool.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                Keine aktiven Veredelungsschritte vorhanden. Bitte zuerst unter Veredelung anlegen.
+              </p>
+            ) : (
+              <div className="mb-4 flex flex-wrap gap-2">
+                {veredelungPool
+                  .filter(
+                    (s) =>
+                      !selectedVeredelung.some((sel) => sel.veredelungsschritt_id === s.id),
+                  )
+                  .map((schritt) => (
+                    <button
+                      key={schritt.id}
+                      type="button"
+                      disabled={!canWrite}
+                      onClick={() => addVeredelungSchritt(schritt)}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      + {schritt.bezeichnung} ({schritt.veredelungsart})
+                    </button>
+                  ))}
+              </div>
+            )}
+
+            {selectedVeredelung.length === 0 ? (
+              <p className="text-sm text-gray-500">Keine Veredelungsschritte ausgewählt.</p>
+            ) : (
+              <ul className="space-y-2">
+                {[...selectedVeredelung]
+                  .sort((a, b) => a.reihenfolge - b.reihenfolge)
+                  .map((schritt) => (
+                    <li
+                      key={schritt.veredelungsschritt_id}
+                      className="flex flex-wrap items-center gap-3 rounded border border-gray-100 bg-gray-50 px-3 py-2 text-sm"
+                    >
+                      <span className="font-medium text-gray-500">#{schritt.reihenfolge}</span>
+                      <span className="font-medium text-gray-900">{schritt.bezeichnung}</span>
+                      <span className="text-gray-500">{schritt.veredelungsart}</span>
+                      <span className="tabular-nums text-gray-700">
+                        {euro(schritt.kosten_gesamt ?? schritt.kosten_inkl_ausschuss * schritt.mengenfaktor)} €
+                      </span>
+                      <label className="inline-flex items-center gap-1 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={schritt.aktiv}
+                          disabled={!canWrite}
+                          onChange={(e) =>
+                            setSelectedVeredelung((current) =>
+                              current.map((s) =>
+                                s.veredelungsschritt_id === schritt.veredelungsschritt_id
+                                  ? { ...s, aktiv: e.target.checked }
+                                  : s,
+                              ),
+                            )
+                          }
+                        />
+                        aktiv
+                      </label>
+                      <label className="inline-flex items-center gap-1 text-xs">
+                        Faktor
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          disabled={!canWrite}
+                          value={schritt.mengenfaktor}
+                          onChange={(e) =>
+                            setSelectedVeredelung((current) =>
+                              current.map((s) =>
+                                s.veredelungsschritt_id === schritt.veredelungsschritt_id
+                                  ? { ...s, mengenfaktor: Number(e.target.value) }
+                                  : s,
+                              ),
+                            )
+                          }
+                          className="w-16 rounded border border-gray-300 px-1 py-0.5"
+                        />
+                      </label>
+                      {canWrite && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => moveVeredelung(schritt.veredelungsschritt_id, "up")}
+                            className="rounded border border-slate-300 px-2 py-0.5 text-xs"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveVeredelung(schritt.veredelungsschritt_id, "down")}
+                            className="rounded border border-slate-300 px-2 py-0.5 text-xs"
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeVeredelungSchritt(schritt.veredelungsschritt_id)}
+                            className="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700"
+                          >
+                            Entfernen
+                          </button>
+                        </>
+                      )}
+                    </li>
+                  ))}
+              </ul>
+            )}
+
+            <p className="mt-3 text-sm">
+              <span className="text-gray-600">Veredelungskosten gesamt (aktiv): </span>
+              <span className="font-semibold tabular-nums">{euro(veredelungGesamtAktiv)} €</span>
+            </p>
+          </section>
+          <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 font-semibold text-gray-900">Zuschläge (%)</h3>
             <div className="grid gap-3 md:grid-cols-3">
               <NumberInput label="MGK %" value={form.mgk_pct} min={0} onChange={(v) => setField("mgk_pct", v)} />
@@ -647,34 +935,41 @@ export function SpritzgussPage() {
               <p className="text-sm text-gray-500">Noch keine Berechnung. „Berechnen“ oder „Speichern“ wählen.</p>
             ) : (
               <div className="space-y-4">
-                {Object.entries(bloecke).map(([blockKey, fields]) => (
-                  <div key={blockKey}>
-                    <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-600">
-                      {BLOCK_LABELS[blockKey] ?? blockKey}
+                {ergebnisUebersicht && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
+                      Ergebnisübersicht
                     </h4>
+                    {Number(ergebnisUebersicht.veredelung_gesamt ?? 0) > 0 && (
+                      <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                        Hinweis (klärungsbedürftig): VVGK, Gewinn und Skonto werden derzeit nur
+                        auf die Spritzguss-Herstellkosten berechnet. Veredelungskosten werden dem
+                        Spritzguss-Verkaufspreis addiert (Variante A). Ob die Excel-Kalkulation
+                        Variante B (Zuschläge auf gesamte Herstellkosten) vorsieht, ist im Code
+                        nicht hinterlegt.
+                      </p>
+                    )}
                     <dl className="space-y-1 text-sm">
-                      {Object.entries(fields).map(([field, value]) => {
-                        if (
-                          blockKey === "werkzeug" &&
-                          form.werkzeug_abrechnungsart === "amortisation" &&
-                          field === "werkzeug_einmalzahlung"
-                        ) {
-                          return null;
-                        }
-                        if (
-                          blockKey === "werkzeug" &&
-                          form.werkzeug_abrechnungsart === "einmalzahlung" &&
-                          field === "werkzeugkostenanteil"
-                        ) {
-                          return null;
-                        }
+                      {ERGEBNISUEBERSICHT.map(({ key, label, highlight }) => {
+                        const value = ergebnisUebersicht[key];
+                        if (value == null) return null;
                         return (
                           <div
-                            key={field}
-                            className="flex justify-between gap-3 border-b border-gray-100 py-1"
+                            key={key}
+                            className={`flex justify-between gap-3 border-b py-1.5 ${
+                              highlight
+                                ? "border-slate-300 bg-white px-2 -mx-2 rounded font-semibold"
+                                : "border-gray-100"
+                            }`}
                           >
-                            <dt className="text-gray-600">{FIELD_LABELS[field] ?? field}</dt>
-                            <dd className="font-medium tabular-nums text-gray-900">
+                            <dt className={highlight ? "text-slate-900" : "text-gray-600"}>
+                              {label}
+                            </dt>
+                            <dd
+                              className={`tabular-nums ${
+                                highlight ? "text-lg text-slate-900" : "font-medium text-gray-900"
+                              }`}
+                            >
                               {euro(typeof value === "number" ? value : Number(value))}
                             </dd>
                           </div>
@@ -682,7 +977,57 @@ export function SpritzgussPage() {
                       })}
                     </dl>
                   </div>
-                ))}
+                )}
+
+                <div className="border-t border-gray-200 pt-4">
+                  <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Detailbereiche
+                  </h4>
+                  {DETAIL_BLOCK_ORDER.filter((blockKey) => bloecke[blockKey]).map((blockKey) => {
+                    const fields = bloecke[blockKey];
+                    if (!fields) return null;
+                    return (
+                      <div key={blockKey} className="mb-4">
+                        <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-600">
+                          {BLOCK_LABELS[blockKey] ?? blockKey}
+                        </h4>
+                        <dl className="space-y-1 text-sm">
+                          {Object.entries(fields).map(([field, value]) => {
+                            if (
+                              blockKey === "werkzeug" &&
+                              form.werkzeug_abrechnungsart === "amortisation" &&
+                              field === "werkzeug_einmalzahlung"
+                            ) {
+                              return null;
+                            }
+                            if (
+                              blockKey === "werkzeug" &&
+                              form.werkzeug_abrechnungsart === "einmalzahlung" &&
+                              field === "werkzeugkostenanteil"
+                            ) {
+                              return null;
+                            }
+                            const label =
+                              blockKey === "veredelung"
+                                ? veredelungDetailLabel(field, selectedVeredelung)
+                                : FIELD_LABELS[field] ?? field;
+                            return (
+                              <div
+                                key={field}
+                                className="flex justify-between gap-3 border-b border-gray-100 py-1"
+                              >
+                                <dt className="text-gray-600">{label}</dt>
+                                <dd className="font-medium tabular-nums text-gray-900">
+                                  {euro(typeof value === "number" ? value : Number(value))}
+                                </dd>
+                              </div>
+                            );
+                          })}
+                        </dl>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </section>

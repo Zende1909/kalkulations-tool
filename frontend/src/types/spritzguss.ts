@@ -1,3 +1,19 @@
+export interface VeredelungZuordnungInput {
+  veredelungsschritt_id: number;
+  reihenfolge: number;
+  aktiv: boolean;
+  mengenfaktor: number;
+}
+
+export interface VeredelungZuordnung extends VeredelungZuordnungInput {
+  id: number;
+  kalkulation_id: number;
+  snapshot_bezeichnung: string;
+  snapshot_veredelungsart: string;
+  snapshot_kosten_inkl_ausschuss: number;
+  kosten_gesamt: number;
+}
+
 export interface SpritzgussErgebnis {
   materialgewicht_kg: number;
   materialkosten: number;
@@ -16,6 +32,19 @@ export interface SpritzgussErgebnis {
   nettoverkaufspreis: number;
   skonto: number;
   verkaufspreis: number;
+  spritzguss_gesamt?: number;
+  veredelung_gesamt?: number;
+  endpreis_je_stueck?: number;
+  veredelung_schritte?: Array<{
+    veredelungsschritt_id: number;
+    bezeichnung: string;
+    veredelungsart: string;
+    reihenfolge: number;
+    aktiv: boolean;
+    mengenfaktor: number;
+    kosten_inkl_ausschuss: number;
+    kosten_gesamt: number;
+  }>;
 }
 
 export interface SpritzgussBloecke {
@@ -24,11 +53,14 @@ export interface SpritzgussBloecke {
   werkzeug: Record<string, number>;
   gemeinkosten: Record<string, number>;
   verkaufspreis: Record<string, number>;
+  veredelung?: Record<string, number>;
+  zusammenfassung?: Record<string, number>;
 }
 
 export interface SpritzgussCalcResponse {
   ergebnis: SpritzgussErgebnis;
   bloecke: SpritzgussBloecke;
+  veredelung_zuordnungen?: VeredelungZuordnung[];
 }
 
 export type WerkzeugAbrechnungsart = "amortisation" | "einmalzahlung";
@@ -72,6 +104,7 @@ export interface SpritzgussKalkulation extends SpritzgussFormData {
   id: number;
   ergebnis: SpritzgussErgebnis | null;
   ergebnis_bloecke: SpritzgussBloecke | null;
+  veredelung_zuordnungen?: VeredelungZuordnung[];
   created_at: string;
   updated_at: string;
 }

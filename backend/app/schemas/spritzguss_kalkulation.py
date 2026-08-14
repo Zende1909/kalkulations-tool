@@ -3,6 +3,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.spritzguss_veredelung import VeredelungZuordnungInput, VeredelungZuordnungRead
+
 WerkzeugAbrechnungsart = Literal["amortisation", "einmalzahlung"]
 
 
@@ -76,6 +78,7 @@ class SpritzgussCalcRequest(BaseModel):
     vvgk_pct: float = Field(ge=0)
     gewinn_pct: float = Field(ge=0)
     skonto_pct: float = Field(ge=0)
+    veredelung_zuordnungen: list[VeredelungZuordnungInput] = Field(default_factory=list)
 
     @field_validator("amortisationsvolumen", mode="before")
     @classmethod
@@ -115,11 +118,16 @@ class SpritzgussErgebnisSchema(BaseModel):
     nettoverkaufspreis: float
     skonto: float
     verkaufspreis: float
+    spritzguss_gesamt: float | None = None
+    veredelung_gesamt: float = 0
+    endpreis_je_stueck: float | None = None
+    veredelung_schritte: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SpritzgussCalcResponse(BaseModel):
     ergebnis: SpritzgussErgebnisSchema
     bloecke: dict[str, dict[str, float]]
+    veredelung_zuordnungen: list[VeredelungZuordnungRead] = Field(default_factory=list)
 
 
 class SpritzgussKalkulationBase(BaseModel):
@@ -176,7 +184,7 @@ class SpritzgussKalkulationBase(BaseModel):
 
 
 class SpritzgussKalkulationCreate(SpritzgussKalkulationBase):
-    pass
+    veredelung_zuordnungen: list[VeredelungZuordnungInput] = Field(default_factory=list)
 
 
 class SpritzgussKalkulationUpdate(BaseModel):
@@ -212,6 +220,7 @@ class SpritzgussKalkulationUpdate(BaseModel):
 
     notizen: str | None = None
     aktiv: bool | None = None
+    veredelung_zuordnungen: list[VeredelungZuordnungInput] | None = None
 
     @field_validator("amortisationsvolumen", mode="before")
     @classmethod
@@ -227,6 +236,7 @@ class SpritzgussKalkulationRead(SpritzgussKalkulationBase):
     id: int
     ergebnis: dict[str, Any] | None = None
     ergebnis_bloecke: dict[str, Any] | None = None
+    veredelung_zuordnungen: list[VeredelungZuordnungRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

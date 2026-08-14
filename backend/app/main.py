@@ -13,6 +13,7 @@ from app.models import (  # noqa: F401
     Maschine,
     Material,
     SpritzgussKalkulation,
+    SpritzgussVeredelungZuordnung,
     User,
     Veredelungsschritt,
     Zuschlagssatz,

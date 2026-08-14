@@ -6,7 +6,9 @@ from app.core.permissions import require_kalkulator, require_viewer
 from app.database import get_db
 from app.models.investition import Investition
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
+from app.models.spritzguss_veredelung_zuordnung import SpritzgussVeredelungZuordnung
 from app.models.user import User
+from app.models.veredelungsschritt import Veredelungsschritt
 from app.schemas.spritzguss_kalkulation import (
     SpritzgussCalcRequest,
     SpritzgussCalcResponse,
@@ -16,17 +18,30 @@ from app.schemas.spritzguss_kalkulation import (
     SpritzgussKalkulationRead,
     SpritzgussKalkulationUpdate,
 )
+from app.schemas.spritzguss_veredelung import (
+    VeredelungReihenfolgeUpdate,
+    VeredelungZuordnungInput,
+    VeredelungZuordnungRead,
+    VeredelungZuordnungUpdate,
+)
+from app.services.spritzguss_gesamt_kalkulation import (
+    GesamtValidationError,
+    VeredelungSchrittEingabe,
+    berechne_gesamt,
+)
 from app.services.spritzguss_kalkulation import (
     SpritzgussInput,
     SpritzgussValidationError,
     berechne_spritzguss,
 )
+from app.services.veredelung_kalkulation import berechne_veredelung
+from app.services.veredelung_kalkulation import VeredelungInput as VeredelungCalcInput
 
 router = APIRouter(prefix="/spritzguss", tags=["Spritzguss-Kalkulation"])
 
 
 def _to_calc_input_from_request(body: SpritzgussCalcRequest) -> SpritzgussInput:
-    data = body.model_dump()
+    data = body.model_dump(exclude={"veredelung_zuordnungen"})
     return SpritzgussInput(**data)
 
 
@@ -57,23 +72,282 @@ def _to_calc_input_from_model(obj: SpritzgussKalkulation) -> SpritzgussInput:
     )
 
 
-def _run_calculation(calc_input: SpritzgussInput) -> SpritzgussCalcResponse:
+def _live_kosten_fuer_veredelungsschritt(schritt: Veredelungsschritt) -> float:
+    kosten = berechne_veredelung(
+        VeredelungCalcInput(
+            taktzeit_s=schritt.taktzeit_s,
+            anzahl_mitarbeiter=schritt.anzahl_mitarbeiter,
+            lohnstundensatz=schritt.lohnstundensatz,
+            maschinenstundensatz=schritt.maschinenstundensatz,
+            verbrauchskosten_je_stueck=schritt.verbrauchskosten_je_stueck,
+            ausschussquote_pct=schritt.ausschussquote_pct,
+            fgk_pct=schritt.fgk_pct,
+            reihenfolge=schritt.reihenfolge,
+        )
+    )
+    return kosten.kosten_inkl_ausschuss
+
+
+def _resolve_veredelung_eingaben(
+    db: Session,
+    zuordnungen: list[VeredelungZuordnungInput],
+    *,
+    use_snapshots: bool,
+    kalkulation_id: int | None = None,
+) -> list[VeredelungSchrittEingabe]:
+    if not zuordnungen:
+        return []
+
+    snapshot_map: dict[int, SpritzgussVeredelungZuordnung] = {}
+    if use_snapshots and kalkulation_id is not None:
+        rows = db.scalars(
+            select(SpritzgussVeredelungZuordnung).where(
+                SpritzgussVeredelungZuordnung.kalkulation_id == kalkulation_id
+            )
+        ).all()
+        snapshot_map = {row.veredelungsschritt_id: row for row in rows}
+
+    eingaben: list[VeredelungSchrittEingabe] = []
+    for zuordnung in zuordnungen:
+        schritt = db.get(Veredelungsschritt, zuordnung.veredelungsschritt_id)
+        if not schritt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Veredelungsschritt {zuordnung.veredelungsschritt_id} nicht gefunden",
+            )
+        if not use_snapshots and not schritt.aktiv:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Veredelungsschritt '{schritt.bezeichnung}' ist inaktiv",
+            )
+
+        snapshot = snapshot_map.get(zuordnung.veredelungsschritt_id)
+        if use_snapshots and snapshot is not None:
+            kosten = snapshot.snapshot_kosten_inkl_ausschuss
+            bezeichnung = snapshot.snapshot_bezeichnung
+            art = snapshot.snapshot_veredelungsart
+        else:
+            kosten = _live_kosten_fuer_veredelungsschritt(schritt)
+            bezeichnung = schritt.bezeichnung
+            art = schritt.veredelungsart
+
+        eingaben.append(
+            VeredelungSchrittEingabe(
+                veredelungsschritt_id=zuordnung.veredelungsschritt_id,
+                bezeichnung=bezeichnung,
+                veredelungsart=art,
+                reihenfolge=zuordnung.reihenfolge,
+                aktiv=zuordnung.aktiv,
+                mengenfaktor=zuordnung.mengenfaktor,
+                kosten_inkl_ausschuss=kosten,
+            )
+        )
+    return eingaben
+
+
+def _zuordnung_read(
+    row: SpritzgussVeredelungZuordnung,
+    *,
+    kosten_gesamt: float | None = None,
+) -> VeredelungZuordnungRead:
+    if kosten_gesamt is None:
+        kosten_gesamt = (
+            row.snapshot_kosten_inkl_ausschuss * row.mengenfaktor if row.aktiv else 0.0
+        )
+    return VeredelungZuordnungRead(
+        id=row.id,
+        kalkulation_id=row.kalkulation_id,
+        veredelungsschritt_id=row.veredelungsschritt_id,
+        reihenfolge=row.reihenfolge,
+        aktiv=row.aktiv,
+        mengenfaktor=row.mengenfaktor,
+        snapshot_bezeichnung=row.snapshot_bezeichnung,
+        snapshot_veredelungsart=row.snapshot_veredelungsart,
+        snapshot_kosten_inkl_ausschuss=row.snapshot_kosten_inkl_ausschuss,
+        kosten_gesamt=kosten_gesamt,
+    )
+
+
+def _load_zuordnungen(db: Session, kalkulation_id: int) -> list[SpritzgussVeredelungZuordnung]:
+    return list(
+        db.scalars(
+            select(SpritzgussVeredelungZuordnung)
+            .where(SpritzgussVeredelungZuordnung.kalkulation_id == kalkulation_id)
+            .order_by(
+                SpritzgussVeredelungZuordnung.reihenfolge.asc(),
+                SpritzgussVeredelungZuordnung.id.asc(),
+            )
+        ).all()
+    )
+
+
+def _sync_veredelung_zuordnungen(
+    db: Session,
+    obj: SpritzgussKalkulation,
+    zuordnungen: list[VeredelungZuordnungInput],
+) -> list[SpritzgussVeredelungZuordnung]:
+    """Ersetzt Zuordnungen und speichert Kosten-Snapshots."""
+    for existing in _load_zuordnungen(db, obj.id):
+        db.delete(existing)
+    db.flush()
+
+    created: list[SpritzgussVeredelungZuordnung] = []
+    for zuordnung in zuordnungen:
+        schritt = db.get(Veredelungsschritt, zuordnung.veredelungsschritt_id)
+        if not schritt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Veredelungsschritt {zuordnung.veredelungsschritt_id} nicht gefunden",
+            )
+        kosten = _live_kosten_fuer_veredelungsschritt(schritt)
+        row = SpritzgussVeredelungZuordnung(
+            kalkulation_id=obj.id,
+            veredelungsschritt_id=zuordnung.veredelungsschritt_id,
+            reihenfolge=zuordnung.reihenfolge,
+            aktiv=zuordnung.aktiv,
+            mengenfaktor=zuordnung.mengenfaktor,
+            snapshot_bezeichnung=schritt.bezeichnung,
+            snapshot_veredelungsart=schritt.veredelungsart,
+            snapshot_kosten_inkl_ausschuss=kosten,
+        )
+        db.add(row)
+        created.append(row)
+    db.flush()
+    return created
+
+
+def _build_calc_response(
+    db: Session,
+    calc_input: SpritzgussInput,
+    zuordnungen: list[VeredelungZuordnungInput],
+    *,
+    use_snapshots: bool = False,
+    kalkulation_id: int | None = None,
+    saved_rows: list[SpritzgussVeredelungZuordnung] | None = None,
+) -> SpritzgussCalcResponse:
     try:
-        ergebnis = berechne_spritzguss(calc_input)
+        spritzguss = berechne_spritzguss(calc_input)
     except SpritzgussValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
+
+    spritzguss_dict = spritzguss.to_dict()
+    bloecke = spritzguss.as_blocks()
+
+    try:
+        veredelung_eingaben = _resolve_veredelung_eingaben(
+            db,
+            zuordnungen,
+            use_snapshots=use_snapshots,
+            kalkulation_id=kalkulation_id,
+        )
+        gesamt = berechne_gesamt(spritzguss_dict, veredelung_eingaben)
+    except GesamtValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+    ergebnis_dict = {**spritzguss_dict, **gesamt.to_dict()}
+    # verkaufspreis bleibt der reine Spritzguss-Anteil; Endpreis separat
+
+    bloecke["zusammenfassung"] = gesamt.as_ergebnisuebersicht()
+    if gesamt.veredelung_gesamt > 0 or gesamt.veredelung_schritte:
+        bloecke["veredelung"] = gesamt.as_veredelung_block()
+
+    zuordnung_reads: list[VeredelungZuordnungRead] = []
+    if saved_rows is not None:
+        kosten_map = {
+            s.veredelungsschritt_id: s.kosten_gesamt for s in gesamt.veredelung_schritte
+        }
+        zuordnung_reads = [
+            _zuordnung_read(row, kosten_gesamt=kosten_map.get(row.veredelungsschritt_id, 0))
+            for row in saved_rows
+        ]
+    elif zuordnungen:
+        kosten_map = {
+            s.veredelungsschritt_id: s.kosten_gesamt for s in gesamt.veredelung_schritte
+        }
+        for z in sorted(zuordnungen, key=lambda x: x.reihenfolge):
+            schritt = next(s for s in gesamt.veredelung_schritte if s.veredelungsschritt_id == z.veredelungsschritt_id)
+            zuordnung_reads.append(
+                VeredelungZuordnungRead(
+                    id=0,
+                    kalkulation_id=kalkulation_id or 0,
+                    veredelungsschritt_id=z.veredelungsschritt_id,
+                    reihenfolge=z.reihenfolge,
+                    aktiv=z.aktiv,
+                    mengenfaktor=z.mengenfaktor,
+                    snapshot_bezeichnung=schritt.bezeichnung,
+                    snapshot_veredelungsart=schritt.veredelungsart,
+                    snapshot_kosten_inkl_ausschuss=schritt.kosten_inkl_ausschuss,
+                    kosten_gesamt=kosten_map.get(z.veredelungsschritt_id, 0),
+                )
+            )
+
     return SpritzgussCalcResponse(
-        ergebnis=SpritzgussErgebnisSchema(**ergebnis.to_dict()),
-        bloecke=ergebnis.as_blocks(),
+        ergebnis=SpritzgussErgebnisSchema(**ergebnis_dict),
+        bloecke=bloecke,
+        veredelung_zuordnungen=zuordnung_reads,
     )
 
 
-def _apply_calculation(obj: SpritzgussKalkulation) -> None:
-    response = _run_calculation(_to_calc_input_from_model(obj))
+def _apply_calculation(
+    db: Session,
+    obj: SpritzgussKalkulation,
+    zuordnungen: list[VeredelungZuordnungInput] | None = None,
+    *,
+    use_snapshots: bool = False,
+) -> SpritzgussCalcResponse:
+    if zuordnungen is None:
+        rows = _load_zuordnungen(db, obj.id)
+        zuordnungen = [
+            VeredelungZuordnungInput(
+                veredelungsschritt_id=row.veredelungsschritt_id,
+                reihenfolge=row.reihenfolge,
+                aktiv=row.aktiv,
+                mengenfaktor=row.mengenfaktor,
+            )
+            for row in rows
+        ]
+        use_snapshots = True
+
+    response = _build_calc_response(
+        db,
+        _to_calc_input_from_model(obj),
+        zuordnungen,
+        use_snapshots=use_snapshots,
+        kalkulation_id=obj.id,
+        saved_rows=_load_zuordnungen(db, obj.id) if obj.id else None,
+    )
     obj.ergebnis = response.ergebnis.model_dump()
     obj.ergebnis_bloecke = response.bloecke
+    return response
+
+
+def _kalkulation_to_read(db: Session, obj: SpritzgussKalkulation) -> SpritzgussKalkulationRead:
+    rows = _load_zuordnungen(db, obj.id)
+    kosten_map: dict[int, float] = {}
+    if isinstance(obj.ergebnis, dict):
+        for schritt in obj.ergebnis.get("veredelung_schritte", []) or []:
+            if isinstance(schritt, dict):
+                kosten_map[schritt.get("veredelungsschritt_id", 0)] = schritt.get(
+                    "kosten_gesamt", 0
+                )
+    zuordnungen = [
+        _zuordnung_read(row, kosten_gesamt=kosten_map.get(row.veredelungsschritt_id))
+        for row in rows
+    ]
+    base = SpritzgussKalkulationRead.model_validate(obj)
+    return base.model_copy(update={"veredelung_zuordnungen": zuordnungen})
+
+
+def _run_calculation(
+    db: Session,
+    calc_input: SpritzgussInput,
+    zuordnungen: list[VeredelungZuordnungInput],
+) -> SpritzgussCalcResponse:
+    return _build_calc_response(db, calc_input, zuordnungen, use_snapshots=False)
 
 
 def _sync_werkzeug_investition(db: Session, obj: SpritzgussKalkulation) -> None:
@@ -119,10 +393,15 @@ def _sync_werkzeug_investition(db: Session, obj: SpritzgussKalkulation) -> None:
 @router.post("/berechnen", response_model=SpritzgussCalcResponse)
 def berechnen(
     body: SpritzgussCalcRequest,
+    db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
     """Berechnet eine Kalkulation ohne Speichern."""
-    return _run_calculation(_to_calc_input_from_request(body))
+    return _run_calculation(
+        db,
+        _to_calc_input_from_request(body),
+        body.veredelung_zuordnungen,
+    )
 
 
 @router.get("", response_model=list[SpritzgussKalkulationListItem])
@@ -142,7 +421,9 @@ def list_kalkulationen(
     for row in rows:
         verkaufspreis = None
         if isinstance(row.ergebnis, dict):
-            verkaufspreis = row.ergebnis.get("verkaufspreis")
+            verkaufspreis = row.ergebnis.get("endpreis_je_stueck")
+            if verkaufspreis is None:
+                verkaufspreis = row.ergebnis.get("verkaufspreis")
         result.append(
             SpritzgussKalkulationListItem(
                 id=row.id,
@@ -170,7 +451,149 @@ def get_kalkulation(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Kalkulation nicht gefunden"
         )
-    return item
+    return _kalkulation_to_read(db, item)
+
+
+@router.get("/{item_id}/veredelung", response_model=list[VeredelungZuordnungRead])
+def list_veredelung_zuordnungen(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_viewer),
+):
+    item = db.get(SpritzgussKalkulation, item_id)
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Kalkulation nicht gefunden"
+        )
+    return _kalkulation_to_read(db, item).veredelung_zuordnungen
+
+
+@router.post(
+    "/{item_id}/veredelung",
+    response_model=VeredelungZuordnungRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def add_veredelung_zuordnung(
+    item_id: int,
+    body: VeredelungZuordnungInput,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_kalkulator),
+):
+    obj = db.get(SpritzgussKalkulation, item_id)
+    if not obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Kalkulation nicht gefunden"
+        )
+    existing = db.scalars(
+        select(SpritzgussVeredelungZuordnung).where(
+            SpritzgussVeredelungZuordnung.kalkulation_id == item_id,
+            SpritzgussVeredelungZuordnung.veredelungsschritt_id
+            == body.veredelungsschritt_id,
+        )
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Veredelungsschritt ist dieser Kalkulation bereits zugeordnet",
+        )
+    schritt = db.get(Veredelungsschritt, body.veredelungsschritt_id)
+    if not schritt:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Veredelungsschritt nicht gefunden"
+        )
+    kosten = _live_kosten_fuer_veredelungsschritt(schritt)
+    row = SpritzgussVeredelungZuordnung(
+        kalkulation_id=item_id,
+        veredelungsschritt_id=body.veredelungsschritt_id,
+        reihenfolge=body.reihenfolge,
+        aktiv=body.aktiv,
+        mengenfaktor=body.mengenfaktor,
+        snapshot_bezeichnung=schritt.bezeichnung,
+        snapshot_veredelungsart=schritt.veredelungsart,
+        snapshot_kosten_inkl_ausschuss=kosten,
+    )
+    db.add(row)
+    db.flush()
+    _apply_calculation(db, obj, use_snapshots=True)
+    db.commit()
+    db.refresh(row)
+    gesamt_kosten = row.snapshot_kosten_inkl_ausschuss * row.mengenfaktor if row.aktiv else 0
+    return _zuordnung_read(row, kosten_gesamt=gesamt_kosten)
+
+
+@router.put("/{item_id}/veredelung/reihenfolge", response_model=list[VeredelungZuordnungRead])
+def update_veredelung_reihenfolge(
+    item_id: int,
+    body: VeredelungReihenfolgeUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_kalkulator),
+):
+    obj = db.get(SpritzgussKalkulation, item_id)
+    if not obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Kalkulation nicht gefunden"
+        )
+    rows = {row.id: row for row in _load_zuordnungen(db, item_id)}
+    for item in body.zuordnungen:
+        row = rows.get(item.id)
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Zuordnung {item.id} nicht gefunden",
+            )
+        row.reihenfolge = item.reihenfolge
+    _apply_calculation(db, obj, use_snapshots=True)
+    db.commit()
+    return _kalkulation_to_read(db, obj).veredelung_zuordnungen
+
+
+@router.put("/{item_id}/veredelung/{zuordnung_id}", response_model=VeredelungZuordnungRead)
+def update_veredelung_zuordnung(
+    item_id: int,
+    zuordnung_id: int,
+    body: VeredelungZuordnungUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_kalkulator),
+):
+    obj = db.get(SpritzgussKalkulation, item_id)
+    if not obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Kalkulation nicht gefunden"
+        )
+    row = db.get(SpritzgussVeredelungZuordnung, zuordnung_id)
+    if not row or row.kalkulation_id != item_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Zuordnung nicht gefunden"
+        )
+    updates = body.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(row, field, value)
+    _apply_calculation(db, obj, use_snapshots=True)
+    db.commit()
+    db.refresh(row)
+    return _zuordnung_read(row)
+
+
+@router.delete("/{item_id}/veredelung/{zuordnung_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_veredelung_zuordnung(
+    item_id: int,
+    zuordnung_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_kalkulator),
+):
+    obj = db.get(SpritzgussKalkulation, item_id)
+    if not obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Kalkulation nicht gefunden"
+        )
+    row = db.get(SpritzgussVeredelungZuordnung, zuordnung_id)
+    if not row or row.kalkulation_id != item_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Zuordnung nicht gefunden"
+        )
+    db.delete(row)
+    _apply_calculation(db, obj, use_snapshots=True)
+    db.commit()
 
 
 @router.post("", response_model=SpritzgussKalkulationRead, status_code=status.HTTP_201_CREATED)
@@ -179,18 +602,22 @@ def create_kalkulation(
     db: Session = Depends(get_db),
     _: User = Depends(require_kalkulator),
 ):
-    payload = body.model_dump()
+    zuordnungen = body.veredelung_zuordnungen
+    payload = body.model_dump(exclude={"veredelung_zuordnungen"})
     if payload.get("werkzeug_abrechnungsart") == "einmalzahlung":
         payload["amortisationsvolumen"] = None
     obj = SpritzgussKalkulation(**payload)
-    _apply_calculation(obj)
     db.add(obj)
+    db.flush()
+    if zuordnungen:
+        _sync_veredelung_zuordnungen(db, obj, zuordnungen)
+    _apply_calculation(db, obj, zuordnungen if zuordnungen else None, use_snapshots=bool(zuordnungen))
     db.commit()
     db.refresh(obj)
     _sync_werkzeug_investition(db, obj)
     db.commit()
     db.refresh(obj)
-    return obj
+    return _kalkulation_to_read(db, obj)
 
 
 @router.put("/{item_id}", response_model=SpritzgussKalkulationRead)
@@ -207,6 +634,7 @@ def update_kalkulation(
         )
 
     updates = body.model_dump(exclude_unset=True)
+    zuordnungen = updates.pop("veredelung_zuordnungen", None)
     for field, value in updates.items():
         setattr(obj, field, value)
 
@@ -216,14 +644,22 @@ def update_kalkulation(
     elif obj.amortisationsvolumen is not None:
         obj.amortisationsvolumen = int(obj.amortisationsvolumen)
 
-    _apply_calculation(obj)
+    if zuordnungen is not None:
+        _sync_veredelung_zuordnungen(db, obj, zuordnungen)
+
+    _apply_calculation(
+        db,
+        obj,
+        zuordnungen if zuordnungen is not None else None,
+        use_snapshots=zuordnungen is None or bool(zuordnungen),
+    )
     db.add(obj)
     db.commit()
     db.refresh(obj)
     _sync_werkzeug_investition(db, obj)
     db.commit()
     db.refresh(obj)
-    return obj
+    return _kalkulation_to_read(db, obj)
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
