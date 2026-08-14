@@ -114,3 +114,181 @@ def ensure_investition_schema(engine: Engine) -> None:
                 conn.execute(text(stmt))
             except Exception:
                 pass
+
+
+def ensure_assembly_structure_schema(engine: Engine) -> None:
+    """Phase A: assembly_positions + erweiterte baugruppen-Spalten (additiv).
+
+    Manuelle Migrationsschritte (NICHT automatisch ausführen):
+    - M-1: project_id aus linked_project_id backfillen (nur nach Freigabe)
+    - M-5: Legacy-Zuordnungen nach assembly_positions kopieren (nur nach Freigabe)
+    """
+    statements = [
+        """
+        ALTER TABLE baugruppen
+        ADD COLUMN IF NOT EXISTS project_id INTEGER
+        REFERENCES projects(id) ON DELETE RESTRICT
+        """,
+        """
+        ALTER TABLE baugruppen
+        ADD COLUMN IF NOT EXISTS assembly_type VARCHAR(16) NOT NULL DEFAULT 'TOP_LEVEL'
+        """,
+        """
+        ALTER TABLE baugruppen
+        ADD COLUMN IF NOT EXISTS structure_version INTEGER NOT NULL DEFAULT 1
+        """,
+        """
+        ALTER TABLE baugruppen
+        ADD COLUMN IF NOT EXISTS legacy_mode BOOLEAN NOT NULL DEFAULT TRUE
+        """,
+        """
+        ALTER TABLE baugruppen
+        ADD COLUMN IF NOT EXISTS snapshots_captured_at TIMESTAMPTZ
+        """,
+        """
+        ALTER TABLE baugruppen
+        ADD COLUMN IF NOT EXISTS pricing_status VARCHAR(32) NOT NULL DEFAULT 'NOT_APPLICABLE'
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS assembly_positions (
+            id SERIAL PRIMARY KEY,
+            parent_assembly_id INTEGER NOT NULL
+                REFERENCES baugruppen(id) ON DELETE CASCADE,
+            position_type VARCHAR(32) NOT NULL,
+            sequence INTEGER NOT NULL,
+            quantity DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+            quantity_factor DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+            price_basis VARCHAR(16),
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            label VARCHAR(255),
+            part_calculation_id INTEGER
+                REFERENCES spritzguss_kalkulationen(id) ON DELETE RESTRICT,
+            purchased_part_id INTEGER
+                REFERENCES kaufteile(id) ON DELETE RESTRICT,
+            child_assembly_id INTEGER
+                REFERENCES baugruppen(id) ON DELETE RESTRICT,
+            finishing_step_id INTEGER
+                REFERENCES veredelungsschritte(id) ON DELETE RESTRICT,
+            cost_snapshot DOUBLE PRECISION,
+            price_snapshot DOUBLE PRECISION,
+            name_snapshot VARCHAR(255) NOT NULL DEFAULT '',
+            part_number_snapshot VARCHAR(100) NOT NULL DEFAULT '',
+            supplier_snapshot VARCHAR(255) NOT NULL DEFAULT '',
+            snapshots_captured_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT chk_ap_position_type
+                CHECK (position_type IN ('PART', 'PURCHASED_PART', 'SUBASSEMBLY', 'PROCESS')),
+            CONSTRAINT chk_ap_price_basis
+                CHECK (price_basis IS NULL OR price_basis IN ('COST', 'SELF_COST', 'SALES_PRICE')),
+            CONSTRAINT chk_ap_sequence_positive CHECK (sequence >= 1),
+            CONSTRAINT chk_ap_quantity_positive CHECK (quantity > 0),
+            CONSTRAINT chk_ap_quantity_factor_positive CHECK (quantity_factor > 0),
+            CONSTRAINT chk_ap_part_refs CHECK (
+                position_type <> 'PART'
+                OR (
+                    part_calculation_id IS NOT NULL
+                    AND purchased_part_id IS NULL
+                    AND child_assembly_id IS NULL
+                    AND finishing_step_id IS NULL
+                    AND price_basis IS NOT NULL
+                )
+            ),
+            CONSTRAINT chk_ap_purchased_refs CHECK (
+                position_type <> 'PURCHASED_PART'
+                OR (
+                    purchased_part_id IS NOT NULL
+                    AND part_calculation_id IS NULL
+                    AND child_assembly_id IS NULL
+                    AND finishing_step_id IS NULL
+                    AND price_basis IS NULL
+                )
+            ),
+            CONSTRAINT chk_ap_subassembly_refs CHECK (
+                position_type <> 'SUBASSEMBLY'
+                OR (
+                    child_assembly_id IS NOT NULL
+                    AND part_calculation_id IS NULL
+                    AND purchased_part_id IS NULL
+                    AND finishing_step_id IS NULL
+                    AND price_basis IS NOT NULL
+                )
+            ),
+            CONSTRAINT chk_ap_process_refs CHECK (
+                position_type <> 'PROCESS'
+                OR (
+                    finishing_step_id IS NOT NULL
+                    AND part_calculation_id IS NULL
+                    AND purchased_part_id IS NULL
+                    AND child_assembly_id IS NULL
+                    AND price_basis IS NULL
+                )
+            )
+        )
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_ap_parent_sequence
+            ON assembly_positions (parent_assembly_id, sequence)
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_ap_parent_part
+            ON assembly_positions (parent_assembly_id, part_calculation_id)
+            WHERE position_type = 'PART'
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_ap_parent_assembly
+            ON assembly_positions (parent_assembly_id)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_ap_child_assembly
+            ON assembly_positions (child_assembly_id)
+            WHERE child_assembly_id IS NOT NULL
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_ap_part_calculation
+            ON assembly_positions (part_calculation_id)
+            WHERE part_calculation_id IS NOT NULL
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_baugruppen_project_id
+            ON baugruppen (project_id)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_baugruppen_assembly_type
+            ON baugruppen (assembly_type)
+        """,
+    ]
+    constraint_statements = [
+        """
+        DO $$
+        BEGIN
+            ALTER TABLE baugruppen
+            ADD CONSTRAINT chk_baugruppen_assembly_type
+            CHECK (assembly_type IN ('TOP_LEVEL', 'SUBASSEMBLY'));
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+        END $$
+        """,
+        """
+        DO $$
+        BEGIN
+            ALTER TABLE baugruppen
+            ADD CONSTRAINT chk_baugruppen_pricing_status
+            CHECK (pricing_status IN ('NOT_APPLICABLE', 'CALCULATED', 'STALE'));
+        EXCEPTION
+            WHEN duplicate_object THEN NULL;
+        END $$
+        """,
+    ]
+    with engine.begin() as conn:
+        for stmt in statements:
+            try:
+                conn.execute(text(stmt))
+            except Exception:
+                pass
+        if engine.dialect.name == "postgresql":
+            for stmt in constraint_statements:
+                try:
+                    conn.execute(text(stmt))
+                except Exception:
+                    pass

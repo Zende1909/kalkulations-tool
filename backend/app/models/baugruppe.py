@@ -1,15 +1,32 @@
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 from app.models.user import TimestampMixin
+
+ASSEMBLY_TYPES = ("TOP_LEVEL", "SUBASSEMBLY")
+PRICING_STATUSES = ("NOT_APPLICABLE", "CALCULATED", "STALE")
 
 
 class Baugruppe(Base, TimestampMixin):
     """Baugruppenkalkulation – Zusammenführung von Einzelteilen, Kaufteilen und Veredelung."""
 
     __tablename__ = "baugruppen"
+    __table_args__ = (
+        CheckConstraint(
+            "assembly_type IN ('TOP_LEVEL', 'SUBASSEMBLY')",
+            name="chk_baugruppen_assembly_type",
+        ),
+        CheckConstraint(
+            "pricing_status IN ('NOT_APPLICABLE', 'CALCULATED', 'STALE')",
+            name="chk_baugruppen_pricing_status",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -24,6 +41,30 @@ class Baugruppe(Base, TimestampMixin):
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     linked_project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    assembly_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="TOP_LEVEL", index=True
+    )
+    structure_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    legacy_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    snapshots_captured_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    pricing_status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="NOT_APPLICABLE"
+    )
+
+    assembly_positions: Mapped[list["AssemblyPosition"]] = relationship(
+        "AssemblyPosition",
+        back_populates="parent_assembly",
+        foreign_keys="AssemblyPosition.parent_assembly_id",
+        cascade="all, delete-orphan",
     )
 
 

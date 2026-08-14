@@ -8,6 +8,7 @@ from app.api.router import api_router
 from app.config import settings
 from app.database import Base, SessionLocal, engine, verify_database_connection
 from app.models import (  # noqa: F401
+    AssemblyPosition,
     Baugruppe,
     BaugruppeKaufteilZuordnung,
     BaugruppeSpritzgussZuordnung,
@@ -29,6 +30,7 @@ from app.models import (  # noqa: F401
 )
 from app.scripts.seed_admin import seed_admin_user
 from app.db_upgrade import (
+    ensure_assembly_structure_schema,
     ensure_investition_schema,
     ensure_spritzguss_hierarchy_schema,
     ensure_spritzguss_schema,
@@ -42,6 +44,7 @@ async def lifespan(app: FastAPI):
     ensure_spritzguss_schema(engine)
     ensure_spritzguss_hierarchy_schema(engine)
     ensure_investition_schema(engine)
+    ensure_assembly_structure_schema(engine)
     db = SessionLocal()
     try:
         seed_admin_user(db)
