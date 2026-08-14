@@ -456,21 +456,31 @@ def _sync_werkzeug_investition(db: Session, obj: SpritzgussKalkulation) -> None:
     )
     if existing:
         existing.project_id = obj.projekt or ""
+        existing.customer = obj.kunde or ""
         existing.part_name = obj.teilebezeichnung
+        existing.part_number = obj.teilenummer or ""
+        existing.name = f"Werkzeug {obj.teilenummer}".strip() or "Werkzeug-Einmalzahlung"
         existing.description = description
         existing.amount = obj.werkzeugkosten_eur
-        existing.status = "offen"
+        existing.status = "In Planung"
+        existing.included_in_unit_price = False
+        existing.amortization_volume = None
+        existing.cost_per_piece = None
     else:
         db.add(
             Investition(
                 project_id=obj.projekt or "",
+                customer=obj.kunde or "",
                 calculation_id=obj.id,
                 part_name=obj.teilebezeichnung,
+                part_number=obj.teilenummer or "",
+                name=f"Werkzeug {obj.teilenummer}".strip() or "Werkzeug-Einmalzahlung",
                 description=description,
                 amount=obj.werkzeugkosten_eur,
                 investment_type="Werkzeug",
                 payment_type="Einmalzahlung",
-                status="offen",
+                status="In Planung",
+                included_in_unit_price=False,
             )
         )
 

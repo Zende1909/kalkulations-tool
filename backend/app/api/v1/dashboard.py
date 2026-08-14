@@ -63,12 +63,12 @@ def _load_investition_records(db: Session) -> list[InvestitionRecord]:
         for row in db.scalars(select(SpritzgussKalkulation)).all()
     }
     bg_map = {row.id: row for row in db.scalars(select(Baugruppe)).all()}
-    rows = db.scalars(select(Investition)).all()
+    rows = db.scalars(select(Investition).where(Investition.archived.is_(False))).all()
     result: list[InvestitionRecord] = []
     for row in rows:
-        kunde = ""
+        kunde = row.customer or ""
         projekt = row.project_id or ""
-        if row.calculation_id and row.calculation_id in sg_map:
+        if not kunde and row.calculation_id and row.calculation_id in sg_map:
             sg = sg_map[row.calculation_id]
             kunde = sg.kunde
             projekt = sg.projekt or projekt

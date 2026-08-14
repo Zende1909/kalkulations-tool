@@ -181,7 +181,7 @@ def _load_investitionen(
         result.append(
             InvestitionAnzeige(
                 id=inv.id,
-                bezeichnung=inv.description or inv.part_name,
+                bezeichnung=inv.name or inv.description or inv.part_name,
                 investment_type=inv.investment_type,
                 amount=float(inv.amount),
                 status=inv.status,

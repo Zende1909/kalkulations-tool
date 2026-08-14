@@ -164,7 +164,7 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
     ).all()
     investitionen = [
         ExportInvestment(
-            bezeichnung=inv.description or inv.part_name,
+            bezeichnung=inv.name or inv.description or inv.part_name,
             typ=inv.investment_type,
             betrag=float(inv.amount),
             status=inv.status,
@@ -272,7 +272,7 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
         seen.add(inv.id)
         investitionen.append(
             ExportInvestment(
-                bezeichnung=inv.description or inv.part_name,
+                bezeichnung=inv.name or inv.description or inv.part_name,
                 typ=inv.investment_type,
                 betrag=float(inv.amount),
                 status=inv.status,
