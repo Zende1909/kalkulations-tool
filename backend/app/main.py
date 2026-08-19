@@ -39,6 +39,8 @@ from app.db_upgrade import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail fast before any DB interaction; prevents unsafe production startup.
+    settings.validate_jwt_secret_for_startup()
     verify_database_connection()
     Base.metadata.create_all(bind=engine)
     ensure_spritzguss_schema(engine)
@@ -70,12 +72,22 @@ _cors_origins = list(
     )
 )
 
+_cors_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+# Headers used by the frontend (see `frontend/src/api/client.ts` + auth flow).
+_cors_headers = [
+    "Authorization",
+    "Content-Type",
+    "Accept",
+    "Cache-Control",
+    "Pragma",
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+    allow_methods=_cors_methods,
+    allow_headers=_cors_headers,
 )
 
 app.include_router(api_router)
@@ -83,15 +95,14 @@ app.include_router(api_router)
 
 @app.get("/health")
 def health_check():
-    """Enthält DB-Namen und Zeilenanzahl – zum Prüfen, ob GET/POST dieselbe DB treffen."""
-    with engine.connect() as connection:
-        db_name = connection.execute(text("SELECT current_database()")).scalar()
-        materialien_count = connection.execute(
-            text("SELECT COUNT(*) FROM public.materialien")
-        ).scalar()
-    return {
-        "status": "ok",
-        "database": db_name,
-        "materialien_count": materialien_count,
-        "database_url": engine.url.render_as_string(hide_password=True),
-    }
+    """
+    Unauthentifizierter Technik-Healthcheck für Monitoring.
+
+    Keine internen Daten wie DB-Host/User/URL ausgeben (Security Hardening).
+    """
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1")).scalar()
+        return {"status": "ok", "service": "backend", "database": "connected"}
+    except Exception:
+        return {"status": "unavailable", "service": "backend", "database": "unavailable"}
