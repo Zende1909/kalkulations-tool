@@ -22,9 +22,9 @@ def _money(value: Decimal) -> Decimal:
 
 @dataclass(frozen=True)
 class MarkupRates:
-    vvgk_pct: float = 0.0
-    gewinn_pct: float = 0.0
-    skonto_pct: float = 0.0
+    vvgk_pct: float | None = None
+    gewinn_pct: float | None = None
+    skonto_pct: float | None = None
 
 
 @dataclass(frozen=True)
@@ -180,36 +180,28 @@ def apply_top_level_markups(
     herstellkosten: Decimal,
     rates: MarkupRates,
 ) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal, Decimal, list[CalculationWarning]]:
-    warnings: list[CalculationWarning] = []
-    if rates.vvgk_pct == 0:
-        warnings.append(
-            CalculationWarning(
-                code="MISSING_MARKUP_RATE",
-                message="VVGK-Zuschlagssatz nicht gefunden – 0 % angenommen",
-            )
-        )
-    if rates.gewinn_pct == 0:
-        warnings.append(
-            CalculationWarning(
-                code="MISSING_MARKUP_RATE",
-                message="Gewinn-Zuschlagssatz nicht gefunden – 0 % angenommen",
-            )
-        )
-    if rates.skonto_pct == 0:
-        warnings.append(
-            CalculationWarning(
-                code="MISSING_MARKUP_RATE",
-                message="Skonto-Zuschlagssatz nicht gefunden – 0 % angenommen",
-            )
-        )
+    missing: list[str] = []
+    if rates.vvgk_pct is None:
+        missing.append("VVGK")
+    if rates.gewinn_pct is None:
+        missing.append("Gewinn")
+    if rates.skonto_pct is None:
+        missing.append("Skonto")
+    if missing:
+        raise AssemblyCalculationError(f"Fehlende Zuschlagssätze: {', '.join(missing)}")
 
-    vvgk = _money(herstellkosten * _pct_rate(rates.vvgk_pct))
+    vvgk_pct = rates.vvgk_pct
+    gewinn_pct = rates.gewinn_pct
+    skonto_pct = rates.skonto_pct
+    assert vvgk_pct is not None and gewinn_pct is not None and skonto_pct is not None
+
+    vvgk = _money(herstellkosten * _pct_rate(vvgk_pct))
     selbstkosten = _money(herstellkosten + vvgk)
-    gewinn = _money(selbstkosten * _pct_rate(rates.gewinn_pct))
+    gewinn = _money(selbstkosten * _pct_rate(gewinn_pct))
     nettoverkaufspreis = _money(selbstkosten + gewinn)
-    skonto = _money(nettoverkaufspreis * _pct_rate(rates.skonto_pct))
+    skonto = _money(nettoverkaufspreis * _pct_rate(skonto_pct))
     endpreis = _money(nettoverkaufspreis + skonto)
-    return vvgk, selbstkosten, gewinn, nettoverkaufspreis, skonto, endpreis, warnings
+    return vvgk, selbstkosten, gewinn, nettoverkaufspreis, skonto, endpreis, []
 
 
 def calculate_assembly(

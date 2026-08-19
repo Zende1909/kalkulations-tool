@@ -228,6 +228,36 @@ def test_safe_filename():
     assert safe_filename_part("Teil/A\\B") == "Teil_A_B"
 
 
+def test_baugruppe_excel_skonto_null_prozent():
+    data = _sample_baugruppe()
+    data.skonto = 0.0
+    data.export_date = NOW
+    data.zuschlagssaetze = ExportTable(
+        "Zuschlagssätze",
+        ["Bezeichnung", "Satz", "Betrag"],
+        [["Skonto", "0,00 %", "0,00 €"]],
+    )
+    data.kosten_aufstellung = [ExportMoneyRow("Skonto", 0.0)]
+    xlsx = render_baugruppe_excel(data)
+    assert xlsx[:2] == b"PK"
+    from io import BytesIO
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(BytesIO(xlsx))
+    assert "Zuschlagssaetze" in workbook.sheetnames
+
+
+def test_baugruppe_pdf_enthaelt_version_und_skonto():
+    data = _sample_baugruppe()
+    data.skonto = 0.0
+    data.structure_version = 3
+    data.export_date = NOW
+    pdf = render_baugruppe_pdf(data)
+    text_content = pdf.decode("latin-1", errors="ignore")
+    assert "Skonto" in text_content
+    assert "3" in text_content
+
+
 def test_nicht_authentifizierter_export():
     client = TestClient(app)
     endpoints = [

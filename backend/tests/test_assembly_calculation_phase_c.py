@@ -405,7 +405,7 @@ def test_inactive_position_skipped():
                 price_snapshot=None,
             ),
         ],
-        markup_rates=MarkupRates(),
+        markup_rates=MarkupRates(vvgk_pct=0, gewinn_pct=0, skonto_pct=0),
     )
     assert result.herstellkosten == pytest.approx(50.0)
     assert len(result.position_lines) == 1
@@ -466,6 +466,19 @@ def test_duplicate_process_warning_not_blocking(db):
     assert warnings[0].code == "DUPLICATE_PROCESS_REVIEW"
 
 
+def _seed_markups(db, *, vvgk_pct: float = 0.0, gewinn_pct: float = 0.0, skonto_pct: float = 0.0) -> None:
+    db.execute(text("DELETE FROM zuschlagssaetze"))
+    db.execute(
+        text(
+            "INSERT INTO zuschlagssaetze (id, bezeichnung, satz_prozent, typ, aktiv) "
+            "VALUES (1, 'VVGK', :vvgk, 'vvgk', 1), (2, 'Gewinn', :gewinn, 'gewinn', 1), "
+            "(3, 'Skonto', :skonto, 'skonto', 1)"
+        ),
+        {"vvgk": vvgk_pct, "gewinn": gewinn_pct, "skonto": skonto_pct},
+    )
+    db.commit()
+
+
 def _seed_references(db) -> None:
     db.execute(
         text(
@@ -492,19 +505,7 @@ def test_recalculate_with_existing_snapshots(db):
     _seed_project(db)
     _seed_references(db)
     top = _top(db)
-    db.execute(
-        text("INSERT INTO zuschlagssaetze (id, bezeichnung, satz_prozent, typ, aktiv) VALUES (1, 'VVGK', 10, 'vvgk', 1)"
-        )
-    )
-    db.execute(
-        text("INSERT INTO zuschlagssaetze (id, bezeichnung, satz_prozent, typ, aktiv) VALUES (2, 'Gewinn', 10, 'gewinn', 1)"
-        )
-    )
-    db.execute(
-        text("INSERT INTO zuschlagssaetze (id, bezeichnung, satz_prozent, typ, aktiv) VALUES (3, 'Skonto', 2, 'skonto', 1)"
-        )
-    )
-    db.commit()
+    _seed_markups(db, vvgk_pct=10, gewinn_pct=10, skonto_pct=2)
 
     _put(
         db,
@@ -661,11 +662,7 @@ def test_nested_subassembly_recalc(db):
             pos.snapshots_captured_at = datetime.now(UTC)
     db.commit()
 
-    db.execute(
-        text("INSERT INTO zuschlagssaetze (id, bezeichnung, satz_prozent, typ, aktiv) VALUES (1, 'VVGK', 0, 'vvgk', 1)"
-        )
-    )
-    db.commit()
+    _seed_markups(db, vvgk_pct=0, gewinn_pct=0, skonto_pct=0)
 
     result = recalculate_assembly_tree(
         db,
@@ -721,11 +718,7 @@ def test_duplicate_process_recalc_returns_warning(db):
             "VALUES (1, 501, 33, 1, 'Schäumen', 1.5)"
         )
     )
-    db.execute(
-        text("INSERT INTO zuschlagssaetze (id, bezeichnung, satz_prozent, typ, aktiv) VALUES (1, 'VVGK', 0, 'vvgk', 1)"
-        )
-    )
-    db.commit()
+    _seed_markups(db, vvgk_pct=0, gewinn_pct=0, skonto_pct=0)
 
     _put(
         db,
@@ -756,6 +749,82 @@ def test_duplicate_process_recalc_returns_warning(db):
     )
     assert any(w.code == "DUPLICATE_PROCESS_REVIEW" for w in result.warnings)
     assert result.calculation.herstellkosten == pytest.approx(5.7)
+
+
+def test_recalculate_missing_markup_rates_422(db):
+    _seed_project(db)
+    _seed_references(db)
+    top = _top(db)
+    _put(db, top.id, [_part_pos()])
+    pos = db.query(AssemblyPosition).one()
+    pos.cost_snapshot = 4.2
+    pos.snapshots_captured_at = datetime.now(UTC)
+    db.commit()
+    db.execute(
+        text(
+            "INSERT INTO zuschlagssaetze (id, bezeichnung, satz_prozent, typ, aktiv) "
+            "VALUES (1, 'VVGK', 10, 'vvgk', 1)"
+        )
+    )
+    db.commit()
+
+    with pytest.raises(AssemblyRecalculationError) as exc:
+        recalculate_assembly_tree(
+            db,
+            top.id,
+            AssemblyRecalculateRequest(refresh_snapshots=False),
+        )
+    assert exc.value.status_code == 422
+    message = str(exc.value)
+    assert "Gewinn" in message
+    assert "Skonto" in message
+
+
+def test_recalculate_zero_percent_markups_are_present(db):
+    _seed_project(db)
+    _seed_references(db)
+    top = _top(db)
+    _put(db, top.id, [_part_pos()])
+    pos = db.query(AssemblyPosition).one()
+    pos.cost_snapshot = 4.2
+    pos.snapshots_captured_at = datetime.now(UTC)
+    db.commit()
+    _seed_markups(db, vvgk_pct=0, gewinn_pct=0, skonto_pct=0)
+
+    result = recalculate_assembly_tree(
+        db,
+        top.id,
+        AssemblyRecalculateRequest(refresh_snapshots=False),
+    )
+    assert result.calculation.herstellkosten == pytest.approx(4.2)
+    assert result.calculation.vvgk == pytest.approx(0.0)
+    assert result.calculation.gewinn == pytest.approx(0.0)
+    assert result.calculation.skonto == pytest.approx(0.0)
+    assert result.calculation.markup_applied is True
+    assert not any(w.code == "MISSING_MARKUP_RATE" for w in result.warnings)
+
+
+def test_missing_markup_rates_raise_in_pure_calculation():
+    with pytest.raises(AssemblyCalculationError, match="Fehlende Zuschlagssätze"):
+        calculate_assembly(
+            assembly_type="TOP_LEVEL",
+            positions=[
+                PositionCalcInput(
+                    position_id=1,
+                    position_type="PART",
+                    sequence=1,
+                    quantity=1,
+                    quantity_factor=1,
+                    price_basis="COST",
+                    active=True,
+                    label=None,
+                    name_snapshot="Teil",
+                    cost_snapshot=4.2,
+                    price_snapshot=None,
+                )
+            ],
+            markup_rates=MarkupRates(),
+        )
 
 
 def test_recalculate_no_structure_400(db):

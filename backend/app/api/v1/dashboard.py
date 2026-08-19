@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -8,13 +10,15 @@ from app.models.baugruppe import Baugruppe
 from app.models.investition import Investition
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.user import User
-from app.schemas.dashboard import DashboardSummary
+from app.schemas.dashboard import AssemblyOverview, DashboardSummary
 from app.services.dashboard import (
     BaugruppeRecord,
     InvestitionRecord,
     SpritzgussRecord,
     build_dashboard_summary,
+    parse_json_dict,
 )
+from app.services.dashboard_assembly import build_assembly_overview
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -30,9 +34,10 @@ def _load_spritzguss_records(db: Session) -> list[SpritzgussRecord]:
             projekt=row.projekt,
             jahresstueckzahl=row.jahresstueckzahl,
             aktiv=row.aktiv,
-            ergebnis=row.ergebnis if isinstance(row.ergebnis, dict) else None,
+            ergebnis=parse_json_dict(row.ergebnis),
             created_at=row.created_at,
             updated_at=row.updated_at,
+            status="aktiv" if row.aktiv else "inaktiv",
         )
         for row in rows
     ]
@@ -49,9 +54,10 @@ def _load_baugruppe_records(db: Session) -> list[BaugruppeRecord]:
             projekt=row.projekt,
             jahresstueckzahl=row.jahresstueckzahl,
             aktiv=row.aktiv,
-            ergebnis=row.ergebnis if isinstance(row.ergebnis, dict) else None,
+            ergebnis=parse_json_dict(row.ergebnis),
             created_at=row.created_at,
             updated_at=row.updated_at,
+            status=row.status or "entwurf",
         )
         for row in rows
     ]
@@ -90,6 +96,13 @@ def _load_investition_records(db: Session) -> list[InvestitionRecord]:
                 status=row.status,
                 kunde=kunde,
                 projekt=projekt,
+                supplier=row.supplier or "",
+                order_date=row.order_date,
+                delivery_date=row.delivery_date,
+                amortization_volume=row.amortization_volume,
+                cost_per_piece=row.cost_per_piece,
+                created_at=row.created_at,
+                name=row.name or "",
             )
         )
     return result
@@ -99,6 +112,10 @@ def _load_investition_records(db: Session) -> list[InvestitionRecord]:
 def get_dashboard_summary(
     project: str | None = Query(default=None, description="Filter nach Projekt"),
     customer: str | None = Query(default=None, description="Filter nach Kunde"),
+    status: str | None = Query(default=None, description="Filter nach Status"),
+    date_from: date | None = Query(default=None, description="Zeitraum von"),
+    date_to: date | None = Query(default=None, description="Zeitraum bis"),
+    kalkulationsart: str | None = Query(default=None, description="Spritzguss oder Baugruppe"),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
@@ -109,5 +126,19 @@ def get_dashboard_summary(
         _load_investition_records(db),
         project=project or None,
         customer=customer or None,
+        status=status or None,
+        date_from=date_from,
+        date_to=date_to,
+        kalkulationsart=kalkulationsart or None,
     )
     return DashboardSummary(**summary)
+
+
+@router.get("/assemblies/{assembly_id}", response_model=AssemblyOverview)
+def get_assembly_overview(
+    assembly_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_viewer),
+):
+    """Read-only Baugruppendetail für Dashboard und Export-Vorschau."""
+    return AssemblyOverview(**build_assembly_overview(db, assembly_id))

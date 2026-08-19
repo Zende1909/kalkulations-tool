@@ -75,6 +75,18 @@ class BaugruppeExportData:
     baugruppenpreis_je_stueck: float | None
     jahresumsatz: float
     has_data: bool = True
+    export_date: datetime | None = None
+    structure_version: int = 1
+    status: str = ""
+    bom: ExportTable | None = None
+    zuschlagssaetze: ExportTable | None = None
+    kosten_aufstellung: list[ExportMoneyRow] = field(default_factory=list)
+    herstellkosten: float | None = None
+    vvgk: float | None = None
+    gewinn: float | None = None
+    skonto: float | None = None
+    nettoverkaufspreis: float | None = None
+    gesamtergebnis: float | None = None
 
 
 @dataclass
@@ -95,3 +107,7 @@ class DashboardExportData:
     revenue_chart: list[tuple[str, float]] = field(default_factory=list)
     has_data: bool = True
     empty_message: str | None = None
+    filter_status: str | None = None
+    filter_date_from: str | None = None
+    filter_date_to: str | None = None
+    filter_kalkulationsart: str | None = None

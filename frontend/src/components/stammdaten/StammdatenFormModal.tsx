@@ -1,10 +1,20 @@
+export type SelectOption = string | { value: string; label: string };
+
 export interface FormField {
   name: string;
   label: string;
   type: "text" | "number" | "date" | "checkbox" | "select";
   required?: boolean;
-  options?: string[];
+  options?: SelectOption[];
   step?: string;
+}
+
+function optionValue(option: SelectOption): string {
+  return typeof option === "string" ? option : option.value;
+}
+
+function optionLabel(option: SelectOption): string {
+  return typeof option === "string" ? option : option.label;
 }
 
 export function StammdatenFormModal({
@@ -74,8 +84,8 @@ export function StammdatenFormModal({
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                 >
                   {(field.options ?? []).map((option) => (
-                    <option key={option} value={option}>
-                      {option}
+                    <option key={optionValue(option)} value={optionValue(option)}>
+                      {optionLabel(option)}
                     </option>
                   ))}
                 </select>

@@ -27,6 +27,8 @@ from app.services.export_models import (
 
 
 def _fmt_dt(dt: datetime) -> str:
+    if dt.tzinfo is not None:
+        dt = dt.replace(tzinfo=None)
     return dt.strftime("%d.%m.%Y %H:%M")
 
 
@@ -37,7 +39,7 @@ def _money(amount: float | None) -> str:
 
 
 def _build_doc(buffer: io.BytesIO, title: str):
-    return SimpleDocTemplate(
+    doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
         leftMargin=1.5 * cm,
@@ -46,6 +48,9 @@ def _build_doc(buffer: io.BytesIO, title: str):
         bottomMargin=1.5 * cm,
         title=title,
     )
+    doc.compress = 0
+    doc.pageCompression = 0
+    return doc
 
 
 def _header_block(company: str, title: str, meta: list[tuple[str, str]]) -> list:
@@ -216,6 +221,7 @@ def render_spritzguss_pdf(data: SpritzgussExportData) -> bytes:
 def render_baugruppe_pdf(data: BaugruppeExportData) -> bytes:
     buffer = io.BytesIO()
     doc = _build_doc(buffer, "Baugruppen-Kalkulation")
+    export_date = data.export_date or datetime.now()
     story = _header_block(
         data.company_name,
         "Baugruppen-Kalkulation",
@@ -224,23 +230,39 @@ def render_baugruppe_pdf(data: BaugruppeExportData) -> bytes:
             ("Teilenummer", data.teilenummer or "–"),
             ("Kunde", data.kunde or "–"),
             ("Projekt", data.projekt or "–"),
+            ("Status", data.status or "–"),
             ("Jahresstückzahl", str(data.jahresstueckzahl)),
             ("Baugruppen-ID", str(data.assembly_id)),
+            ("Strukturversion", str(data.structure_version)),
+            ("Exportdatum", _fmt_dt(export_date)),
+            ("Preis pro Stück", _money(data.baugruppenpreis_je_stueck)),
+            ("Skonto", _money(data.skonto) if data.skonto is not None else "–"),
             ("Erstellt", _fmt_dt(data.created_at)),
             ("Geändert", _fmt_dt(data.updated_at)),
         ],
     )
+    if data.kosten_aufstellung:
+        story.extend(_money_table("Kostenaufstellung", data.kosten_aufstellung))
+    if data.bom is not None:
+        story.extend(_export_table_block(data.bom))
     story.extend(_export_table_block(data.einzelteile))
     story.extend(_export_table_block(data.kaufteile))
     story.extend(_export_table_block(data.veredelung))
+    if data.zuschlagssaetze is not None:
+        story.extend(_export_table_block(data.zuschlagssaetze))
     summary = [
         ("Einzelteile gesamt", _money(data.einzelteile_gesamt)),
         ("Kaufteile gesamt", _money(data.kaufteile_gesamt)),
         ("Montage/Veredelung gesamt", _money(data.veredelung_gesamt)),
-        ("Baugruppenpreis je Stück", _money(data.baugruppenpreis_je_stueck)),
+        ("VVGK", _money(data.vvgk)),
+        ("Gewinn", _money(data.gewinn)),
+        ("Skonto", _money(data.skonto)),
+        ("Nettoverkaufspreis", _money(data.nettoverkaufspreis)),
+        ("Preis pro Stück", _money(data.baugruppenpreis_je_stueck)),
         ("Jahresumsatz", _money(data.jahresumsatz)),
+        ("Gesamtergebnis", _money(data.gesamtergebnis)),
     ]
-    story.extend(_kv_table("Zusammenfassung", summary))
+    story.extend(_kv_table("Gesamtpreis und Summen", summary))
     if data.investitionen:
         story.extend(
             _kv_table(
@@ -260,6 +282,12 @@ def render_dashboard_pdf(data: DashboardExportData) -> bytes:
         filters.append(("Projekt", data.filter_project))
     if data.filter_customer:
         filters.append(("Kunde", data.filter_customer))
+    if data.filter_status:
+        filters.append(("Status", data.filter_status))
+    if data.filter_date_from or data.filter_date_to:
+        filters.append(("Zeitraum", f"{data.filter_date_from or '–'} bis {data.filter_date_to or '–'}"))
+    if data.filter_kalkulationsart:
+        filters.append(("Kalkulationsart", data.filter_kalkulationsart))
     if not filters:
         filters.append(("Filter", "Keine (Gesamtübersicht)"))
     story = _header_block(data.company_name, "Dashboard-/Projektbericht", filters)

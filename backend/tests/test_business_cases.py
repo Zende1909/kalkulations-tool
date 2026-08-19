@@ -65,7 +65,6 @@ def _lucid_gap_hider_db() -> MagicMock:
     )
 
     db = MagicMock()
-    scalar_results = iter([0, 0, 0, 0])
     scalars_responses = iter([[sg], [bg], [inv_amort, inv_einmal]])
 
     def scalars(_stmt):
@@ -77,7 +76,7 @@ def _lucid_gap_hider_db() -> MagicMock:
         return result
 
     db.scalars.side_effect = scalars
-    db.scalar.side_effect = lambda _stmt: next(scalar_results, 0)
+    db.scalar.side_effect = lambda _stmt: None
     return db
 
 
@@ -139,7 +138,7 @@ def test_business_case_ohne_daten():
         return result
 
     db.scalars.side_effect = scalars
-    db.scalar.return_value = 0
+    db.scalar.return_value = None
     result = build_project_business_case(db, customer="Leer", project="Leer")
     assert result["kpis"]["anzahl_einzelteile"] == 0
     assert result["kpis"]["anzahl_baugruppen"] == 0

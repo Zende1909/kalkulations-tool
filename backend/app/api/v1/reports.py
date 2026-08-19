@@ -1,3 +1,4 @@
+from datetime import date
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query
@@ -96,10 +97,22 @@ def export_baugruppe_xlsx(
 def export_dashboard_pdf(
     project: str | None = Query(default=None),
     customer: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    kalkulationsart: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
-    data = build_dashboard_export(db, project=project or None, customer=customer or None)
+    data = build_dashboard_export(
+        db,
+        project=project or None,
+        customer=customer or None,
+        status=status or None,
+        date_from=date_from,
+        date_to=date_to,
+        kalkulationsart=kalkulationsart or None,
+    )
     pdf = render_dashboard_pdf(data)
     return _file_response(pdf, dashboard_export_filename(data, "pdf"), "application/pdf")
 
@@ -108,10 +121,22 @@ def export_dashboard_pdf(
 def export_dashboard_xlsx(
     project: str | None = Query(default=None),
     customer: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    kalkulationsart: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
-    data = build_dashboard_export(db, project=project or None, customer=customer or None)
+    data = build_dashboard_export(
+        db,
+        project=project or None,
+        customer=customer or None,
+        status=status or None,
+        date_from=date_from,
+        date_to=date_to,
+        kalkulationsart=kalkulationsart or None,
+    )
     xlsx = render_dashboard_excel(data)
     return _file_response(
         xlsx,

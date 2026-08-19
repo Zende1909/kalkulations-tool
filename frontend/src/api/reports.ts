@@ -50,18 +50,40 @@ export function baugruppeXlsxUrl(id: number): string {
   return `/reports/baugruppen/${id}.xlsx`;
 }
 
-export function dashboardPdfUrl(project?: string, customer?: string): string {
+export function dashboardPdfUrl(filters?: {
+  project?: string;
+  customer?: string;
+  status?: string;
+  date_from?: string;
+  date_to?: string;
+  kalkulationsart?: string;
+}): string {
   const params = new URLSearchParams();
-  if (project) params.set("project", project);
-  if (customer) params.set("customer", customer);
+  if (filters?.project) params.set("project", filters.project);
+  if (filters?.customer) params.set("customer", filters.customer);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.date_from) params.set("date_from", filters.date_from);
+  if (filters?.date_to) params.set("date_to", filters.date_to);
+  if (filters?.kalkulationsart) params.set("kalkulationsart", filters.kalkulationsart);
   const q = params.toString();
   return `/reports/dashboard.pdf${q ? `?${q}` : ""}`;
 }
 
-export function dashboardXlsxUrl(project?: string, customer?: string): string {
+export function dashboardXlsxUrl(filters?: {
+  project?: string;
+  customer?: string;
+  status?: string;
+  date_from?: string;
+  date_to?: string;
+  kalkulationsart?: string;
+}): string {
   const params = new URLSearchParams();
-  if (project) params.set("project", project);
-  if (customer) params.set("customer", customer);
+  if (filters?.project) params.set("project", filters.project);
+  if (filters?.customer) params.set("customer", filters.customer);
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.date_from) params.set("date_from", filters.date_from);
+  if (filters?.date_to) params.set("date_to", filters.date_to);
+  if (filters?.kalkulationsart) params.set("kalkulationsart", filters.kalkulationsart);
   const q = params.toString();
   return `/reports/dashboard.xlsx${q ? `?${q}` : ""}`;
 }

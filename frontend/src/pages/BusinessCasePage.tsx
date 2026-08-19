@@ -76,8 +76,8 @@ export function BusinessCasePage() {
       const filename = `dashboard_${data.project.replace(/\W+/g, "_")}.${format === "pdf" ? "pdf" : "xlsx"}`;
       const path =
         format === "pdf"
-          ? dashboardPdfUrl(data.project, data.customer)
-          : dashboardXlsxUrl(data.project, data.customer);
+          ? dashboardPdfUrl({ project: data.project, customer: data.customer })
+          : dashboardXlsxUrl({ project: data.project, customer: data.customer });
       await downloadReport(path, filename);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
