@@ -100,13 +100,13 @@ def test_baseline_revision_is_discoverable():
     assert BASELINE_REVISION in {r.revision for r in scripts.walk_revisions()}
 
 
-def test_alembic_head_is_m1_baugruppe_project_backfill_revision():
+def test_alembic_head_is_m5_assembly_positions_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0003_m1_baugruppe_project_backfill"]
-    rev = scripts.get_revision("e1a0003_m1_baugruppe_project_backfill")
+    assert scripts.get_heads() == ["e1a0004_m5_assembly_positions"]
+    rev = scripts.get_revision("e1a0004_m5_assembly_positions")
     assert rev is not None
-    assert rev.down_revision == "e1a0002_investition_legacy_data"
+    assert rev.down_revision == "e1a0003_m1_baugruppe_project_backfill"
 
 
 def test_baseline_contains_no_dml_or_seeds():

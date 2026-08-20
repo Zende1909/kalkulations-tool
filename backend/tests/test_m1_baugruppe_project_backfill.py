@@ -111,14 +111,14 @@ def test_m1_revision_module_contract():
     assert "legacy_mode" in source  # documented as unchanged
 
 
-def test_m1_is_alembic_head():
+def test_m1_revision_is_in_chain_before_m5():
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == [REVISION]
+    assert scripts.get_heads() == ["e1a0004_m5_assembly_positions"]
     rev = scripts.get_revision(REVISION)
     assert rev is not None
     assert rev.down_revision == PREV_HEAD
@@ -246,7 +246,7 @@ def test_m1_project_backfill_cases_and_idempotency_on_smoke_db():
                 )
             ).scalar()
 
-        up_m1 = _alembic(env, "upgrade", "head")
+        up_m1 = _alembic(env, "upgrade", REVISION)
         assert up_m1.returncode == 0, up_m1.stdout + up_m1.stderr
 
         with engine.connect() as conn:
