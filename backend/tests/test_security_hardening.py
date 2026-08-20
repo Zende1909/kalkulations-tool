@@ -35,7 +35,7 @@ def _patch_startup_to_skip_db(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(app_main, "ensure_spritzguss_hierarchy_schema", lambda _engine: None)
     monkeypatch.setattr(app_main, "ensure_investition_schema", lambda _engine: None)
     monkeypatch.setattr(app_main, "ensure_assembly_structure_schema", lambda _engine: None)
-    monkeypatch.setattr(app_main, "seed_admin_user", lambda _db: None)
+    monkeypatch.setattr(app_main, "verify_database_at_alembic_head", lambda _engine: None)
 
     # Avoid any actual schema create calls in tests.
     monkeypatch.setattr(app_main.Base.metadata, "create_all", lambda *args, **kwargs: None)

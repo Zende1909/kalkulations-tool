@@ -25,7 +25,9 @@ from app.models.zuschlagssatz import (
 )
 from app.schemas.zuschlagssatz import ZuschlagssatzCreate
 from app.scripts.seed_top_level_markup_rates import (
+    assert_local_development_database,
     is_local_development_database,
+    main as seed_markup_main,
     seed_top_level_markup_rates,
 )
 from app.services.assembly_recalculation_service import load_global_markup_rates
@@ -181,6 +183,36 @@ def test_seed_inserts_rates_and_is_idempotent(db):
     assert bool(skonto[1]) is True
 
 
+def test_seed_leaves_stammdaten_gewinn_and_verschrottung_unchanged(db):
+    db.execute(
+        text(
+            "INSERT INTO zuschlagssaetze (id, bezeichnung, satz_prozent, typ, aktiv) VALUES "
+            "(1, 'Katalog-Gewinn', 12.5, 'GEWINN', 1), "
+            "(2, 'Ausschuss', 3.0, 'VERSCHROTTUNG', 1), "
+            "(3, 'MGK', 5.0, 'GEMEINKOSTEN', 1)"
+        )
+    )
+    db.commit()
+
+    assert seed_top_level_markup_rates(db) == ["insert:vvgk", "insert:gewinn", "insert:skonto"]
+
+    rows = db.execute(
+        text(
+            "SELECT id, bezeichnung, typ, satz_prozent, aktiv FROM zuschlagssaetze "
+            "WHERE typ IN ('GEWINN', 'VERSCHROTTUNG', 'GEMEINKOSTEN') ORDER BY id"
+        )
+    ).all()
+    assert rows == [
+        (1, "Katalog-Gewinn", "GEWINN", 12.5, 1),
+        (2, "Ausschuss", "VERSCHROTTUNG", 3.0, 1),
+        (3, "MGK", "GEMEINKOSTEN", 5.0, 1),
+    ]
+    # lowercase gewinn is a separate assembly markup row
+    assert (
+        db.execute(text("SELECT COUNT(*) FROM zuschlagssaetze WHERE typ = 'gewinn'")).scalar() == 1
+    )
+
+
 def test_uppercase_gewinn_is_not_assembly_markup(db):
     db.add(Zuschlagssatz(bezeichnung="Katalog-Gewinn", satz_prozent=99, typ="GEWINN", aktiv=True))
     db.commit()
@@ -214,7 +246,78 @@ def test_frontend_form_options_include_all_types():
         assert f'"{typ}"' in source or f"'{typ}'" in source
 
 
-def test_local_database_guard_allows_localhost():
+def test_local_database_guard_allows_localhost_and_sqlite():
     assert is_local_development_database("postgresql://postgres:x@localhost:5432/kalkulationstool")
     assert is_local_development_database("postgresql://postgres:x@127.0.0.1:5432/kalkulationstool")
+    assert is_local_development_database("sqlite://")
     assert not is_local_development_database("postgresql://postgres:x@prod.example.com:5432/kalkulationstool")
+    with pytest.raises(RuntimeError, match="lokale"):
+        assert_local_development_database("postgresql://u:p@db.example.com:5432/prod")
+
+
+def test_startup_does_not_call_markup_seed():
+    main_source = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text(
+        encoding="utf-8"
+    )
+    assert "seed_top_level_markup_rates" not in main_source
+    assert "seed_top_level" not in main_source
+
+
+def test_cli_rejects_non_local_database(monkeypatch: pytest.MonkeyPatch, capsys):
+    from app.config import settings
+
+    monkeypatch.setattr(
+        settings,
+        "DATABASE_URL",
+        "postgresql+psycopg2://u:p@db.example.com:5432/prod",
+        raising=False,
+    )
+    # Fail-fast: no SessionLocal before local check.
+    monkeypatch.setattr(
+        "app.database.SessionLocal",
+        lambda: (_ for _ in ()).throw(AssertionError("SessionLocal must not open")),
+    )
+    assert seed_markup_main([]) == 1
+    err = capsys.readouterr().err.lower()
+    assert "abgelehnt" in err
+    assert "lokal" in err
+
+
+def test_cli_seed_success_and_idempotent(monkeypatch: pytest.MonkeyPatch, capsys, db):
+    from app.config import settings
+
+    engine = db.get_bind()
+    Session = sessionmaker(bind=engine, expire_on_commit=False)
+
+    monkeypatch.setattr(settings, "DATABASE_URL", "sqlite://", raising=False)
+    monkeypatch.setattr("app.database.SessionLocal", Session)
+
+    assert seed_markup_main([]) == 0
+    out1 = capsys.readouterr().out
+    assert "insert:vvgk" in out1
+    assert "insert:gewinn" in out1
+    assert "insert:skonto" in out1
+
+    assert seed_markup_main([]) == 0
+    out2 = capsys.readouterr().out
+    assert "skip:vvgk" in out2
+    assert "skip:gewinn" in out2
+    assert "skip:skonto" in out2
+
+    with Session() as check:
+        counts = {
+            typ: check.execute(
+                text("SELECT COUNT(*) FROM zuschlagssaetze WHERE typ = :typ AND aktiv = 1"),
+                {"typ": typ},
+            ).scalar()
+            for typ in ("vvgk", "gewinn", "skonto")
+        }
+    assert counts == {"vvgk": 1, "gewinn": 1, "skonto": 1}
+
+
+def test_alembic_versions_have_no_markup_seed_dml():
+    versions_dir = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+    for path in versions_dir.glob("*.py"):
+        source = path.read_text(encoding="utf-8").upper()
+        assert "INSERT INTO ZUSCHLAGSSAETZE" not in source
+        assert "INSERT INTO ZUSCHLAGSSÄTZE" not in source
