@@ -90,3 +90,19 @@ python -m app.scripts.seed_admin
 ```
 
 Voraussetzungen: `LOCAL_ADMIN_SEED_ENABLED`, lokale `DATABASE_URL` (localhost / 127.0.0.1 / sqlite) und gesetzte Zugangsdaten. Bestehende Benutzer bleiben unverändert (idempotent).
+
+## Top-Level-Markup-Seed (CLI only)
+
+Die Sätze `vvgk` / `gewinn` / `skonto` werden **nicht** beim App-Start und **nicht**
+über Alembic angelegt. Explizit aus `backend/`:
+
+```bash
+python -m app.scripts.seed_top_level_markup_rates
+```
+
+Voraussetzungen und Grenzen:
+
+- `DATABASE_URL` muss lokal sein (localhost / 127.0.0.1 / sqlite)
+- nur fehlende **aktive** Sätze für `vvgk`, `gewinn`, `skonto` werden eingefügt
+- bestehende `GEMEINKOSTEN`-, `GEWINN`- und `VERSCHROTTUNG`-Zeilen bleiben unverändert
+- erneutes Ausführen ist idempotent (`skip:` für bereits aktive Typen)
