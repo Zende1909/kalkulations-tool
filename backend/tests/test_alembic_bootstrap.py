@@ -94,10 +94,19 @@ def test_alembic_database_url_comes_from_settings(monkeypatch: pytest.MonkeyPatc
 def test_baseline_revision_is_discoverable():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == [BASELINE_REVISION]
     rev = scripts.get_revision(BASELINE_REVISION)
     assert rev is not None
     assert rev.down_revision is None
+    assert BASELINE_REVISION in {r.revision for r in scripts.walk_revisions()}
+
+
+def test_alembic_head_is_investition_legacy_data_revision():
+    cfg = _alembic_config()
+    scripts = ScriptDirectory.from_config(cfg)
+    assert scripts.get_heads() == ["e1a0002_investition_legacy_data"]
+    rev = scripts.get_revision("e1a0002_investition_legacy_data")
+    assert rev is not None
+    assert rev.down_revision == BASELINE_REVISION
 
 
 def test_baseline_contains_no_dml_or_seeds():

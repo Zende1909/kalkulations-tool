@@ -27,7 +27,8 @@ alembic upgrade head
 ```
 
 Erwartetes Ergebnis: alle Anwendungstabellen existieren,
-`alembic_version.version_num = e1a0001_baseline`.
+`alembic_version.version_num` = aktueller Head
+(derzeit `e1a0002_investition_legacy_data`).
 
 ## Fall 2: Bereits vorhandene Datenbank
 

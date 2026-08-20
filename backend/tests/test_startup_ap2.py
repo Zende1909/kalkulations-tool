@@ -221,9 +221,9 @@ def test_ensure_investition_schema_contains_no_dml():
     assert "except Exception:\n                    pass" not in module_source
 
 
-def test_alembic_head_revision_is_baseline():
+def test_alembic_head_revision_is_investition_legacy_data():
     heads = get_alembic_head_revisions()
-    assert heads == ("e1a0001_baseline",)
+    assert heads == ("e1a0002_investition_legacy_data",)
 
 
 def test_verify_alembic_head_fails_when_unversioned(monkeypatch: pytest.MonkeyPatch):
