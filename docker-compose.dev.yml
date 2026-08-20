@@ -1,0 +1,25 @@
+# Local development overlay for docker compose.
+#
+# Usage (from repo root, with JWT_SECRET_KEY set in .env):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Keeps hot-reload + bind-mount for backend. Entrypoint still runs
+# `alembic upgrade head` before uvicorn; APP_ENV=development allows
+# optional schema bootstrap (no automatic seeds).
+
+services:
+  backend:
+    environment:
+      APP_ENV: development
+    volumes:
+      - ./backend:/app
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]

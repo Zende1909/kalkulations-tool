@@ -42,3 +42,19 @@ python -m app.scripts.seed_top_level_markup_rates
 
 Details: `backend/alembic/README.md`.
 
+## Docker Compose
+
+Produktion (Standard): Backend mit `APP_ENV=production`, wartet auf DB-Healthcheck,
+führt `alembic upgrade head` aus, startet dann Uvicorn. Keine automatischen Seeds.
+`JWT_SECRET_KEY` muss in `.env` gesetzt sein (kein Default).
+
+```powershell
+docker compose up --build
+```
+
+Lokale Compose-Entwicklung (Reload + Bind-Mount):
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+

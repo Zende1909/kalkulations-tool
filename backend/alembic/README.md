@@ -106,3 +106,21 @@ Voraussetzungen und Grenzen:
 - nur fehlende **aktive** Sätze für `vvgk`, `gewinn`, `skonto` werden eingefügt
 - bestehende `GEMEINKOSTEN`-, `GEWINN`- und `VERSCHROTTUNG`-Zeilen bleiben unverändert
 - erneutes Ausführen ist idempotent (`skip:` für bereits aktive Typen)
+
+## Docker Compose (AP3)
+
+Standard-`docker-compose.yml` startet das Backend mit `APP_ENV=production`:
+
+1. `db` wird healthy (`pg_isready`)
+2. Backend-Entrypoint: `python -m alembic upgrade head` (Fehler → Container-Exit, kein Uvicorn)
+3. danach `uvicorn` (keine Seeds)
+
+`JWT_SECRET_KEY` muss gesetzt sein (kein Compose-Default, kein
+`change-me-in-production`). `DATABASE_URL` zeigt auf den Service `db`.
+
+Lokale Compose-Entwicklung mit Reload:
+
+```powershell
+# JWT_SECRET_KEY in .env setzen (nicht der Default-Wert)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
