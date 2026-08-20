@@ -178,7 +178,7 @@ def test_investition_legacy_data_migration_and_idempotency_on_smoke_db():
                 )
             )
 
-        up_head = _alembic(env, "upgrade", "head")
+        up_head = _alembic(env, "upgrade", REVISION)
         assert up_head.returncode == 0, up_head.stdout + up_head.stderr
 
         with engine.connect() as conn:
