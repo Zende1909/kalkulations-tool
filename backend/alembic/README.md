@@ -124,3 +124,16 @@ Lokale Compose-Entwicklung mit Reload:
 # JWT_SECRET_KEY in .env setzen (nicht der Default-Wert)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
+
+## CI (GitHub Actions)
+
+Workflow: `.github/workflows/ci.yml`
+
+1. PostgreSQL-Service healthy (`pg_isready`)
+2. `cd backend && alembic upgrade head` (Fehler beendet den Job vor pytest)
+3. `python -m pytest -q` gegen das migrierte Schema (Head: `e1a0004_m5_assembly_positions`)
+4. Frontend `npm ci` + `npm run build`
+
+Umgebung u. a.: `APP_ENV=test`, `ALLOW_STARTUP_SCHEMA_BOOTSTRAP=false`,
+`DATABASE_URL` → CI-Postgres, `LOCAL_ADMIN_SEED_ENABLED=false`.
+Keine automatischen Seeds. Trigger inkl. Push auf `phase-e-db-safety`.
