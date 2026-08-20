@@ -7,7 +7,6 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -48,7 +47,6 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> dict:
         "ensure_hierarchy": 0,
         "ensure_investition": 0,
         "ensure_assembly": 0,
-        "seed_admin": 0,
         "alembic_verify": 0,
     }
 
@@ -80,27 +78,10 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> dict:
     )
     monkeypatch.setattr(
         app_main,
-        "seed_admin_user",
-        lambda _db: calls.__setitem__("seed_admin", calls["seed_admin"] + 1),
-    )
-    monkeypatch.setattr(
-        app_main,
         "verify_database_at_alembic_head",
         lambda _e: calls.__setitem__("alembic_verify", calls["alembic_verify"] + 1),
     )
     monkeypatch.setattr(app_main.engine, "connect", lambda: _dummy_engine_connection())
-    # SessionLocal used only in bootstrap path for seed
-    monkeypatch.setattr(
-        app_main,
-        "SessionLocal",
-        lambda: MagicMock(
-            **{
-                "close": MagicMock(),
-                "__enter__": MagicMock(return_value=MagicMock()),
-                "__exit__": MagicMock(return_value=False),
-            }
-        ),
-    )
     return calls
 
 
@@ -142,8 +123,8 @@ def test_production_startup_skips_create_all_and_ensure(monkeypatch: pytest.Monk
     assert calls["ensure_hierarchy"] == 0
     assert calls["ensure_investition"] == 0
     assert calls["ensure_assembly"] == 0
-    assert calls["seed_admin"] == 0
     assert calls["alembic_verify"] == 1
+    assert not hasattr(app_main, "seed_admin_user")
 
 
 def test_production_startup_does_not_mutate_via_bootstrap(monkeypatch: pytest.MonkeyPatch):
@@ -156,7 +137,7 @@ def test_production_startup_does_not_mutate_via_bootstrap(monkeypatch: pytest.Mo
         "super-strong-production-secret-!@#42",
         raising=False,
     )
-    # Even if seed flags were wrongly enabled, bootstrap seed is not reached.
+    # Even if seed flags were wrongly enabled, startup must not seed.
     monkeypatch.setattr(app_main.settings, "LOCAL_ADMIN_SEED_ENABLED", True, raising=False)
 
     with TestClient(app_main.app):
@@ -168,16 +149,16 @@ def test_production_startup_does_not_mutate_via_bootstrap(monkeypatch: pytest.Mo
         + calls["ensure_hierarchy"]
         + calls["ensure_investition"]
         + calls["ensure_assembly"]
-        + calls["seed_admin"]
     )
     assert mutation_calls == 0
+    assert not hasattr(app_main, "seed_admin_user")
 
 
-def test_development_startup_runs_bootstrap(monkeypatch: pytest.MonkeyPatch):
+def test_development_startup_runs_bootstrap_without_admin_seed(monkeypatch: pytest.MonkeyPatch):
     calls = _patch_common(monkeypatch)
     monkeypatch.setattr(app_main.settings, "APP_ENV", "development", raising=False)
     monkeypatch.setattr(app_main.settings, "ALLOW_STARTUP_SCHEMA_BOOTSTRAP", None, raising=False)
-    monkeypatch.setattr(app_main.settings, "LOCAL_ADMIN_SEED_ENABLED", False, raising=False)
+    monkeypatch.setattr(app_main.settings, "LOCAL_ADMIN_SEED_ENABLED", True, raising=False)
 
     with TestClient(app_main.app) as client:
         assert client.get("/health").status_code == 200
@@ -187,8 +168,21 @@ def test_development_startup_runs_bootstrap(monkeypatch: pytest.MonkeyPatch):
     assert calls["ensure_hierarchy"] == 1
     assert calls["ensure_investition"] == 1
     assert calls["ensure_assembly"] == 1
-    assert calls["seed_admin"] == 1  # function called; seed itself no-ops when disabled
     assert calls["alembic_verify"] == 0
+    assert not hasattr(app_main, "seed_admin_user")
+
+
+def test_test_env_startup_runs_bootstrap_without_admin_seed(monkeypatch: pytest.MonkeyPatch):
+    calls = _patch_common(monkeypatch)
+    monkeypatch.setattr(app_main.settings, "APP_ENV", "test", raising=False)
+    monkeypatch.setattr(app_main.settings, "ALLOW_STARTUP_SCHEMA_BOOTSTRAP", None, raising=False)
+    monkeypatch.setattr(app_main.settings, "LOCAL_ADMIN_SEED_ENABLED", True, raising=False)
+
+    with TestClient(app_main.app):
+        pass
+
+    assert calls["create_all"] == 1
+    assert not hasattr(app_main, "seed_admin_user")
 
 
 def test_development_can_disable_bootstrap_and_validate_alembic(monkeypatch: pytest.MonkeyPatch):
@@ -353,7 +347,6 @@ def test_smoke_production_startup_against_temp_migrated_db(monkeypatch: pytest.M
         monkeypatch.setattr(app_main, "ensure_spritzguss_hierarchy_schema", _count_ensure)
         monkeypatch.setattr(app_main, "ensure_investition_schema", _count_ensure)
         monkeypatch.setattr(app_main, "ensure_assembly_structure_schema", _count_ensure)
-        monkeypatch.setattr(app_main, "seed_admin_user", lambda _db: (_ for _ in ()).throw(AssertionError("seed")))
 
         with TestClient(app_main.app) as client:
             assert client.get("/health").status_code == 200

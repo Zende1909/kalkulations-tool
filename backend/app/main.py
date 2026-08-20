@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from app.api.router import api_router
 from app.config import settings
-from app.database import Base, SessionLocal, engine, verify_database_connection
+from app.database import Base, engine, verify_database_connection
 from app.models import (  # noqa: F401
     AssemblyPosition,
     Baugruppe,
@@ -29,7 +29,6 @@ from app.models import (  # noqa: F401
     Veredelungsschritt,
     Zuschlagssatz,
 )
-from app.scripts.seed_admin import seed_admin_user
 from app.db_upgrade import (
     ensure_assembly_structure_schema,
     ensure_investition_schema,
@@ -42,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 def _run_dev_schema_bootstrap() -> None:
-    """Controlled create_all + ensure_* + optional admin seed (never production)."""
+    """Controlled create_all + ensure_* (never production; no admin seed)."""
     logger.info(
         "Startup-Schema-Bootstrap aktiv (APP_ENV=%s, ALLOW_STARTUP_SCHEMA_BOOTSTRAP=%s)",
         settings.APP_ENV,
@@ -53,11 +52,6 @@ def _run_dev_schema_bootstrap() -> None:
     ensure_spritzguss_hierarchy_schema(engine)
     ensure_investition_schema(engine)
     ensure_assembly_structure_schema(engine)
-    db = SessionLocal()
-    try:
-        seed_admin_user(db)
-    finally:
-        db.close()
 
 
 def _run_production_startup_checks() -> None:

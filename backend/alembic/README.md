@@ -71,8 +71,22 @@ alembic heads
 
 **Entwicklung / Tests** (Standard):
 
-- Kontrollierter Schema-Bootstrap: `create_all` + `ensure_*` (nur DDL) + optionaler Admin-Seed
+- Kontrollierter Schema-Bootstrap: `create_all` + `ensure_*` (nur DDL) – **kein** automatischer Admin-Seed
 - Override: `ALLOW_STARTUP_SCHEMA_BOOTSTRAP=false` erzwingt dieselbe Alembic-Prüfung wie in Produktion
 - In Produktion ist Bootstrap **hart deaktiviert** (auch wenn das Flag gesetzt ist)
 
 `ensure_*` enthält keine DML mehr (keine Investitions-Status-/Name-Updates).
+
+## Admin-Seed (CLI only)
+
+Der lokale Admin wird **nicht** beim App-Start angelegt. Explizit aus `backend/`:
+
+```bash
+# Windows (PowerShell): $env:LOCAL_ADMIN_SEED_ENABLED="true"; …
+set LOCAL_ADMIN_SEED_ENABLED=true
+set LOCAL_ADMIN_EMAIL=admin@example.com
+set LOCAL_ADMIN_PASSWORD=...
+python -m app.scripts.seed_admin
+```
+
+Voraussetzungen: `LOCAL_ADMIN_SEED_ENABLED`, lokale `DATABASE_URL` (localhost / 127.0.0.1 / sqlite) und gesetzte Zugangsdaten. Bestehende Benutzer bleiben unverändert (idempotent).

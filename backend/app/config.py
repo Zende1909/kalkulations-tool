@@ -78,10 +78,11 @@ class Settings(BaseSettings):
 
     @property
     def startup_schema_bootstrap_enabled(self) -> bool:
-        """Whether lifespan may run create_all / ensure_* / optional admin seed.
+        """Whether lifespan may run create_all / ensure_* (no admin seed).
 
         Production always returns False (hard block). For development/test the
         default is True unless ALLOW_STARTUP_SCHEMA_BOOTSTRAP explicitly disables it.
+        Admin users are seeded only via ``python -m app.scripts.seed_admin``.
         """
         if self.is_production:
             return False
