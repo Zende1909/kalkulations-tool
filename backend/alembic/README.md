@@ -60,8 +60,18 @@ alembic heads
 # alembic current
 ```
 
-## Beziehung zu Startup (`create_all` / `ensure_*`)
+## Beziehung zu Startup (AP2)
 
-AP1 ändert das Startup-Verhalten **nicht**. `create_all` und `ensure_*`
-laufen weiterhin. Spätere Arbeitspakete (AP2) entkoppeln Startup und
-Migrationen.
+**Produktion** (`APP_ENV=production`):
+
+- Kein `create_all`, keine `ensure_*`, keine Seeds
+- Startup prüft JWT, DB-Verbindung und **read-only** den Alembic-Head
+- Fehlende oder abweichende Revision → klarer Startup-Fehler
+
+**Entwicklung / Tests** (Standard):
+
+- Kontrollierter Schema-Bootstrap: `create_all` + `ensure_*` (nur DDL) + optionaler Admin-Seed
+- Override: `ALLOW_STARTUP_SCHEMA_BOOTSTRAP=false` erzwingt dieselbe Alembic-Prüfung wie in Produktion
+- In Produktion ist Bootstrap **hart deaktiviert** (auch wenn das Flag gesetzt ist)
+
+`ensure_*` enthält keine DML mehr (keine Investitions-Status-/Name-Updates).

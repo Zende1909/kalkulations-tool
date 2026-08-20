@@ -1,7 +1,44 @@
-"""Leichte Schema-Upgrades für bestehende PostgreSQL-Tabellen (ohne Alembic)."""
+"""Leichte Schema-Upgrades für bestehende PostgreSQL-Tabellen (Dev-/Test-Bootstrap).
+
+Nur DDL. Keine DML (kein UPDATE/INSERT/DELETE von Geschäftsdaten).
+Wird ausschließlich über den kontrollierten Startup-Bootstrap-Pfad
+(ALLOW_STARTUP_SCHEMA_BOOTSTRAP / APP_ENV=development|test) aufgerufen –
+niemals im Produktionsstart.
+"""
+
+from __future__ import annotations
+
+import logging
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
+
+logger = logging.getLogger(__name__)
+
+
+def _execute_ddl(engine: Engine, statements: list[str], *, label: str) -> None:
+    """Execute DDL statements; log failures. PostgreSQL: re-raise. SQLite: warn+skip.
+
+    SQLite is only used in unit tests; these helpers target PostgreSQL production DDL.
+    """
+    with engine.begin() as conn:
+        for stmt in statements:
+            preview = " ".join(stmt.split())[:180]
+            try:
+                conn.execute(text(stmt))
+                logger.debug("%s: OK – %s", label, preview)
+            except SQLAlchemyError:
+                if engine.dialect.name == "sqlite":
+                    logger.warning(
+                        "%s: SQLite überspringt Statement (Dev-Test-Pfad, kein Prod-Ziel): %s",
+                        label,
+                        preview,
+                        exc_info=True,
+                    )
+                    continue
+                logger.exception("%s: DDL fehlgeschlagen – %s", label, preview)
+                raise
 
 
 def ensure_spritzguss_schema(engine: Engine) -> None:
@@ -21,13 +58,7 @@ def ensure_spritzguss_schema(engine: Engine) -> None:
         USING ROUND(amortisationsvolumen)::INTEGER
         """,
     ]
-    with engine.begin() as conn:
-        for stmt in statements:
-            try:
-                conn.execute(text(stmt))
-            except Exception:
-                # Tabelle existiert ggf. noch nicht – create_all legt sie neu an.
-                pass
+    _execute_ddl(engine, statements, label="ensure_spritzguss_schema")
 
 
 def ensure_spritzguss_hierarchy_schema(engine: Engine) -> None:
@@ -66,15 +97,11 @@ def ensure_spritzguss_hierarchy_schema(engine: Engine) -> None:
         REFERENCES projects(id) ON DELETE SET NULL
         """,
     ]
-    with engine.begin() as conn:
-        for stmt in statements:
-            try:
-                conn.execute(text(stmt))
-            except Exception:
-                pass
+    _execute_ddl(engine, statements, label="ensure_spritzguss_hierarchy_schema")
 
 
 def ensure_investition_schema(engine: Engine) -> None:
+    """Additive Investitions-Spalten (DDL only – keine Status-/Name-Updates)."""
     statements = [
         """
         ALTER TABLE investitionen
@@ -97,23 +124,8 @@ def ensure_investition_schema(engine: Engine) -> None:
         ALTER TABLE investitionen
         ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE
         """,
-        """
-        UPDATE investitionen
-        SET name = COALESCE(NULLIF(name, ''), NULLIF(part_name, ''), NULLIF(description, ''), 'Investition')
-        WHERE name IS NULL OR name = ''
-        """,
-        """
-        UPDATE investitionen
-        SET status = 'In Planung'
-        WHERE status = 'offen'
-        """,
     ]
-    with engine.begin() as conn:
-        for stmt in statements:
-            try:
-                conn.execute(text(stmt))
-            except Exception:
-                pass
+    _execute_ddl(engine, statements, label="ensure_investition_schema")
 
 
 def ensure_assembly_structure_schema(engine: Engine) -> None:
@@ -280,15 +292,10 @@ def ensure_assembly_structure_schema(engine: Engine) -> None:
         END $$
         """,
     ]
-    with engine.begin() as conn:
-        for stmt in statements:
-            try:
-                conn.execute(text(stmt))
-            except Exception:
-                pass
-        if engine.dialect.name == "postgresql":
-            for stmt in constraint_statements:
-                try:
-                    conn.execute(text(stmt))
-                except Exception:
-                    pass
+    _execute_ddl(engine, statements, label="ensure_assembly_structure_schema")
+    if engine.dialect.name == "postgresql":
+        _execute_ddl(
+            engine,
+            constraint_statements,
+            label="ensure_assembly_structure_schema.constraints",
+        )

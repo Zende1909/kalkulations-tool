@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,13 +36,18 @@ from app.db_upgrade import (
     ensure_spritzguss_hierarchy_schema,
     ensure_spritzguss_schema,
 )
+from app.startup import verify_database_at_alembic_head
+
+logger = logging.getLogger(__name__)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Fail fast before any DB interaction; prevents unsafe production startup.
-    settings.validate_jwt_secret_for_startup()
-    verify_database_connection()
+def _run_dev_schema_bootstrap() -> None:
+    """Controlled create_all + ensure_* + optional admin seed (never production)."""
+    logger.info(
+        "Startup-Schema-Bootstrap aktiv (APP_ENV=%s, ALLOW_STARTUP_SCHEMA_BOOTSTRAP=%s)",
+        settings.APP_ENV,
+        settings.ALLOW_STARTUP_SCHEMA_BOOTSTRAP,
+    )
     Base.metadata.create_all(bind=engine)
     ensure_spritzguss_schema(engine)
     ensure_spritzguss_hierarchy_schema(engine)
@@ -52,6 +58,26 @@ async def lifespan(app: FastAPI):
         seed_admin_user(db)
     finally:
         db.close()
+
+
+def _run_production_startup_checks() -> None:
+    """JWT already validated; verify DB connectivity done; Alembic head read-only."""
+    logger.info(
+        "Produktions-Startup: keine Schemaänderungen, keine Seeds, "
+        "keine Datenmutation – nur Alembic-Head-Prüfung"
+    )
+    verify_database_at_alembic_head(engine)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Fail fast before any DB interaction; prevents unsafe production startup.
+    settings.validate_jwt_secret_for_startup()
+    verify_database_connection()
+    if settings.startup_schema_bootstrap_enabled:
+        _run_dev_schema_bootstrap()
+    else:
+        _run_production_startup_checks()
     yield
 
 

@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     LOCAL_ADMIN_EMAIL: str | None = None
     LOCAL_ADMIN_PASSWORD: str | None = None
 
+    # AP2: optional override for startup schema bootstrap (create_all / ensure_*).
+    # None = auto from APP_ENV (enabled in development/test, always off in production).
+    ALLOW_STARTUP_SCHEMA_BOOTSTRAP: bool | None = None
+
     @field_validator("APP_ENV", mode="before")
     @classmethod
     def _normalize_app_env(cls, value: str) -> str:
@@ -71,6 +75,19 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.APP_ENV == "production"
+
+    @property
+    def startup_schema_bootstrap_enabled(self) -> bool:
+        """Whether lifespan may run create_all / ensure_* / optional admin seed.
+
+        Production always returns False (hard block). For development/test the
+        default is True unless ALLOW_STARTUP_SCHEMA_BOOTSTRAP explicitly disables it.
+        """
+        if self.is_production:
+            return False
+        if self.ALLOW_STARTUP_SCHEMA_BOOTSTRAP is not None:
+            return bool(self.ALLOW_STARTUP_SCHEMA_BOOTSTRAP)
+        return self.APP_ENV in {"development", "test"}
 
     @property
     def is_default_jwt_secret(self) -> bool:
