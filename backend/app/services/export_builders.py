@@ -385,20 +385,54 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
     if skonto is None and "skonto" in ergebnis:
         skonto = 0.0
 
+    export_date = datetime.now(timezone.utc)
+    detail = build_baugruppe_detail_kalkulation(db, assembly_id)
+
     markup_rows = [
         [
-            row["bezeichnung"],
-            f"{row['satz_prozent']:.2f} %".replace(".", ",") if row.get("satz_prozent") is not None else "–",
-            _euro_str(row.get("betrag")),
+            a.bezeichnung,
+            f"{a.satz_prozent:.2f} %".replace(".", ",") if a.satz_prozent is not None else "–",
+            _euro_str(a.betrag) if a.betrag is not None else (a.hinweis or "Satz (Stammdaten)"),
         ]
-        for row in overview["zuschlagssaetze"]
+        for a in detail.assumptions
+        if a.satz_prozent is not None or a.betrag is not None
     ]
+    if not markup_rows:
+        markup_rows = [
+            [
+                row["bezeichnung"],
+                f"{row['satz_prozent']:.2f} %".replace(".", ",")
+                if row.get("satz_prozent") is not None
+                else "–",
+                _euro_str(row.get("betrag")),
+            ]
+            for row in overview["zuschlagssaetze"]
+        ]
     if not markup_rows and "skonto" in ergebnis:
         markup_rows = [
-            ["VVGK", "–", _euro_str(overview["vvgk"])],
-            ["Gewinn", "–", _euro_str(overview["gewinn"])],
+            ["SG&A / VVGK", "–", _euro_str(overview["vvgk"])],
+            ["Profit / Gewinn", "–", _euro_str(overview["gewinn"])],
             ["Skonto", "–", _euro_str(skonto)],
         ]
+    # Skonto immer ausweisen, wenn im Ergebnis vorhanden
+    if markup_rows and not any("Skonto" in str(r[0]) for r in markup_rows) and "skonto" in ergebnis:
+        markup_rows.append(["Skonto", "–", _euro_str(skonto)])
+
+    jahresstueckzahl = (
+        int(detail.jahresstueckzahl)
+        if detail.jahresstueckzahl is not None
+        else int(obj.jahresstueckzahl or 0)
+    )
+    endpreis = preis_aus_baugruppe(ergebnis)
+    jahresumsatz = (
+        float(detail.jahresumsatz)
+        if detail.jahresumsatz is not None
+        else (
+            round(float(endpreis) * jahresstueckzahl, 2)
+            if endpreis is not None
+            else 0.0
+        )
+    )
 
     kosten_aufstellung = [
         ExportMoneyRow("Einzelteilkosten", overview["einzelteilkosten"]),
@@ -417,27 +451,24 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
         ExportMoneyRow("Nettoverkaufspreis", overview["nettoverkaufspreis"]),
         ExportMoneyRow(
             "Preis pro Stück",
-            overview["preis_je_stueck"],
+            endpreis,
             highlight=True,
         ),
-        ExportMoneyRow("Jahresumsatz", overview["jahresumsatz"], highlight=True),
+        ExportMoneyRow("Jahresumsatz", jahresumsatz, highlight=True),
         ExportMoneyRow("Gesamtergebnis", overview["gesamtsumme"], highlight=True),
     ]
-    for detail in ergebnis.get("process_yield_details") or []:
-        if not isinstance(detail, dict):
+    for yield_detail in ergebnis.get("process_yield_details") or []:
+        if not isinstance(yield_detail, dict):
             continue
-        name = detail.get("name_snapshot") or detail.get("label") or "Prozess"
-        quote = _float_from(detail, "ausschussquote_pct")
+        name = yield_detail.get("name_snapshot") or yield_detail.get("label") or "Prozess"
+        quote = _float_from(yield_detail, "ausschussquote_pct")
         kosten_aufstellung.append(
             ExportMoneyRow(
                 f"ASSY/Prozess-Ausschuss {name}"
                 + (f" ({_pct_str(quote)})" if quote is not None else ""),
-                _float_from(detail, "ausschuss_zuschlag"),
+                _float_from(yield_detail, "ausschuss_zuschlag"),
             )
         )
-
-    export_date = datetime.now(timezone.utc)
-    detail = build_baugruppe_detail_kalkulation(db, assembly_id)
 
     # Detail-Tabellen für Excel/PDF (überschreiben Legacy-Kurzzeilen wenn vorhanden)
     if detail.parts:
@@ -449,6 +480,10 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
                     p.teilenummer,
                     str(p.menge),
                     p.price_basis,
+                    p.material_name or "–",
+                    _euro_str(p.materialpreis_pro_kg) + " / kg" if p.materialpreis_pro_kg is not None else "–",
+                    f"{p.teilegewicht_netto_g:.2f} g" if p.teilegewicht_netto_g is not None else "–",
+                    f"{p.schussgewicht_g:.2f} g" if p.schussgewicht_g is not None else "–",
                     _euro_str(p.materialkosten),
                     _pct_str(p.material_ausschussquote_pct),
                     _euro_str(p.materialkosten_inkl_ausschuss),
@@ -457,6 +492,7 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
                     _euro_str(p.material_mgk),
                     _euro_str(p.maschinenkosten),
                     _euro_str(p.fertigungslohn),
+                    _euro_str(p.spritzguss_ausgang),
                     _euro_str(p.veredelung_direkt_vor),
                     _euro_str(p.fgk_basis),
                     _pct_str(p.fgk_pct),
@@ -515,7 +551,7 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
         teilenummer=obj.teilenummer,
         kunde=detail.customer_name or obj.kunde,
         projekt=detail.project_name or obj.projekt,
-        jahresstueckzahl=obj.jahresstueckzahl,
+        jahresstueckzahl=jahresstueckzahl,
         created_at=obj.created_at,
         updated_at=obj.updated_at,
         einzelteile=ExportTable(
@@ -525,6 +561,10 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
                 "Teilenummer",
                 "Menge",
                 "Kostenbasis",
+                "Material",
+                "Materialpreis",
+                "Netto-Gewicht",
+                "Schussgewicht",
                 "Material direkt",
                 "Mat.-Ausschuss %",
                 "Material inkl. Ausschuss",
@@ -533,6 +573,7 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
                 "Material-MGK",
                 "Maschinenkosten",
                 "Fertigungslohn",
+                "Spritzguss-Ausgang",
                 "Veredelung direkt vor Ausschuss",
                 "FGK-Basis",
                 "FGK %",
@@ -591,8 +632,8 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
         einzelteile_gesamt=overview["einzelteilkosten"],
         kaufteile_gesamt=overview["kaufteilkosten"],
         veredelung_gesamt=overview["veredelungskosten"],
-        baugruppenpreis_je_stueck=preis_aus_baugruppe(ergebnis),
-        jahresumsatz=jahresumsatz_aus_baugruppe(ergebnis, obj.jahresstueckzahl),
+        baugruppenpreis_je_stueck=endpreis,
+        jahresumsatz=jahresumsatz,
         export_date=export_date,
         structure_version=obj.structure_version,
         status=obj.status or "",

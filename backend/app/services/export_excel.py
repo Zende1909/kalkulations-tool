@@ -170,7 +170,10 @@ def render_spritzguss_excel(data: SpritzgussExportData) -> bytes:
 
 
 def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
-    from app.services.baugruppe_export_detail import BaugruppeDetailKalkulation
+    from app.services.baugruppe_export_detail import (
+        BaugruppeDetailKalkulation,
+        excel_safe_sheet_name,
+    )
 
     wb = Workbook()
     ws = wb.active
@@ -258,73 +261,159 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
     _write_table(ws_e, 1, data.einzelteile, table_name="Einzelteile")
     _autosize(ws_e)
 
-    # Prozesskette je PART (z. B. Armlehne Kaschieren)
-    ws_pk = wb.create_sheet("PART_Prozesskette")
-    ws_pk["A1"] = "Veredelungskette je Einzelteil (Ausbeutekette)"
-    ws_pk["A1"].font = BOLD
-    pk_headers = [
-        "Einzelteil",
-        "Reihenfolge",
-        "Prozess",
-        "Art",
-        "Lohn",
-        "Maschine",
-        "Verbrauch",
-        "Direkt vor Ausschuss",
-        "Ausschuss %",
-        "Ausbeute %",
-        "Vorprodukt",
-        "Ausschusszuschlag",
-        "Nach Ausbeute",
-    ]
-    for c, h in enumerate(pk_headers, 1):
-        cell = ws_pk.cell(row=3, column=c, value=h)
-        cell.font = BOLD
-        cell.fill = HEADER_FILL
-    pk_row = 4
+    used_sheets: set[str] = set(wb.sheetnames)
+
+    def _kv_money(ws, row: int, label: str, value) -> int:
+        ws.cell(row=row, column=1, value=label).font = BOLD
+        cell = ws.cell(row=row, column=2, value=value if value is not None else "–")
+        if isinstance(value, (int, float)):
+            cell.number_format = EUR_FORMAT
+        return row + 1
+
     if detail:
         for part in detail.parts:
-            if not part.process_steps:
-                continue
-            # Spritzguss-Ausgang
-            ws_pk.cell(row=pk_row, column=1, value=part.bezeichnung)
-            ws_pk.cell(row=pk_row, column=2, value=0)
-            ws_pk.cell(row=pk_row, column=3, value="Spritzguss Ausgang")
-            ws_pk.cell(row=pk_row, column=4, value="Spritzguss")
-            for col in (5, 6, 7):
-                ws_pk.cell(row=pk_row, column=col, value=None)
-            mat = (part.materialkosten_inkl_ausschuss or 0) + (part.material_mgk or 0)
-            masch = part.maschinenkosten or 0
-            lohn = part.fertigungslohn or 0
-            ws_pk.cell(row=pk_row, column=8, value=mat + masch + lohn).number_format = EUR_FORMAT
-            ws_pk.cell(row=pk_row, column=9, value=part.material_ausschussquote_pct)
-            ws_pk.cell(row=pk_row, column=11, value=part.materialkosten).number_format = EUR_FORMAT
+            base = f"PART_{part.sequence:03d}_{part.sheet_slug or part.bezeichnung}"
+            sheet_name = excel_safe_sheet_name(base, used_sheets)
+            ws_p = wb.create_sheet(sheet_name)
+            ws_p["A1"] = f"Detailkalkulation: {part.bezeichnung}"
+            ws_p["A1"].font = BOLD
+            r = 3
+            meta = [
+                ("Bezeichnung", part.bezeichnung),
+                ("Teilenummer", part.teilenummer),
+                ("Menge", part.menge),
+                ("Kostenbasis", part.price_basis),
+                ("Material", part.material_name or "–"),
+                ("Materialpreis €/kg", part.materialpreis_pro_kg),
+                ("Netto-Teilegewicht g", part.teilegewicht_netto_g),
+                ("Schussgewicht g", part.schussgewicht_g),
+                ("Materialkosten direkt", part.materialkosten),
+                ("Material-Ausschuss %", part.material_ausschussquote_pct),
+                ("Material inkl. Ausschuss", part.materialkosten_inkl_ausschuss),
+                ("Material-Nominierung", part.material_nominierung or "fehlend"),
+                ("MGK %", part.mgk_pct),
+                ("Material-MGK", part.material_mgk),
+                ("Maschinenkosten", part.maschinenkosten),
+                ("Fertigungslohn", part.fertigungslohn),
+                ("Spritzguss-Ausgangskosten", part.spritzguss_ausgang),
+                ("Veredelung direkt vor Ausschuss", part.veredelung_direkt_vor),
+                ("FGK-Basis", part.fgk_basis),
+                ("FGK %", part.fgk_pct),
+                ("FGK-Betrag", part.fgk_betrag),
+                ("Herstellkosten", part.herstellkosten),
+                ("Zwischensumme", part.zwischensumme),
+            ]
+            for label, val in meta:
+                ws_p.cell(row=r, column=1, value=label).font = BOLD
+                cell = ws_p.cell(row=r, column=2, value=val if val is not None else "–")
+                if isinstance(val, (int, float)) and label not in {
+                    "Menge",
+                    "Material-Ausschuss %",
+                    "MGK %",
+                    "FGK %",
+                    "Netto-Teilegewicht g",
+                    "Schussgewicht g",
+                }:
+                    cell.number_format = EUR_FORMAT
+                r += 1
+            if part.hinweise:
+                r += 1
+                ws_p.cell(row=r, column=1, value="Hinweise").font = BOLD
+                r += 1
+                for h in part.hinweise:
+                    ws_p.cell(row=r, column=1, value=h)
+                    r += 1
+            _autosize(ws_p)
+
+            # Eigene Prozesskette je PART (auch wenn leer: Spritzguss-Ausgang)
+            pk_name = excel_safe_sheet_name(
+                f"PART_{part.sequence:03d}_Prozesskette", used_sheets
+            )
+            ws_pk = wb.create_sheet(pk_name)
+            ws_pk["A1"] = f"Prozesskette: {part.bezeichnung}"
+            ws_pk["A1"].font = BOLD
+            headers = [
+                "Reihenfolge",
+                "Prozess",
+                "Art",
+                "Lohn",
+                "Maschine",
+                "Verbrauch",
+                "Direkt vor Ausschuss",
+                "Ausschuss %",
+                "Ausbeute %",
+                "Vorprodukt",
+                "Ausschusszuschlag",
+                "Nach Ausbeute",
+            ]
+            for c, h in enumerate(headers, 1):
+                cell = ws_pk.cell(row=3, column=c, value=h)
+                cell.font = BOLD
+                cell.fill = HEADER_FILL
+            pk_row = 4
+            ws_pk.cell(row=pk_row, column=1, value=0)
+            ws_pk.cell(row=pk_row, column=2, value="Spritzguss Ausgang")
+            ws_pk.cell(row=pk_row, column=3, value="Spritzguss")
+            ws_pk.cell(row=pk_row, column=7, value=part.spritzguss_ausgang).number_format = EUR_FORMAT
+            ws_pk.cell(row=pk_row, column=8, value=part.material_ausschussquote_pct)
+            ws_pk.cell(row=pk_row, column=10, value=part.materialkosten).number_format = EUR_FORMAT
+            if part.materialkosten_inkl_ausschuss is not None and part.materialkosten is not None:
+                ws_pk.cell(
+                    row=pk_row,
+                    column=11,
+                    value=part.materialkosten_inkl_ausschuss - part.materialkosten,
+                ).number_format = EUR_FORMAT
+            ws_pk.cell(
+                row=pk_row, column=12, value=part.materialkosten_inkl_ausschuss
+            ).number_format = EUR_FORMAT
             pk_row += 1
             for step in part.process_steps:
-                ws_pk.cell(row=pk_row, column=1, value=part.bezeichnung)
-                ws_pk.cell(row=pk_row, column=2, value=step.reihenfolge)
-                ws_pk.cell(row=pk_row, column=3, value=step.bezeichnung)
-                ws_pk.cell(row=pk_row, column=4, value=step.veredelungsart)
-                ws_pk.cell(row=pk_row, column=5, value=step.lohnkosten).number_format = EUR_FORMAT
-                ws_pk.cell(row=pk_row, column=6, value=step.maschinenkosten).number_format = EUR_FORMAT
-                ws_pk.cell(row=pk_row, column=7, value=step.verbrauchskosten).number_format = EUR_FORMAT
-                ws_pk.cell(row=pk_row, column=8, value=step.kosten_vor_ausschuss).number_format = EUR_FORMAT
-                ws_pk.cell(row=pk_row, column=9, value=step.ausschussquote_pct)
-                ws_pk.cell(row=pk_row, column=10, value=step.ausbeute_pct)
-                ws_pk.cell(row=pk_row, column=11, value=step.vorprodukt_eingang).number_format = EUR_FORMAT
-                ws_pk.cell(row=pk_row, column=12, value=step.ausschuss_zuschlag).number_format = EUR_FORMAT
-                ws_pk.cell(row=pk_row, column=13, value=step.kosten_nach_ausbeute).number_format = EUR_FORMAT
+                ws_pk.cell(row=pk_row, column=1, value=step.reihenfolge)
+                ws_pk.cell(row=pk_row, column=2, value=step.bezeichnung)
+                ws_pk.cell(row=pk_row, column=3, value=step.veredelungsart)
+                ws_pk.cell(row=pk_row, column=4, value=step.lohnkosten).number_format = EUR_FORMAT
+                ws_pk.cell(row=pk_row, column=5, value=step.maschinenkosten).number_format = EUR_FORMAT
+                ws_pk.cell(row=pk_row, column=6, value=step.verbrauchskosten).number_format = EUR_FORMAT
+                ws_pk.cell(row=pk_row, column=7, value=step.kosten_vor_ausschuss).number_format = EUR_FORMAT
+                ws_pk.cell(row=pk_row, column=8, value=step.ausschussquote_pct)
+                ws_pk.cell(row=pk_row, column=9, value=step.ausbeute_pct)
+                ws_pk.cell(row=pk_row, column=10, value=step.vorprodukt_eingang).number_format = EUR_FORMAT
+                ws_pk.cell(row=pk_row, column=11, value=step.ausschuss_zuschlag).number_format = EUR_FORMAT
+                ws_pk.cell(row=pk_row, column=12, value=step.kosten_nach_ausbeute).number_format = EUR_FORMAT
                 pk_row += 1
-    if pk_row == 4:
-        ws_pk["A4"] = "Keine PART-Prozesskette"
-    _autosize(ws_pk)
+            if part.fgk_betrag is not None:
+                pk_row += 1
+                ws_pk.cell(row=pk_row, column=1, value="FGK").font = BOLD
+                ws_pk.cell(row=pk_row, column=2, value=f"Satz {part.fgk_pct} %")
+                ws_pk.cell(row=pk_row, column=10, value=part.fgk_basis).number_format = EUR_FORMAT
+                ws_pk.cell(row=pk_row, column=12, value=part.fgk_betrag).number_format = EUR_FORMAT
+                pk_row += 1
+                ws_pk.cell(row=pk_row, column=1, value="Herstellkosten fertig").font = BOLD
+                ws_pk.cell(row=pk_row, column=12, value=part.herstellkosten).number_format = EUR_FORMAT
+            _autosize(ws_pk)
 
-    ws_k = wb.create_sheet("Kaufteile")
+    ws_k = wb.create_sheet(excel_safe_sheet_name("Kaufteile_Detail", used_sheets) if detail else "Kaufteile")
     _write_table(ws_k, 1, data.kaufteile, table_name="Kaufteile")
     _autosize(ws_k)
 
-    ws_v = wb.create_sheet("ASSY_Prozesskette")
+    ws_v = wb.create_sheet(excel_safe_sheet_name("ASSY_Detail", used_sheets) if detail else "ASSY_Prozesskette")
     _write_table(ws_v, 1, data.veredelung, table_name="ASSY")
+    if detail and detail.processes:
+        extra = len(data.veredelung.rows) + 4
+        ws_v.cell(row=extra, column=1, value="Vorprodukte je ASSY-Prozess").font = BOLD
+        extra += 1
+        for proc in detail.processes:
+            ws_v.cell(
+                row=extra,
+                column=1,
+                value=f"{proc.bezeichnung}: "
+                + (
+                    ", ".join(proc.vorprodukt_komponenten)
+                    if proc.vorprodukt_komponenten
+                    else "–"
+                ),
+            )
+            extra += 1
     _autosize(ws_v)
 
     ws_i = wb.create_sheet("Investitionen")
@@ -337,9 +426,9 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
             ws_i.cell(row=i, column=2, value=inv.typ)
             ws_i.cell(row=i, column=3, value=inv.betrag).number_format = EUR_FORMAT
             ws_i.cell(row=i, column=4, value=inv.status)
-            ws_i.cell(row=i, column=5, value=inv.hinweis)
+            ws_i.cell(row=i, column=5, value=inv.hinweis or "Separat, nicht im Stückpreis enthalten")
     else:
-        ws_i["A1"] = "Keine Investitionen – nicht im Stückpreis enthalten"
+        ws_i["A1"] = "Keine Investitionen – separat, nicht im Stückpreis enthalten"
     _autosize(ws_i)
 
     if data.zuschlagssaetze is not None:
@@ -347,8 +436,9 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
         _write_table(ws_m, 1, data.zuschlagssaetze, table_name="Zuschlaege")
         _autosize(ws_m)
 
-    # Überleitung mit Formeln für Summen
-    ws_u = wb.create_sheet("Ueberleitung")
+    ws_u = wb.create_sheet(
+        excel_safe_sheet_name("Gesamtueberleitung", used_sheets) if detail else "Ueberleitung"
+    )
     ws_u["A1"] = "Gesamtüberleitung zum Endpreis"
     ws_u["A1"].font = BOLD
     for c, h in enumerate(["Position", "Betrag", "Berechnungsbasis"], 1):
@@ -361,6 +451,8 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
             ws_u.cell(row=u_row, column=1, value=line.label)
             if line.amount is not None:
                 ws_u.cell(row=u_row, column=2, value=line.amount).number_format = EUR_FORMAT
+            else:
+                ws_u.cell(row=u_row, column=2, value="–")
             if line.highlight:
                 ws_u.cell(row=u_row, column=1).font = BOLD
                 ws_u.cell(row=u_row, column=2).font = BOLD
@@ -406,6 +498,10 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
             c.number_format = EUR_FORMAT
         if highlight:
             c.font = BOLD
+        row_i += 1
+    if detail and detail.jahresstueckzahl_hinweis:
+        row_i += 1
+        ws_z.cell(row=row_i, column=1, value=detail.jahresstueckzahl_hinweis)
         row_i += 1
     if detail and detail.warnings:
         row_i += 1

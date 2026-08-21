@@ -224,6 +224,7 @@ def render_baugruppe_pdf(data: BaugruppeExportData) -> bytes:
     buffer = io.BytesIO()
     doc = _build_doc(buffer, "Baugruppen-Detailkalkulation")
     export_date = data.export_date or datetime.now()
+    # 1. Zusammenfassung
     story = _header_block(
         data.company_name,
         "Baugruppen-Detailkalkulation",
@@ -250,76 +251,184 @@ def render_baugruppe_pdf(data: BaugruppeExportData) -> bytes:
             ("Geändert", _fmt_dt(data.updated_at)),
         ],
     )
+    if data.kosten_aufstellung:
+        story.extend(_money_table("Kostenaufstellung", data.kosten_aufstellung))
 
     detail = data.detail if isinstance(data.detail, BaugruppeDetailKalkulation) else None
+
+    # 2. zentrale Zuschlagssätze
     if detail and detail.assumptions:
         story.extend(
             _kv_table(
-                "Zentrale Annahmen",
+                "Zentrale Zuschlagssätze",
                 [
                     (
                         a.bezeichnung,
-                        f"{a.satz_prozent if a.satz_prozent is not None else '–'} % – Basis: {a.kostenbasis}"
+                        (
+                            f"{a.satz_prozent:.2f} %".replace(".", ",")
+                            if a.satz_prozent is not None
+                            else "–"
+                        )
+                        + f" – Basis: {a.kostenbasis}"
+                        + (f" – {_money(a.betrag)}" if a.betrag is not None else "")
                         + (f" ({a.hinweis})" if a.hinweis else ""),
                     )
                     for a in detail.assumptions
                 ],
             )
         )
-
-    if data.kosten_aufstellung:
-        story.extend(_money_table("Kostenaufstellung", data.kosten_aufstellung))
-    if data.bom is not None:
-        story.extend(_export_table_block(data.bom))
-    story.extend(_export_table_block(data.einzelteile))
-
-    if detail:
-        for part in detail.parts:
-            if not part.process_steps:
-                continue
-            rows = [
-                ExportMoneyRow(
-                    f"{part.bezeichnung}: Spritzguss-Ausgang (Mat. inkl. Ausschuss + MGK + Maschine + Lohn)",
-                    (part.materialkosten_inkl_ausschuss or 0)
-                    + (part.material_mgk or 0)
-                    + (part.maschinenkosten or 0)
-                    + (part.fertigungslohn or 0),
-                )
-            ]
-            for step in part.process_steps:
-                rows.append(
-                    ExportMoneyRow(
-                        f"{part.bezeichnung} / {step.bezeichnung}: Vorprodukt",
-                        step.vorprodukt_eingang,
-                    )
-                )
-                rows.append(
-                    ExportMoneyRow(
-                        f"{part.bezeichnung} / {step.bezeichnung}: Prozess vor Ausschuss",
-                        step.kosten_vor_ausschuss,
-                    )
-                )
-                rows.append(
-                    ExportMoneyRow(
-                        f"{part.bezeichnung} / {step.bezeichnung}: Ausschuss "
-                        f"({step.ausschussquote_pct} %, Ausbeute {step.ausbeute_pct} %)",
-                        step.ausschuss_zuschlag,
-                    )
-                )
-                rows.append(
-                    ExportMoneyRow(
-                        f"{part.bezeichnung} / {step.bezeichnung}: Nach Ausbeute",
-                        step.kosten_nach_ausbeute,
-                        highlight=True,
-                    )
-                )
-            story.extend(_money_table(f"Prozesskette {part.bezeichnung}", rows))
-
-    story.extend(_export_table_block(data.kaufteile))
-    story.extend(_export_table_block(data.veredelung))
-    if data.zuschlagssaetze is not None:
+    elif data.zuschlagssaetze is not None:
         story.extend(_export_table_block(data.zuschlagssaetze))
 
+    # 3. BOM
+    if data.bom is not None:
+        story.extend(_export_table_block(data.bom))
+
+    # 4 + 5. vollständige Kalkulation und Prozesskette je PART
+    if detail:
+        for part in detail.parts:
+            story.extend(
+                _kv_table(
+                    f"PART-Detail: {part.bezeichnung}",
+                    [
+                        ("Teilenummer", part.teilenummer or "–"),
+                        ("Menge", str(part.menge)),
+                        ("Kostenbasis", part.price_basis),
+                        ("Material", part.material_name or "–"),
+                        (
+                            "Materialpreis",
+                            _money(part.materialpreis_pro_kg) + " / kg"
+                            if part.materialpreis_pro_kg is not None
+                            else "–",
+                        ),
+                        (
+                            "Netto-Teilegewicht",
+                            f"{part.teilegewicht_netto_g:.2f} g"
+                            if part.teilegewicht_netto_g is not None
+                            else "–",
+                        ),
+                        (
+                            "Schussgewicht",
+                            f"{part.schussgewicht_g:.2f} g"
+                            if part.schussgewicht_g is not None
+                            else "–",
+                        ),
+                        ("Materialkosten direkt", _money(part.materialkosten)),
+                        (
+                            "Material-Ausschuss",
+                            f"{part.material_ausschussquote_pct:.2f} %".replace(".", ",")
+                            if part.material_ausschussquote_pct is not None
+                            else "–",
+                        ),
+                        ("Material inkl. Ausschuss", _money(part.materialkosten_inkl_ausschuss)),
+                        ("Nominierung", part.material_nominierung or "fehlend"),
+                        (
+                            "MGK-Satz",
+                            f"{part.mgk_pct:.2f} %".replace(".", ",")
+                            if part.mgk_pct is not None
+                            else "–",
+                        ),
+                        ("Material-MGK", _money(part.material_mgk)),
+                        ("Maschinenkosten", _money(part.maschinenkosten)),
+                        ("Fertigungslohn", _money(part.fertigungslohn)),
+                        ("Spritzguss-Ausgang", _money(part.spritzguss_ausgang)),
+                        ("Veredelung direkt vor Ausschuss", _money(part.veredelung_direkt_vor)),
+                        ("FGK-Basis", _money(part.fgk_basis)),
+                        (
+                            "FGK-Satz",
+                            f"{part.fgk_pct:.2f} %".replace(".", ",")
+                            if part.fgk_pct is not None
+                            else "–",
+                        ),
+                        ("FGK", _money(part.fgk_betrag)),
+                        ("Herstellkosten", _money(part.herstellkosten)),
+                        ("Zwischensumme", _money(part.zwischensumme)),
+                    ],
+                )
+            )
+            chain_rows = [
+                ExportMoneyRow(
+                    "Spritzguss-Ausgang (Mat. inkl. Ausschuss + MGK + Maschine + Lohn)",
+                    part.spritzguss_ausgang,
+                ),
+                ExportMoneyRow(
+                    f"Spritzguss-Materialausschuss ({part.material_ausschussquote_pct} %)"
+                    if part.material_ausschussquote_pct is not None
+                    else "Spritzguss-Materialausschuss",
+                    (
+                        (part.materialkosten_inkl_ausschuss or 0) - (part.materialkosten or 0)
+                        if part.materialkosten_inkl_ausschuss is not None
+                        else None
+                    ),
+                ),
+            ]
+            for step in part.process_steps:
+                chain_rows.extend(
+                    [
+                        ExportMoneyRow(
+                            f"{step.bezeichnung}: Lohn / Maschine / Verbrauch",
+                            step.lohnkosten + step.maschinenkosten + step.verbrauchskosten,
+                        ),
+                        ExportMoneyRow(
+                            f"{step.bezeichnung}: Vorprodukt vor Ausschuss",
+                            step.vorprodukt_eingang,
+                        ),
+                        ExportMoneyRow(
+                            f"{step.bezeichnung}: Prozess vor Ausschuss",
+                            step.kosten_vor_ausschuss,
+                        ),
+                        ExportMoneyRow(
+                            f"{step.bezeichnung}: Ausschuss "
+                            f"({step.ausschussquote_pct} %, Ausbeute {step.ausbeute_pct} %)",
+                            step.ausschuss_zuschlag,
+                        ),
+                        ExportMoneyRow(
+                            f"{step.bezeichnung}: Nach Ausbeute",
+                            step.kosten_nach_ausbeute,
+                            highlight=True,
+                        ),
+                    ]
+                )
+            if part.fgk_betrag is not None:
+                chain_rows.append(ExportMoneyRow(f"FGK ({part.fgk_pct} %)", part.fgk_betrag))
+                chain_rows.append(
+                    ExportMoneyRow("Herstellkosten fertig", part.herstellkosten, highlight=True)
+                )
+            story.extend(_money_table(f"Prozesskette {part.bezeichnung}", chain_rows))
+    else:
+        story.extend(_export_table_block(data.einzelteile))
+
+    # 6. Kaufteil-Details
+    story.extend(_export_table_block(data.kaufteile))
+
+    # 7. ASSY-Prozesskette
+    story.extend(_export_table_block(data.veredelung))
+    if detail and detail.processes:
+        for proc in detail.processes:
+            story.extend(
+                _kv_table(
+                    f"ASSY {proc.bezeichnung} – Vorprodukte",
+                    [
+                        (
+                            "Vorprodukte (gemeinsam durch Ausschuss belastet)",
+                            ", ".join(proc.vorprodukt_komponenten)
+                            if proc.vorprodukt_komponenten
+                            else "–",
+                        ),
+                        ("Vorproduktkosten", _money(proc.vorprodukt_eingang)),
+                        ("Direkt vor Ausschuss", _money(proc.kosten_vor_ausschuss)),
+                        (
+                            "Ausschuss / Ausbeute",
+                            f"{proc.ausschussquote_pct} % / {proc.ausbeute_pct} %",
+                        ),
+                        ("Ausschusszuschlag", _money(proc.ausschuss_zuschlag)),
+                        ("Nach Ausbeute", _money(proc.kosten_nach_ausbeute)),
+                        ("FGK", _money(proc.fgk_betrag)),
+                    ],
+                )
+            )
+
+    # 8. Gesamtüberleitung
     if detail and detail.ueberleitung:
         story.extend(
             _money_table(
@@ -332,35 +441,55 @@ def render_baugruppe_pdf(data: BaugruppeExportData) -> bytes:
             )
         )
 
-    summary = [
-        ("Einzelteile gesamt", _money(data.einzelteile_gesamt)),
-        ("Kaufteile gesamt", _money(data.kaufteile_gesamt)),
-        ("Montage/ASSY gesamt", _money(data.veredelung_gesamt)),
-        ("Herstellkosten", _money(data.herstellkosten)),
-        ("SG&A / VVGK", _money(data.vvgk)),
-        ("Selbstkosten", _money(data.selbstkosten)),
-        ("Gewinn", _money(data.gewinn)),
-        ("Skonto", _money(data.skonto)),
-        ("Nettoverkaufspreis", _money(data.nettoverkaufspreis)),
-        ("Endpreis je Stück", _money(data.baugruppenpreis_je_stueck)),
-        ("Jahresumsatz", _money(data.jahresumsatz)),
-        ("Gesamtergebnis", _money(data.gesamtergebnis)),
-    ]
-    story.extend(_kv_table("Gesamtpreis und Summen", summary))
+    story.extend(
+        _kv_table(
+            "Gesamtpreis und Summen",
+            [
+                ("Einzelteile gesamt", _money(data.einzelteile_gesamt)),
+                ("Kaufteile gesamt", _money(data.kaufteile_gesamt)),
+                ("Montage/ASSY gesamt", _money(data.veredelung_gesamt)),
+                ("Herstellkosten", _money(data.herstellkosten)),
+                ("SG&A / VVGK", _money(data.vvgk)),
+                ("Selbstkosten", _money(data.selbstkosten)),
+                ("Gewinn", _money(data.gewinn)),
+                ("Skonto", _money(data.skonto)),
+                ("Nettoverkaufspreis", _money(data.nettoverkaufspreis)),
+                ("Endpreis je Stück", _money(data.baugruppenpreis_je_stueck)),
+                ("Jahresumsatz", _money(data.jahresumsatz)),
+                ("Gesamtergebnis", _money(data.gesamtergebnis)),
+            ],
+        )
+    )
+
+    # 9. Investitionen
     if data.investitionen:
         story.extend(
             _kv_table(
                 "Investitionen (separat, nicht im Stückpreis)",
-                [(i.bezeichnung, f"{_money(i.betrag)} – {i.hinweis}") for i in data.investitionen],
+                [
+                    (i.bezeichnung, f"{_money(i.betrag)} – {i.hinweis}")
+                    for i in data.investitionen
+                ],
             )
         )
-    if detail and detail.warnings:
+    else:
         story.extend(
             _kv_table(
-                "Datenqualität / Hinweise",
-                [(f"Hinweis {i}", w) for i, w in enumerate(detail.warnings, start=1)],
+                "Investitionen",
+                [("Hinweis", "Keine – separat, nicht im Stückpreis enthalten")],
             )
         )
+
+    # 10. Hinweise
+    hints: list[tuple[str, str]] = []
+    if detail and detail.jahresstueckzahl_hinweis:
+        hints.append(("Jahresstückzahl", detail.jahresstueckzahl_hinweis))
+    if detail:
+        for i, w in enumerate(detail.warnings, start=1):
+            hints.append((f"Hinweis {i}", w))
+    if hints:
+        story.extend(_kv_table("Datenqualität / Hinweise", hints))
+
     doc.build(story, onFirstPage=_page_footer, onLaterPages=_page_footer)
     return buffer.getvalue()
 

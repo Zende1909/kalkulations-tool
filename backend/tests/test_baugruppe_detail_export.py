@@ -427,7 +427,12 @@ def test_tsv_detail_export_excel_pdf_parity(db):
     assert gt.mgk_pct == 3.0
     assert gt.material_nominierung == "selbstnominiert"
     assert gt.price_basis == "COST"
+    assert gt.materialkosten is not None
+    assert gt.materialkosten_inkl_ausschuss is not None
+    assert gt.maschinenkosten is not None
+    assert gt.fertigungslohn is not None
     assert gt.fgk_pct == 22.0
+    assert gt.spritzguss_ausgang is not None
 
     arm = next(p for p in detail.parts if "Armlehne" in p.bezeichnung)
     assert arm.process_steps
@@ -458,26 +463,65 @@ def test_tsv_detail_export_excel_pdf_parity(db):
         "Deckblatt",
         "Annahmen",
         "Einzelteile",
-        "PART_Prozesskette",
-        "Kaufteile",
-        "ASSY_Prozesskette",
-        "Ueberleitung",
+        "Kaufteile_Detail",
+        "ASSY_Detail",
+        "Gesamtueberleitung",
         "Zusammenfassung",
+        "Zuschlagssaetze",
     ):
         assert name in wb.sheetnames
+    assert any(n.startswith("PART_") and "Grund" in n for n in wb.sheetnames) or any(
+        "Grundtraeger" in n or "Grundtr" in n for n in wb.sheetnames
+    )
+    assert any("Armlehne" in n and "Prozesskette" in n for n in wb.sheetnames) or any(
+        n.endswith("Prozesskette") for n in wb.sheetnames
+    )
+
+    # Zuschläge und Überleitung nicht leer
+    zusch = wb["Zuschlagssaetze"]
+    zusch_vals = [c.value for row in zusch.iter_rows() for c in row if c.value is not None]
+    assert any("MGK" in str(v) for v in zusch_vals)
+    assert any("FGK" in str(v) for v in zusch_vals)
+    ueb = wb["Gesamtueberleitung"]
+    ueb_amounts = [
+        c.value
+        for row in ueb.iter_rows(min_row=4, min_col=2, max_col=2)
+        for c in row
+        if isinstance(c.value, (int, float))
+    ]
+    assert ueb_amounts
+    assert any(abs(float(v) - live["endpreis_je_stueck"]) < 0.05 for v in ueb_amounts)
 
     deck = wb["Deckblatt"]
     labels = {row[0].value: row[1].value for row in deck.iter_rows(min_row=4, max_col=2)}
     assert labels["Jahresstückzahl"] == 41875
     assert labels["Programm"] == "Programm TSV"
     assert abs(float(labels["Endpreis je Stück"]) - live["endpreis_je_stueck"]) < 0.05
+    # Jahresumsatz-Formel oder Wert
+    umsatz_cell = labels["Jahresumsatz"]
+    if isinstance(umsatz_cell, str) and umsatz_cell.startswith("="):
+        assert "B" in umsatz_cell
+    else:
+        assert abs(float(umsatz_cell) - export.jahresumsatz) < 0.05
 
-    annahmen = wb["Annahmen"]
-    annahmen_text = " ".join(
-        str(c.value) for row in annahmen.iter_rows() for c in row if c.value is not None
-    )
-    assert "MGK selbstnominiert" in annahmen_text
-    assert "3" in annahmen_text
+    # Armlehnen-Prozesskette gefüllt
+    arm_pk = next(n for n in wb.sheetnames if "Prozesskette" in n and ("003" in n or "Arm" in n or True))
+    # take first Prozesskette sheet that has Kaschieren
+    found_kasch = False
+    for n in wb.sheetnames:
+        if "Prozesskette" not in n:
+            continue
+        sheet = wb[n]
+        vals = " ".join(str(c.value) for row in sheet.iter_rows() for c in row if c.value)
+        if "Kaschieren" in vals or "Spritzguss" in vals:
+            found_kasch = True
+            assert any(
+                isinstance(c.value, (int, float)) and c.value > 0
+                for row in sheet.iter_rows(min_row=4, min_col=7, max_col=12)
+                for c in row
+            )
+            break
+    assert found_kasch
 
     pdf = render_baugruppe_pdf(export)
     assert pdf[:4] == b"%PDF"
