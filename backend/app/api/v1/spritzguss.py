@@ -65,6 +65,7 @@ def _apply_central_rates(db: Session, calc_input: SpritzgussInput) -> Spritzguss
         ) from exc
     return SpritzgussInput(
         teilegewicht_netto_g=calc_input.teilegewicht_netto_g,
+        schussgewicht_g=calc_input.schussgewicht_g,
         materialpreis_pro_kg=calc_input.materialpreis_pro_kg,
         ausschussquote_pct=calc_input.ausschussquote_pct,
         mgk_pct=mgk_pct,
@@ -181,6 +182,7 @@ def _to_calc_input_from_model(obj: SpritzgussKalkulation) -> SpritzgussInput:
 
     return SpritzgussInput(
         teilegewicht_netto_g=obj.teilegewicht_netto_g,
+        schussgewicht_g=float(getattr(obj, "schussgewicht_g", 0) or 0),
         materialpreis_pro_kg=obj.materialpreis_pro_kg,
         ausschussquote_pct=obj.ausschussquote_pct,
         mgk_pct=obj.mgk_pct,

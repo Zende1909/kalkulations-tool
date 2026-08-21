@@ -2,10 +2,15 @@
 
 Kostenbasen
 -----------
-- Material-MGK: auf **Materialkosten inklusive materialbezogenem Ausschuss**
-  (``materialkosten / (1 − Ausschussquote)``). Direktkosten ohne Ausschuss
-  sind nur Zwischenschritt. Satz aus Stammdaten laut Nominierung
-  (selbstnominiert / OEM-nominiert).
+- Materialverbrauch / direkte Materialkosten: **Schussgewicht (Brutto)** je Gutteil
+  (``schussgewicht_g / 1000 × Materialpreis``). Das Netto-Teilegewicht ist nur
+  Informationswert und geht nicht in die Materialkosten ein.
+- Material-Ausschuss (Prozessausschuss): genau einmal auf die Schussgewichts-
+  Materialkosten: ``materialkosten / (1 − Ausschussquote)``. Das Schussgewicht
+  enthält typischerweise bereits Anguss-/Bruttomaterial; der Ausschusszuschlag
+  deckt zusätzlich Ausschussteile ab – keine zweite Anguss-Umrechnung aus dem
+  Nettogewicht.
+- Material-MGK: auf **Materialkosten inklusive Prozessausschuss**.
 - FGK: ausschließlich Maschinenkosten + Fertigungslohn
   (nicht Material, nicht Material-MGK, nicht Werkzeug).
 - SG&A (VVGK): auf Herstellkosten (Material inkl. MGK + Maschine + Lohn + FGK;
@@ -47,6 +52,7 @@ def _qty(value: Decimal, places: str = "0.0001") -> Decimal:
 @dataclass(frozen=True)
 class SpritzgussInput:
     teilegewicht_netto_g: float
+    schussgewicht_g: float
     materialpreis_pro_kg: float
     ausschussquote_pct: float
     zykluszeit_s: float
@@ -92,6 +98,8 @@ class SpritzgussErgebnis:
     applied_gewinn_pct: float
     applied_skonto_pct: float
     material_nominierung: str | None
+    schussgewicht_g: float
+    teilegewicht_netto_g: float
 
     def to_dict(self) -> dict[str, float | str | None]:
         return asdict(self)
@@ -99,6 +107,8 @@ class SpritzgussErgebnis:
     def as_blocks(self) -> dict[str, dict[str, float | str | None]]:
         return {
             "material": {
+                "schussgewicht_g": self.schussgewicht_g,
+                "teilegewicht_netto_g": self.teilegewicht_netto_g,
                 "materialgewicht_kg": self.materialgewicht_kg,
                 "materialkosten": self.materialkosten,
                 "materialkosten_inkl_ausschuss": self.materialkosten_inkl_ausschuss,
@@ -141,6 +151,7 @@ class SpritzgussErgebnis:
 def validate_spritzguss_input(data: SpritzgussInput) -> None:
     numeric_fields = {
         "teilegewicht_netto_g": data.teilegewicht_netto_g,
+        "schussgewicht_g": data.schussgewicht_g,
         "materialpreis_pro_kg": data.materialpreis_pro_kg,
         "ausschussquote_pct": data.ausschussquote_pct,
         "zykluszeit_s": data.zykluszeit_s,
@@ -156,6 +167,13 @@ def validate_spritzguss_input(data: SpritzgussInput) -> None:
     for name, value in numeric_fields.items():
         if value < 0:
             raise SpritzgussValidationError(f"{name} darf nicht negativ sein")
+
+    if data.schussgewicht_g <= 0:
+        raise SpritzgussValidationError(
+            "schussgewicht_g muss größer als 0 sein – "
+            "Materialkosten basieren auf dem Schussgewicht (Brutto), "
+            "nicht auf dem Netto-Teilegewicht. Bitte Schussgewicht erfassen."
+        )
 
     if data.ausschussquote_pct >= 100:
         raise SpritzgussValidationError("ausschussquote_pct muss kleiner als 100 % sein")
@@ -176,7 +194,7 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
     """Führt die Zuschlagskalkulation durch (Material-MGK + FGK auf Maschine+Lohn)."""
     validate_spritzguss_input(data)
 
-    teilegewicht_g = _d(data.teilegewicht_netto_g)
+    schussgewicht_g = _d(data.schussgewicht_g)
     materialpreis = _d(data.materialpreis_pro_kg)
     ausschuss = _pct_to_rate(_d(data.ausschussquote_pct))
     mgk = _pct_to_rate(_d(data.mgk_pct))
@@ -189,13 +207,13 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
     gewinn_rate = _pct_to_rate(_d(data.gewinn_pct))
     skonto_rate = _pct_to_rate(_d(data.skonto_pct))
 
-    # 1 Materialgewicht je Gutteil (kg)
-    materialgewicht_kg = _qty(teilegewicht_g / Decimal("1000"))
+    # 1 Materialgewicht je Gutteil (kg) – Basis: Schussgewicht (Brutto)
+    materialgewicht_kg = _qty(schussgewicht_g / Decimal("1000"))
 
-    # 2 Materialkosten (direkt, ohne Ausschuss)
+    # 2 Materialkosten (direkt aus Schussgewicht, ohne Prozessausschuss)
     materialkosten = _money(materialgewicht_kg * materialpreis)
 
-    # 3 Materialkosten inkl. Ausschuss (= MGK-Basis)
+    # 3 Materialkosten inkl. Prozessausschuss (= MGK-Basis), genau einmal
     materialkosten_inkl_ausschuss = _money(materialkosten / (Decimal("1") - ausschuss))
     mgk_basis = materialkosten_inkl_ausschuss
 
@@ -265,4 +283,6 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
         applied_gewinn_pct=float(data.gewinn_pct),
         applied_skonto_pct=float(data.skonto_pct),
         material_nominierung=data.material_nominierung,
+        schussgewicht_g=float(data.schussgewicht_g),
+        teilegewicht_netto_g=float(data.teilegewicht_netto_g),
     )

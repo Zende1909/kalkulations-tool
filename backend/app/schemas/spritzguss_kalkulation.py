@@ -64,6 +64,7 @@ def _require_positive_int_volume(value: Any) -> int:
 
 class SpritzgussCalcRequest(BaseModel):
     teilegewicht_netto_g: float = Field(ge=0)
+    schussgewicht_g: float = Field(gt=0)
     materialpreis_pro_kg: float = Field(ge=0)
     ausschussquote_pct: float = Field(ge=0, lt=100)
     mgk_pct: float = Field(ge=0, default=0)  # wird aus Stammdaten überschrieben

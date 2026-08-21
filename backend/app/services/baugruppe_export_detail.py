@@ -412,6 +412,7 @@ def _part_detail_from_calc(
 
     sg_input = SpritzgussInput(
         teilegewicht_netto_g=calc.teilegewicht_netto_g,
+        schussgewicht_g=float(calc.schussgewicht_g or 0),
         materialpreis_pro_kg=calc.materialpreis_pro_kg,
         ausschussquote_pct=calc.ausschussquote_pct,
         mgk_pct=mgk_pct,
@@ -428,7 +429,20 @@ def _part_detail_from_calc(
         gewinn_pct=gewinn_pct,
         skonto_pct=skonto_pct,
     )
-    sg = berechne_spritzguss(sg_input)
+    try:
+        sg = berechne_spritzguss(sg_input)
+    except Exception as exc:
+        hints.append(str(exc))
+        return _empty_part(
+            pos,
+            menge=menge,
+            hk=hk,
+            zw=zw,
+            hints=hints,
+            calc=calc,
+            rates=rates,
+            nominierung=nominierung,
+        )
 
     veredelung_eingaben: list[VeredelungSchrittEingabe] = []
     step_direct: list[tuple[Any, Any, Any]] = []

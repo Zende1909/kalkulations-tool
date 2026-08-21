@@ -95,7 +95,7 @@ def test_stammdaten_rate_change_affects_new_calculation(db):
     rates = load_central_markup_rates(db)
     sg = berechne_spritzguss(
         SpritzgussInput(
-            teilegewicht_netto_g=100,
+            schussgewicht_g=100.0, teilegewicht_netto_g=100,
             materialpreis_pro_kg=10,
             ausschussquote_pct=10,
             zykluszeit_s=36,
@@ -117,7 +117,7 @@ def test_stammdaten_rate_change_affects_new_calculation(db):
     rates2 = load_central_markup_rates(db)
     sg2 = berechne_spritzguss(
         SpritzgussInput(
-            teilegewicht_netto_g=100,
+            schussgewicht_g=100.0, teilegewicht_netto_g=100,
             materialpreis_pro_kg=10,
             ausschussquote_pct=10,
             zykluszeit_s=36,
@@ -153,7 +153,7 @@ def test_fgk_basis_and_no_double_on_veredelung():
 
     sg = berechne_spritzguss(
         SpritzgussInput(
-            teilegewicht_netto_g=100,
+            schussgewicht_g=100.0, teilegewicht_netto_g=100,
             materialpreis_pro_kg=10,
             ausschussquote_pct=10,
             zykluszeit_s=36,
@@ -201,7 +201,7 @@ def test_material_mgk_selbst_und_oem(db):
     rates = load_central_markup_rates(db)
     selbst = berechne_spritzguss(
         SpritzgussInput(
-            teilegewicht_netto_g=100,
+            schussgewicht_g=100.0, teilegewicht_netto_g=100,
             materialpreis_pro_kg=10,
             ausschussquote_pct=10,
             mgk_pct=rates.mgk_pct_for_nominierung("selbstnominiert"),
@@ -219,7 +219,7 @@ def test_material_mgk_selbst_und_oem(db):
     )
     oem = berechne_spritzguss(
         SpritzgussInput(
-            teilegewicht_netto_g=100,
+            schussgewicht_g=100.0, teilegewicht_netto_g=100,
             materialpreis_pro_kg=10,
             ausschussquote_pct=10,
             mgk_pct=rates.mgk_pct_for_nominierung("oem_nominiert"),
@@ -254,7 +254,7 @@ def test_sga_and_profit_bases():
     """SG&A 10 % auf HK; Profit 15 % auf HK+SG&A."""
     sg = berechne_spritzguss(
         SpritzgussInput(
-            teilegewicht_netto_g=100,
+            schussgewicht_g=100.0, teilegewicht_netto_g=100,
             materialpreis_pro_kg=10,
             ausschussquote_pct=0,
             mgk_pct=3,

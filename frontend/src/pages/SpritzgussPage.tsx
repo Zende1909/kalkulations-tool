@@ -83,9 +83,9 @@ const ERGEBNISUEBERSICHT: Array<{
 ];
 
 const FIELD_LABELS: Record<string, string> = {
-  materialgewicht_kg: "Materialgewicht je Gutteil (kg)",
-  materialkosten: "Materialkosten (€)",
-  materialkosten_inkl_ausschuss: "Materialkosten inkl. Ausschuss (€)",
+  materialgewicht_kg: "Materialgewicht aus Schussgewicht (kg)",
+  materialkosten: "Materialkosten aus Schussgewicht (€)",
+  materialkosten_inkl_ausschuss: "Materialkosten inkl. Prozessausschuss (€)",
   materialgemeinkosten: "Materialgemeinkosten MGK (€)",
   materialkosten_gesamt: "Materialkosten gesamt (€)",
   mgk_basis: "MGK-Basis (Material inkl. Ausschuss) (€)",
@@ -242,6 +242,7 @@ export function SpritzgussPage() {
   const calcPayload = useMemo(
     () => ({
       teilegewicht_netto_g: form.teilegewicht_netto_g,
+      schussgewicht_g: form.schussgewicht_g,
       materialpreis_pro_kg: form.materialpreis_pro_kg,
       ausschussquote_pct: form.ausschussquote_pct,
       mgk_pct: form.mgk_pct,
@@ -704,13 +705,13 @@ export function SpritzgussPage() {
                 </select>
               </label>
               <NumberInput
-                label="Schussgewicht (g)"
+                label="Schussgewicht / Brutto (g) – Materialbasis"
                 value={form.schussgewicht_g}
                 min={0}
                 onChange={(v) => setField("schussgewicht_g", v)}
               />
               <NumberInput
-                label="Teilegewicht netto (g)"
+                label="Teilegewicht netto (g) – nur Information"
                 value={form.teilegewicht_netto_g}
                 min={0}
                 onChange={(v) => setField("teilegewicht_netto_g", v)}

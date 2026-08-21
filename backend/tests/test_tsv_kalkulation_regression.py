@@ -90,7 +90,7 @@ def test_grundtraeger_material_ausschuss_and_mgk_selbst():
     """Grundträger: Spritzguss, Ausschuss 1,5 %, MGK selbst 3 %."""
     sg = berechne_spritzguss(
         SpritzgussInput(
-            teilegewicht_netto_g=100.0,
+            schussgewicht_g=100.0, teilegewicht_netto_g=100.0,
             materialpreis_pro_kg=10.0,
             ausschussquote_pct=1.5,
             mgk_pct=3.0,
@@ -115,11 +115,38 @@ def test_grundtraeger_material_ausschuss_and_mgk_selbst():
     assert sg.fgk_basis == _money(sg.maschinenkosten + sg.fertigungslohn)
 
 
+def test_material_basis_is_schussgewicht_not_netto_in_tsv_style():
+    sg = berechne_spritzguss(
+        SpritzgussInput(
+            teilegewicht_netto_g=80.0,
+            schussgewicht_g=125.0,
+            materialpreis_pro_kg=8.0,
+            ausschussquote_pct=2.0,
+            mgk_pct=3.0,
+            material_nominierung="selbstnominiert",
+            zykluszeit_s=36.0,
+            maschinenstundensatz=100.0,
+            kavitaeten=1,
+            lohnstundensatz=50.0,
+            fgk_pct=22.0,
+            werkzeugkosten_eur=0,
+            werkzeug_abrechnungsart="einmalzahlung",
+            amortisationsvolumen=None,
+            vvgk_pct=10.0,
+            gewinn_pct=15.0,
+            skonto_pct=0.0,
+        )
+    )
+    assert sg.materialkosten == _money(0.125 * 8.0)
+    assert sg.materialkosten == 1.0
+    assert sg.materialkosten_inkl_ausschuss == _money(1.0 / 0.98)
+
+
 def test_armlehne_ohne_und_mit_kaschieren():
     """Armlehne: Spritzguss 2,5 %; mit Kaschieren 1,5 % auf Vorprodukt + Prozess."""
     sg = berechne_spritzguss(
         SpritzgussInput(
-            teilegewicht_netto_g=200.0,
+            schussgewicht_g=200.0, teilegewicht_netto_g=200.0,
             materialpreis_pro_kg=8.0,
             ausschussquote_pct=2.5,
             mgk_pct=3.0,

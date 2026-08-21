@@ -106,8 +106,8 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
 
     inputs = [
         ExportRow("Material", material_name),
-        ExportRow("Teilegewicht netto", f"{obj.teilegewicht_netto_g:.2f} g"),
-        ExportRow("Schussgewicht", f"{obj.schussgewicht_g:.2f} g"),
+        ExportRow("Teilegewicht netto (Information)", f"{obj.teilegewicht_netto_g:.2f} g"),
+        ExportRow("Schussgewicht / Brutto (Materialbasis)", f"{obj.schussgewicht_g:.2f} g"),
         ExportRow("Material-Ausschussquote", _pct_str(obj.ausschussquote_pct)),
         ExportRow("Materialpreis", _euro_str(obj.materialpreis_pro_kg) + " / kg"),
         ExportRow(

@@ -48,7 +48,11 @@ from app.services.spritzguss_gesamt_kalkulation import (
     VeredelungSchrittEingabe,
     berechne_gesamt,
 )
-from app.services.spritzguss_kalkulation import SpritzgussInput, berechne_spritzguss
+from app.services.spritzguss_kalkulation import (
+    SpritzgussInput,
+    SpritzgussValidationError,
+    berechne_spritzguss,
+)
 from app.services.veredelung_kalkulation import VeredelungInput, berechne_veredelung
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -94,7 +98,7 @@ def _load_spritzguss_calc_input(db: Session, part_calculation_id: int) -> Spritz
     row = db.execute(
         text(
             """
-            SELECT teilegewicht_netto_g, materialpreis_pro_kg, ausschussquote_pct, mgk_pct,
+            SELECT teilegewicht_netto_g, schussgewicht_g, materialpreis_pro_kg, ausschussquote_pct, mgk_pct,
                    zykluszeit_s, maschinenstundensatz, kavitaeten, lohnstundensatz, fgk_pct,
                    werkzeugkosten_eur, werkzeug_abrechnungsart, amortisationsvolumen,
                    vvgk_pct, gewinn_pct, skonto_pct, material_nominierung
@@ -110,21 +114,22 @@ def _load_spritzguss_calc_input(db: Session, part_calculation_id: int) -> Spritz
         )
     return SpritzgussInput(
         teilegewicht_netto_g=row[0],
-        materialpreis_pro_kg=row[1],
-        ausschussquote_pct=row[2],
-        mgk_pct=row[3],
-        zykluszeit_s=row[4],
-        maschinenstundensatz=row[5],
-        kavitaeten=row[6],
-        lohnstundensatz=row[7],
-        fgk_pct=row[8],
-        werkzeugkosten_eur=row[9],
-        werkzeug_abrechnungsart=row[10],  # type: ignore[arg-type]
-        amortisationsvolumen=row[11],
-        vvgk_pct=row[12],
-        gewinn_pct=row[13],
-        skonto_pct=row[14],
-        material_nominierung=row[15],  # type: ignore[arg-type]
+        schussgewicht_g=float(row[1] or 0),
+        materialpreis_pro_kg=row[2],
+        ausschussquote_pct=row[3],
+        mgk_pct=row[4],
+        zykluszeit_s=row[5],
+        maschinenstundensatz=row[6],
+        kavitaeten=row[7],
+        lohnstundensatz=row[8],
+        fgk_pct=row[9],
+        werkzeugkosten_eur=row[10],
+        werkzeug_abrechnungsart=row[11],  # type: ignore[arg-type]
+        amortisationsvolumen=row[12],
+        vvgk_pct=row[13],
+        gewinn_pct=row[14],
+        skonto_pct=row[15],
+        material_nominierung=row[16],  # type: ignore[arg-type]
     )
 
 
@@ -164,6 +169,7 @@ def _compute_part_live_values(
     # Zentrale Sätze überschreiben gespeicherte Prozentsätze
     calc_input = SpritzgussInput(
         teilegewicht_netto_g=calc_input.teilegewicht_netto_g,
+        schussgewicht_g=calc_input.schussgewicht_g,
         materialpreis_pro_kg=calc_input.materialpreis_pro_kg,
         ausschussquote_pct=calc_input.ausschussquote_pct,
         mgk_pct=mgk_pct,
@@ -182,7 +188,10 @@ def _compute_part_live_values(
     )
     name, part_number, *_legacy = _load_part_meta(db, part_calculation_id)
 
-    spritzguss = berechne_spritzguss(calc_input)
+    try:
+        spritzguss = berechne_spritzguss(calc_input)
+    except SpritzgussValidationError as exc:
+        raise AssemblyRecalculationError(str(exc)) from exc
     spritzguss_dict = spritzguss.to_dict()
 
     veredelung_eingaben: list[VeredelungSchrittEingabe] = []

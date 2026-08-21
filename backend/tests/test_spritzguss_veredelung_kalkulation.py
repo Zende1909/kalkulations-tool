@@ -17,6 +17,7 @@ DEFAULT_RATES = dict(fgk_pct=20.0, vvgk_pct=10.0, gewinn_pct=10.0, skonto_pct=2.
 def _spritzguss(**overrides) -> dict:
     base = dict(
         teilegewicht_netto_g=100.0,
+        schussgewicht_g=100.0,
         materialpreis_pro_kg=10.0,
         ausschussquote_pct=10.0,
         mgk_pct=5.0,
