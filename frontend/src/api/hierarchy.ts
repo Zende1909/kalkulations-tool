@@ -76,8 +76,45 @@ export async function deleteProgramVolume(id: number): Promise<void> {
   return api.delete(`/program-volumes/${id}`);
 }
 
-export async function listProjects(programId?: number, search?: string): Promise<Project[]> {
-  return api.get<Project[]>(`/projects${q({ program_id: programId, search })}`);
+export interface ListProjectsOptions {
+  programId?: number;
+  customerId?: number;
+  search?: string;
+  active?: boolean;
+}
+
+export function normalizeListProjectsArgs(
+  programIdOrOptions?: number | ListProjectsOptions,
+  search?: string,
+): ListProjectsOptions {
+  if (programIdOrOptions != null && typeof programIdOrOptions === "object") {
+    return programIdOrOptions;
+  }
+  return { programId: programIdOrOptions, search };
+}
+
+/** Projekte listen. Aufruf: `listProjects({ customerId, active: true })` oder legacy `listProjects(programId, search)`. */
+export async function listProjects(
+  programIdOrOptions?: number | ListProjectsOptions,
+  search?: string,
+): Promise<Project[]> {
+  const opts = normalizeListProjectsArgs(programIdOrOptions, search);
+  return api.get<Project[]>(
+    `/projects${q({
+      program_id: opts.programId,
+      customer_id: opts.customerId,
+      search: opts.search,
+      active: opts.active,
+    })}`,
+  );
+}
+
+export async function getCustomer(id: number): Promise<Customer> {
+  return api.get<Customer>(`/customers/${id}`);
+}
+
+export async function getProject(id: number): Promise<Project> {
+  return api.get<Project>(`/projects/${id}`);
 }
 
 export async function createProject(payload: Omit<Project, "id" | "created_at" | "updated_at">): Promise<Project> {

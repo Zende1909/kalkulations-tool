@@ -15,7 +15,10 @@ export type CalcPayload = BaugruppeFormData & {
   veredelung_zuordnungen: VeredelungZuordnungInput[];
 };
 
-export type SavePayload = CalcPayload;
+export type SavePayload = CalcPayload & {
+  /** Nur bei bestätigtem „Verknüpfung entfernen“ true senden. */
+  clear_project_link?: boolean;
+};
 
 export function berechnen(payload: CalcPayload) {
   return api.post<BaugruppeCalcResponse>("/baugruppen/berechnen", payload);
@@ -30,7 +33,8 @@ export function getBaugruppe(id: number) {
 }
 
 export function createBaugruppe(data: SavePayload) {
-  return api.post<Baugruppe>("/baugruppen", data);
+  const { clear_project_link: _clear, ...createBody } = data;
+  return api.post<Baugruppe>("/baugruppen", createBody);
 }
 
 export function updateBaugruppe(id: number, data: Partial<SavePayload>) {

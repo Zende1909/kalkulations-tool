@@ -17,6 +17,16 @@ import { listKaufteile } from "../api/kaufteile";
 import { listKalkulationen } from "../api/spritzguss";
 import { listVeredelungsschritte } from "../api/veredelung";
 import { ExportButtons } from "../components/ExportButtons";
+import { CustomerProjectSelector } from "../components/hierarchy/CustomerProjectSelector";
+import {
+  applyHierarchyToFormFields,
+  hierarchySelectionRequiresIds,
+  isHierarchyClearedPendingUnlink,
+  resolveFreitextForSave,
+  resolveHierarchySaveFields,
+  type CustomerProjectSelection,
+  type LegacyFreitext,
+} from "../components/hierarchy/customerProjectSelection";
 import { useAuth } from "../context/AuthContext";
 import type { SpritzgussListItem } from "../types/spritzguss";
 import type { Veredelungsschritt } from "../types/veredelung";
@@ -70,14 +80,35 @@ export function BaugruppenPage() {
   const [exportBusy, setExportBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [legacyFreitext, setLegacyFreitext] = useState<LegacyFreitext | null>(null);
+  const [loadedHierarchy, setLoadedHierarchy] = useState<CustomerProjectSelection>({
+    customer_id: null,
+    project_id: null,
+  });
+  const [unlinkConfirmed, setUnlinkConfirmed] = useState(false);
 
   const setField = <K extends keyof BaugruppeFormData>(key: K, value: BaugruppeFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
-  const calcPayload = useMemo(
-    () => ({
+  const calcPayload = useMemo(() => {
+    const selection = { customer_id: form.customer_id, project_id: form.project_id };
+    const hierarchyFields = resolveHierarchySaveFields({
+      formSelection: selection,
+      loadedProjectId: loadedHierarchy.project_id,
+      unlinkConfirmed,
+    });
+    const freitext = resolveFreitextForSave(
+      selection,
+      { kunde: form.kunde, projekt: form.projekt },
+      legacyFreitext,
+    );
+    return {
       ...form,
+      project_id: hierarchyFields.project_id,
+      clear_project_link: hierarchyFields.clear_project_link,
+      kunde: freitext.kunde,
+      projekt: freitext.projekt,
       spritzguss_zuordnungen: selectedSpritzguss.map((s) => ({
         spritzguss_kalkulation_id: s.spritzguss_kalkulation_id,
         menge: s.menge,
@@ -94,8 +125,21 @@ export function BaugruppenPage() {
         reihenfolge: v.reihenfolge,
         mengenfaktor: v.mengenfaktor,
       })),
-    }),
-    [form, selectedSpritzguss, selectedKaufteile, selectedVeredelung],
+    };
+  }, [
+    form,
+    legacyFreitext,
+    loadedHierarchy.project_id,
+    unlinkConfirmed,
+    selectedSpritzguss,
+    selectedKaufteile,
+    selectedVeredelung,
+  ]);
+
+  const hierarchyClearedPendingUnlink = isHierarchyClearedPendingUnlink(
+    { customer_id: form.customer_id, project_id: form.project_id },
+    loadedHierarchy.project_id,
+    unlinkConfirmed,
   );
 
   const loadList = useCallback(async () => {
@@ -122,6 +166,9 @@ export function BaugruppenPage() {
   const handleNew = () => {
     setEditId(null);
     setForm(emptyBaugruppeForm());
+    setLegacyFreitext(null);
+    setLoadedHierarchy({ customer_id: null, project_id: null });
+    setUnlinkConfirmed(false);
     setSelectedSpritzguss([]);
     setSelectedKaufteile([]);
     setSelectedVeredelung([]);
@@ -239,12 +286,39 @@ export function BaugruppenPage() {
     setSuccess(null);
     try {
       if (!form.name.trim()) throw new Error("Baugruppenname ist für das Speichern erforderlich.");
+      if (hierarchySelectionRequiresIds({ customer_id: form.customer_id, project_id: form.project_id })) {
+        if (form.customer_id == null) throw new Error("Bitte einen Kunden auswählen.");
+        if (form.project_id == null) throw new Error("Bitte ein Projekt auswählen.");
+      }
       const wasNew = editId == null;
       const saved =
         editId == null
           ? await createBaugruppe(calcPayload)
           : await updateBaugruppe(editId, calcPayload);
       setEditId(saved.id);
+      const nextHierarchy = {
+        customer_id: saved.customer_id ?? null,
+        project_id: saved.project_id ?? null,
+      };
+      setForm({
+        name: saved.name,
+        teilenummer: saved.teilenummer,
+        kunde: saved.kunde,
+        projekt: saved.projekt,
+        project_id: nextHierarchy.project_id,
+        customer_id: nextHierarchy.customer_id,
+        jahresstueckzahl: saved.jahresstueckzahl,
+        beschreibung: saved.beschreibung,
+        status: saved.status,
+        aktiv: saved.aktiv,
+      });
+      setLoadedHierarchy(nextHierarchy);
+      setUnlinkConfirmed(false);
+      if (saved.project_id == null && (saved.kunde || saved.projekt)) {
+        setLegacyFreitext({ kunde: saved.kunde, projekt: saved.projekt });
+      } else {
+        setLegacyFreitext(null);
+      }
       setErgebnis(saved.ergebnis);
       setBloecke(saved.ergebnis_bloecke);
       setInvestitionen(saved.investitionen ?? []);
@@ -302,16 +376,29 @@ export function BaugruppenPage() {
     try {
       const item = await getBaugruppe(id);
       setEditId(item.id);
+      const nextHierarchy = {
+        customer_id: item.customer_id ?? null,
+        project_id: item.project_id ?? null,
+      };
       setForm({
         name: item.name,
         teilenummer: item.teilenummer,
         kunde: item.kunde,
         projekt: item.projekt,
+        project_id: nextHierarchy.project_id,
+        customer_id: nextHierarchy.customer_id,
         jahresstueckzahl: item.jahresstueckzahl,
         beschreibung: item.beschreibung,
         status: item.status,
         aktiv: item.aktiv,
       });
+      setLoadedHierarchy(nextHierarchy);
+      setUnlinkConfirmed(false);
+      if (item.project_id == null && (item.kunde || item.projekt)) {
+        setLegacyFreitext({ kunde: item.kunde, projekt: item.projekt });
+      } else {
+        setLegacyFreitext(null);
+      }
       setErgebnis(item.ergebnis);
       setBloecke(item.ergebnis_bloecke);
       setInvestitionen(item.investitionen ?? []);
@@ -437,22 +524,72 @@ export function BaugruppenPage() {
                   onChange={(e) => setField("teilenummer", e.target.value)}
                 />
               </label>
-              <label className="block text-sm">
-                <span className="text-gray-600">Kunde</span>
-                <input
-                  className="mt-1 w-full rounded border px-2 py-1.5"
-                  value={form.kunde}
-                  onChange={(e) => setField("kunde", e.target.value)}
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="text-gray-600">Projekt</span>
-                <input
-                  className="mt-1 w-full rounded border px-2 py-1.5"
-                  value={form.projekt}
-                  onChange={(e) => setField("projekt", e.target.value)}
-                />
-              </label>
+              <CustomerProjectSelector
+                disabled={busy}
+                value={{ customer_id: form.customer_id, project_id: form.project_id }}
+                legacyText={
+                  form.project_id == null &&
+                  loadedHierarchy.project_id == null &&
+                  !unlinkConfirmed &&
+                  legacyFreitext &&
+                  (legacyFreitext.kunde || legacyFreitext.projekt)
+                    ? legacyFreitext
+                    : null
+                }
+                onChange={(next) => {
+                  setUnlinkConfirmed(false);
+                  setForm((current) => applyHierarchyToFormFields(current, next, legacyFreitext));
+                }}
+              />
+              {hierarchyClearedPendingUnlink && (
+                <div className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p>
+                    Die Kunden-/Projektauswahl wurde geleert. Beim Speichern bleibt die bestehende
+                    Verknüpfung erhalten.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={busy || !canWrite}
+                    className="mt-2 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-50"
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          "Verknüpfung zu Kunde und Projekt wirklich entfernen? Die Änderung wird erst beim Speichern übernommen.",
+                        )
+                      ) {
+                        return;
+                      }
+                      setUnlinkConfirmed(true);
+                      setForm((current) => ({
+                        ...current,
+                        customer_id: null,
+                        project_id: null,
+                      }));
+                    }}
+                  >
+                    Verknüpfung entfernen
+                  </button>
+                </div>
+              )}
+              {unlinkConfirmed && loadedHierarchy.project_id != null && (
+                <div className="md:col-span-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                  Verknüpfung wird beim Speichern entfernt.{" "}
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => {
+                      setUnlinkConfirmed(false);
+                      setForm((current) => ({
+                        ...current,
+                        customer_id: loadedHierarchy.customer_id,
+                        project_id: loadedHierarchy.project_id,
+                      }));
+                    }}
+                  >
+                    Rückgängig
+                  </button>
+                </div>
+              )}
               <label className="block text-sm">
                 <span className="text-gray-600">Jahresstückzahl</span>
                 <input

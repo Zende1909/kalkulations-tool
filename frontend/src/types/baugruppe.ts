@@ -105,6 +105,8 @@ export interface BaugruppeFormData {
   teilenummer: string;
   kunde: string;
   projekt: string;
+  project_id: number | null;
+  customer_id: number | null;
   jahresstueckzahl: number;
   beschreibung: string;
   status: string;
@@ -117,6 +119,7 @@ export interface BaugruppeListItem {
   teilenummer: string;
   kunde: string;
   projekt: string;
+  project_id: number | null;
   jahresstueckzahl: number;
   status: string;
   baugruppenpreis_je_stueck: number | null;
@@ -177,6 +180,8 @@ export function emptyBaugruppeForm(): BaugruppeFormData {
     teilenummer: "",
     kunde: "",
     projekt: "",
+    project_id: null,
+    customer_id: null,
     jahresstueckzahl: 0,
     beschreibung: "",
     status: "entwurf",

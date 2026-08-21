@@ -140,6 +140,7 @@ class BaugruppeBase(BaseModel):
     teilenummer: str = ""
     kunde: str = ""
     projekt: str = ""
+    project_id: int | None = None
     jahresstueckzahl: int = Field(ge=0, default=0)
     beschreibung: str = ""
     status: str = "entwurf"
@@ -157,6 +158,8 @@ class BaugruppeUpdate(BaseModel):
     teilenummer: str | None = None
     kunde: str | None = None
     projekt: str | None = None
+    project_id: int | None = None
+    clear_project_link: bool | None = None
     jahresstueckzahl: int | None = Field(default=None, ge=0)
     beschreibung: str | None = None
     status: str | None = None
@@ -174,6 +177,7 @@ class BaugruppeListItem(BaseModel):
     teilenummer: str
     kunde: str
     projekt: str
+    project_id: int | None = None
     jahresstueckzahl: int
     status: str
     baugruppenpreis_je_stueck: float | None = None
@@ -185,6 +189,7 @@ class BaugruppeRead(BaugruppeBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    customer_id: int | None = None
     ergebnis: dict | None = None
     ergebnis_bloecke: dict | None = None
     created_at: datetime

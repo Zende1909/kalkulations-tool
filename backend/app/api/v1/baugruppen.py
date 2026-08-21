@@ -15,6 +15,9 @@ from app.models.baugruppe import (
 )
 from app.models.investition import Investition
 from app.models.kaufteil import Kaufteil
+from app.models.program import Program
+from app.models.project import Project
+from app.models.customer import Customer
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.user import User
 from app.models.veredelungsschritt import Veredelungsschritt
@@ -529,6 +532,80 @@ def _apply_calculation(db: Session, obj: Baugruppe) -> BaugruppeCalcResponse:
     return response
 
 
+def _resolve_customer_id_for_project(db: Session, project_id: int | None) -> int | None:
+    if project_id is None:
+        return None
+    project = db.get(Project, project_id)
+    if not project:
+        return None
+    program = db.get(Program, project.program_id)
+    return program.customer_id if program else None
+
+
+def _effective_project_id(obj: Baugruppe) -> int | None:
+    """Bevorzugt project_id, fällt auf linked_project_id zurück (Übergangsdaten)."""
+    if obj.project_id is not None:
+        return obj.project_id
+    return obj.linked_project_id
+
+
+def _apply_project_to_baugruppe_payload(
+    db: Session,
+    payload: dict[str, Any],
+    *,
+    existing_project_id: int | None = None,
+    clear_project_link: bool = False,
+) -> dict[str, Any]:
+    """Setzt project_id/linked_project_id und denormalisiert kunde/projekt aus Stammdaten.
+
+    existing_project_id ist die effektive bestehende ID (project_id or linked_project_id).
+    clear_project_link=True entfernt project_id und linked_project_id bewusst.
+    Unverändertes project_id=null ohne clear_project_link lässt linked_project_id unangetastet.
+    """
+    payload.pop("clear_project_link", None)
+    if clear_project_link:
+        payload["project_id"] = None
+        payload["linked_project_id"] = None
+        return payload
+
+    if "project_id" not in payload:
+        return payload
+    project_id = payload.get("project_id")
+    if project_id is None:
+        # Kein explizites Entfernen: Verknüpfung (auch nur linked_project_id) behalten
+        payload.pop("linked_project_id", None)
+        return payload
+    if not isinstance(project_id, int) or project_id < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Ungültige Projekt-ID",
+        )
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Projekt nicht gefunden oder inaktiv",
+        )
+    keeping_existing = existing_project_id is not None and project_id == existing_project_id
+    if not keeping_existing and not project.active:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Projekt nicht gefunden oder inaktiv",
+        )
+    program = db.get(Program, project.program_id)
+    if not program:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Programm zum Projekt nicht gefunden",
+        )
+    customer = db.get(Customer, program.customer_id)
+    payload["project_id"] = project.id
+    payload["linked_project_id"] = project.id
+    payload["kunde"] = customer.name if customer else ""
+    payload["projekt"] = project.name
+    return payload
+
+
 def _baugruppe_to_read(db: Session, obj: Baugruppe) -> BaugruppeRead:
     calc = obj.ergebnis if isinstance(obj.ergebnis, dict) else {}
     sg_zw: dict[int, float] = {}
@@ -567,8 +644,11 @@ def _baugruppe_to_read(db: Session, obj: Baugruppe) -> BaugruppeRead:
     )
 
     base = BaugruppeRead.model_validate(obj)
+    effective_project_id = _effective_project_id(obj)
     return base.model_copy(
         update={
+            "project_id": effective_project_id,
+            "customer_id": _resolve_customer_id_for_project(db, effective_project_id),
             "spritzguss_zuordnungen": [
                 SpritzgussZuordnungRead(
                     id=r.id,
@@ -667,6 +747,7 @@ def list_baugruppen(
                 teilenummer=row.teilenummer,
                 kunde=row.kunde,
                 projekt=row.projekt,
+                project_id=row.project_id or row.linked_project_id,
                 jahresstueckzahl=row.jahresstueckzahl,
                 status=row.status,
                 baugruppenpreis_je_stueck=preis,
@@ -698,6 +779,7 @@ def create_baugruppe(
     payload = body.model_dump(
         exclude={"spritzguss_zuordnungen", "kaufteil_zuordnungen", "veredelung_zuordnungen"}
     )
+    payload = _apply_project_to_baugruppe_payload(db, payload)
     obj = Baugruppe(**payload)
     db.add(obj)
     db.flush()
@@ -725,6 +807,13 @@ def update_baugruppe(
     sg_z = updates.pop("spritzguss_zuordnungen", None)
     kt_z = updates.pop("kaufteil_zuordnungen", None)
     vd_z = updates.pop("veredelung_zuordnungen", None)
+    clear_project_link = bool(updates.pop("clear_project_link", False))
+    updates = _apply_project_to_baugruppe_payload(
+        db,
+        updates,
+        existing_project_id=_effective_project_id(obj),
+        clear_project_link=clear_project_link,
+    )
     for field, value in updates.items():
         setattr(obj, field, value)
 

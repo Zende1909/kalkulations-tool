@@ -6,7 +6,7 @@ from app.core.permissions import require_kalkulator, require_viewer
 from app.crud import program as program_crud
 from app.crud import project as project_crud
 from app.database import get_db
-from app.models.program import ProgramVolume
+from app.models.program import Program, ProgramVolume
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.hierarchy import (
@@ -44,6 +44,7 @@ def list_projects(
     skip: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=1000),
     program_id: int | None = Query(default=None),
+    customer_id: int | None = Query(default=None),
     search: str | None = Query(default=None),
     active: bool | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -54,6 +55,12 @@ def list_projects(
         if program_id < 1:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Ungültige Programm-ID")
         stmt = stmt.where(Project.program_id == program_id)
+    if customer_id is not None:
+        if customer_id < 1:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Ungültige Kunden-ID")
+        stmt = stmt.join(Program, Program.id == Project.program_id).where(
+            Program.customer_id == customer_id
+        )
     if active is not None:
         stmt = stmt.where(Project.active.is_(active))
     if search and search.strip():
