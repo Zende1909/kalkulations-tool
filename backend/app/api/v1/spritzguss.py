@@ -2,11 +2,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.permissions import require_kalkulator, require_viewer
 from app.database import get_db
+from app.models.assembly_position import AssemblyPosition
+from app.models.baugruppe import BaugruppeSpritzgussZuordnung
 from app.models.investition import Investition
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.spritzguss_veredelung_zuordnung import SpritzgussVeredelungZuordnung
@@ -873,14 +876,73 @@ def delete_kalkulation(
     db: Session = Depends(get_db),
     _: User = Depends(require_kalkulator),
 ):
+    """Löscht eine Spritzguss-Kalkulation inkl. abhängiger Veredelungs-/Investitionsdaten.
+
+    Referenzen in Baugruppen (Legacy-Zuordnung oder Assembly-PART) blockieren das
+    Löschen bewusst (FK NO ACTION / RESTRICT) – dann HTTP 409 mit Hinweis.
+    """
     obj = db.get(SpritzgussKalkulation, item_id)
     if not obj:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Kalkulation nicht gefunden"
         )
+
+    blockers: list[str] = []
+
+    assembly_count = db.scalar(
+        select(func.count())
+        .select_from(AssemblyPosition)
+        .where(AssemblyPosition.part_calculation_id == item_id)
+    )
+    if assembly_count:
+        blockers.append(
+            f"{assembly_count} Baugruppen-Position(en) (assembly_positions)"
+        )
+
+    legacy_count = db.scalar(
+        select(func.count())
+        .select_from(BaugruppeSpritzgussZuordnung)
+        .where(BaugruppeSpritzgussZuordnung.spritzguss_kalkulation_id == item_id)
+    )
+    if legacy_count:
+        blockers.append(
+            f"{legacy_count} Legacy-Baugruppen-Zuordnung(en)"
+        )
+
+    if blockers:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Kalkulation kann nicht gelöscht werden, weil sie noch in Baugruppen "
+                "verwendet wird (aktiv oder archiviert): "
+                + "; ".join(blockers)
+                + ". Bitte zuerst die Verknüpfungen in den betreffenden Baugruppen entfernen "
+                "oder die Baugruppe endgültig löschen."
+            ),
+        )
+
+    # Abhängigkeiten, die mit der Kalkulation entfallen dürfen
+    for verd in db.scalars(
+        select(SpritzgussVeredelungZuordnung).where(
+            SpritzgussVeredelungZuordnung.kalkulation_id == item_id
+        )
+    ).all():
+        db.delete(verd)
     for inv in db.scalars(
         select(Investition).where(Investition.calculation_id == item_id)
     ).all():
         db.delete(inv)
+
     db.delete(obj)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Kalkulation kann nicht gelöscht werden, weil noch abhängige "
+                "Datensätze darauf verweisen. Bitte Verknüpfungen in Baugruppen "
+                "prüfen und entfernen."
+            ),
+        ) from exc

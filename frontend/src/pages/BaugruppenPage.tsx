@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
+  archivierenBaugruppe,
   berechnen,
   createBaugruppe,
   deleteBaugruppe,
@@ -86,6 +87,8 @@ export function BaugruppenPage() {
     project_id: null,
   });
   const [unlinkConfirmed, setUnlinkConfirmed] = useState(false);
+  /** Liste: aktive (Standard) oder archivierte Baugruppen */
+  const [listFilter, setListFilter] = useState<"aktiv" | "archiviert">("aktiv");
 
   const setField = <K extends keyof BaugruppeFormData>(key: K, value: BaugruppeFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -143,9 +146,11 @@ export function BaugruppenPage() {
   );
 
   const loadList = useCallback(async () => {
-    const items = await listBaugruppen();
-    setList(items.filter((i) => i.aktiv));
-  }, []);
+    const items = await listBaugruppen({
+      aktiv: listFilter === "aktiv",
+    });
+    setList(items);
+  }, [listFilter]);
 
   const loadReferences = useCallback(async () => {
     const [sg, kt, vd] = await Promise.all([
@@ -291,10 +296,18 @@ export function BaugruppenPage() {
         if (form.project_id == null) throw new Error("Bitte ein Projekt auswählen.");
       }
       const wasNew = editId == null;
+      // aktiv nur über Archivieren steuern – kein versehentliches Reaktivieren beim Speichern
+      const { aktiv: _omitAktiv, ...saveBody } = calcPayload;
+      let updatePayload: Partial<typeof calcPayload> = saveBody;
+      if (!form.aktiv) {
+        // Archivierte Baugruppe: Status/aktiv unverändert lassen
+        const { status: _omitStatus, ...rest } = saveBody;
+        updatePayload = rest;
+      }
       const saved =
         editId == null
           ? await createBaugruppe(calcPayload)
-          : await updateBaugruppe(editId, calcPayload);
+          : await updateBaugruppe(editId, updatePayload);
       setEditId(saved.id);
       const nextHierarchy = {
         customer_id: saved.customer_id ?? null,
@@ -411,16 +424,40 @@ export function BaugruppenPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!canWrite || !window.confirm("Baugruppe archivieren?")) return;
+  const handleArchive = async (id: number) => {
+    if (!canWrite || !window.confirm("Baugruppe wirklich archivieren?")) return;
     setBusy(true);
+    setError(null);
     try {
-      await deleteBaugruppe(id);
+      await archivierenBaugruppe(id);
       if (editId === id) handleNew();
       await loadList();
       setSuccess("Baugruppe archiviert.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Archivieren fehlgeschlagen");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (
+      !canWrite ||
+      !window.confirm(
+        "Baugruppe endgültig löschen? Zugehörige Positionen und Zuordnungen werden mitgelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteBaugruppe(id);
+      if (editId === id) handleNew();
+      await loadList();
+      setSuccess("Baugruppe gelöscht.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
     } finally {
       setBusy(false);
     }
@@ -500,7 +537,18 @@ export function BaugruppenPage() {
       {editId != null && (
         <p className="text-sm text-slate-600">
           Bearbeite Baugruppe <strong>#{editId}</strong>
+          {!form.aktiv && (
+            <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase text-amber-950">
+              Archiviert
+            </span>
+          )}
         </p>
+      )}
+      {editId != null && !form.aktiv && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          Diese Baugruppe ist archiviert. Speichern ändert den Archivstatus nicht. Zum endgültigen
+          Entfernen „Löschen“ in der Liste verwenden.
+        </div>
       )}
 
       <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
@@ -603,14 +651,20 @@ export function BaugruppenPage() {
               <label className="block text-sm">
                 <span className="text-gray-600">Status</span>
                 <select
-                  className="mt-1 w-full rounded border px-2 py-1.5"
+                  className="mt-1 w-full rounded border px-2 py-1.5 disabled:bg-gray-100"
                   value={form.status}
+                  disabled={!form.aktiv}
                   onChange={(e) => setField("status", e.target.value)}
                 >
                   <option value="entwurf">Entwurf</option>
                   <option value="aktiv">Aktiv</option>
                   <option value="archiviert">Archiviert</option>
                 </select>
+                {!form.aktiv && (
+                  <p className="mt-1 text-xs text-amber-800">
+                    Archivierte Baugruppe – Status wird beim Speichern nicht geändert.
+                  </p>
+                )}
               </label>
             </div>
             <label className="mt-3 block text-sm">
@@ -798,9 +852,31 @@ export function BaugruppenPage() {
 
         <aside className="space-y-4">
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Gespeicherte Baugruppen</h3>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-semibold text-gray-900">Gespeicherte Baugruppen</h3>
+              <div className="flex rounded-md border border-gray-200 text-xs">
+                <button
+                  type="button"
+                  className={`px-2 py-1 ${listFilter === "aktiv" ? "bg-slate-800 text-white" : "bg-white text-gray-700"}`}
+                  onClick={() => setListFilter("aktiv")}
+                >
+                  Aktiv
+                </button>
+                <button
+                  type="button"
+                  className={`px-2 py-1 ${listFilter === "archiviert" ? "bg-slate-800 text-white" : "bg-white text-gray-700"}`}
+                  onClick={() => setListFilter("archiviert")}
+                >
+                  Archiviert
+                </button>
+              </div>
+            </div>
             {list.length === 0 ? (
-              <p className="text-sm text-gray-500">Noch keine Baugruppen.</p>
+              <p className="text-sm text-gray-500">
+                {listFilter === "aktiv"
+                  ? "Noch keine aktiven Baugruppen."
+                  : "Keine archivierten Baugruppen."}
+              </p>
             ) : (
               <ul className="space-y-2 text-sm">
                 {list.map((item) => (
@@ -814,16 +890,34 @@ export function BaugruppenPage() {
                       onClick={() => handleLoad(item.id)}
                     >
                       <span className="font-medium">{item.name}</span>
-                      <span className="ml-2 text-gray-500">{euro(item.baugruppenpreis_je_stueck)} €</span>
+                      {!item.aktiv && (
+                        <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-900">
+                          Archiviert
+                        </span>
+                      )}
+                      <span className="ml-2 text-gray-500">
+                        {euro(item.baugruppenpreis_je_stueck)} €
+                      </span>
                     </button>
                     {canWrite && (
-                      <button
-                        type="button"
-                        className="text-xs text-red-600"
-                        onClick={() => handleDelete(item.id)}
-                      >
-                        Archiv
-                      </button>
+                      <div className="flex shrink-0 gap-2">
+                        {item.aktiv && (
+                          <button
+                            type="button"
+                            className="text-xs text-amber-800"
+                            onClick={() => handleArchive(item.id)}
+                          >
+                            Archivieren
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-red-600"
+                          onClick={() => handleDelete(item.id)}
+                        >
+                          Löschen
+                        </button>
+                      </div>
                     )}
                   </li>
                 ))}

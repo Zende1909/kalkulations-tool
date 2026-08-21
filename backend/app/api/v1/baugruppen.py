@@ -2,11 +2,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.permissions import require_kalkulator, require_viewer
 from app.database import get_db
+from app.models.assembly_position import AssemblyPosition
 from app.models.baugruppe import (
     Baugruppe,
     BaugruppeKaufteilZuordnung,
@@ -751,15 +753,19 @@ def berechnen(
 def list_baugruppen(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
+    aktiv: bool | None = Query(
+        None,
+        description="Filter: true=nur aktiv, false=nur archiviert, ohne Parameter=alle",
+    ),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
-    rows = db.scalars(
-        select(Baugruppe)
-        .order_by(Baugruppe.updated_at.desc())
-        .offset(skip)
-        .limit(limit)
-    ).all()
+    stmt = select(Baugruppe).order_by(Baugruppe.updated_at.desc())
+    if aktiv is True:
+        stmt = stmt.where(Baugruppe.aktiv.is_(True))
+    elif aktiv is False:
+        stmt = stmt.where(Baugruppe.aktiv.is_(False))
+    rows = db.scalars(stmt.offset(skip).limit(limit)).all()
     result: list[BaugruppeListItem] = []
     for row in rows:
         preis = None
@@ -856,12 +862,13 @@ def update_baugruppe(
     return _baugruppe_to_read(db, obj)
 
 
-@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_baugruppe(
+@router.post("/{item_id}/archivieren", status_code=status.HTTP_204_NO_CONTENT)
+def archivieren_baugruppe(
     item_id: int,
     db: Session = Depends(get_db),
     _: User = Depends(require_kalkulator),
 ):
+    """Weiches Archivieren – Datensatz und Positionen bleiben erhalten."""
     obj = db.get(Baugruppe, item_id)
     if not obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Baugruppe nicht gefunden")
@@ -869,3 +876,73 @@ def delete_baugruppe(
     obj.status = "archiviert"
     db.add(obj)
     db.commit()
+
+
+@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_baugruppe(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_kalkulator),
+):
+    """Hartes Löschen der Baugruppe inkl. eigener Positions-/Zuordnungsdaten.
+
+    Blockiert mit HTTP 409, wenn andere Baugruppen diese als Unterbaugruppe
+    (child_assembly_id) referenzieren – FK RESTRICT.
+    Eigene assembly_positions und Legacy-Zuordnungen werden mitgelöscht
+    (ORM cascade / FK CASCADE), damit keine verwaisten Positionen entstehen.
+    """
+    obj = db.get(Baugruppe, item_id)
+    if not obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Baugruppe nicht gefunden")
+
+    used_as_child = db.scalar(
+        select(func.count())
+        .select_from(AssemblyPosition)
+        .where(AssemblyPosition.child_assembly_id == item_id)
+    )
+    if used_as_child:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Baugruppe kann nicht gelöscht werden, weil sie noch als Unterbaugruppe "
+                f"in {used_as_child} Position(en) anderer Baugruppen verwendet wird. "
+                "Bitte diese Verknüpfungen zuerst entfernen."
+            ),
+        )
+
+    # Eigene Abhängigkeiten explizit entfernen (SQLite ohne FK-Enforcement + Klarheit)
+    for pos in db.scalars(
+        select(AssemblyPosition).where(AssemblyPosition.parent_assembly_id == item_id)
+    ).all():
+        db.delete(pos)
+    for row in db.scalars(
+        select(BaugruppeSpritzgussZuordnung).where(
+            BaugruppeSpritzgussZuordnung.baugruppe_id == item_id
+        )
+    ).all():
+        db.delete(row)
+    for row in db.scalars(
+        select(BaugruppeKaufteilZuordnung).where(
+            BaugruppeKaufteilZuordnung.baugruppe_id == item_id
+        )
+    ).all():
+        db.delete(row)
+    for row in db.scalars(
+        select(BaugruppeVeredelungZuordnung).where(
+            BaugruppeVeredelungZuordnung.baugruppe_id == item_id
+        )
+    ).all():
+        db.delete(row)
+
+    db.delete(obj)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Baugruppe kann nicht gelöscht werden, weil noch abhängige Datensätze "
+                "darauf verweisen. Bitte Verknüpfungen prüfen und entfernen."
+            ),
+        ) from exc
