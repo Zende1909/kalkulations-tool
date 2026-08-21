@@ -275,3 +275,14 @@ class ProjectVolumeProfileRead(BaseModel):
     quantity_per_vehicle: float
     total_project_volume: float = 0
     rows: list[ProjectVolumeProfileRow] = Field(default_factory=list)
+
+
+class ProjectAverageJahresstueckzahlRead(BaseModel):
+    """Durchschnittliche Jahresstückzahl: ceil(Summe / Anzahl Jahre)."""
+
+    project_id: int
+    year_count: int
+    sum_project_volume: float
+    average_raw: float | None = None
+    jahresstueckzahl: int | None = None
+    has_volumes: bool

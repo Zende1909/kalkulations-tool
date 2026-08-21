@@ -72,6 +72,16 @@ def _create_schema(engine) -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS program_volumes (
+            id INTEGER PRIMARY KEY,
+            program_id INTEGER NOT NULL REFERENCES programs(id),
+            calendar_year INTEGER NOT NULL,
+            vehicle_volume INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS baugruppen (
             id INTEGER PRIMARY KEY,
             name VARCHAR(255) NOT NULL DEFAULT '',
@@ -265,6 +275,8 @@ def hierarchy(db: Session) -> dict[str, int]:
     return {
         "customer_1": c1.id,
         "customer_2": c2.id,
+        "program_1": p1.id,
+        "program_2": p2.id,
         "project_1": pr1.id,
         "project_2": pr2.id,
     }
@@ -314,8 +326,11 @@ def test_create_baugruppe_with_project_id_sets_kunde_projekt(
     body = r.json()
     assert body["project_id"] == hierarchy["project_1"]
     assert body["customer_id"] == hierarchy["customer_1"]
+    assert body["program_id"] == hierarchy["program_1"]
     assert body["kunde"] == "Kunde Alpha"
     assert body["projekt"] == "Projekt Alpha"
+    # Ohne Programmvolumen: kein erfundener Wert → 0 (Client-1000 wird verworfen)
+    assert body["jahresstueckzahl"] == 0
 
     row = db.get(Baugruppe, body["id"])
     assert row is not None
@@ -757,3 +772,92 @@ def test_get_inactive_customer_and_project_for_edit_form(
     assert p.json()["active"] is False
     assert c.json()["name"] == "Kunde Alpha"
     assert p.json()["name"] == "Projekt Alpha"
+
+
+def test_create_baugruppe_sets_jahresstueckzahl_from_project_average(
+    client: TestClient, db: Session, hierarchy: dict[str, int]
+):
+    from app.models.program import ProgramVolume
+
+    db.add_all(
+        [
+            ProgramVolume(program_id=hierarchy["program_1"], calendar_year=2024, vehicle_volume=1000),
+            ProgramVolume(program_id=hierarchy["program_1"], calendar_year=2025, vehicle_volume=1001),
+        ]
+    )
+    db.commit()
+
+    r = client.post(
+        "/api/v1/baugruppen",
+        json={
+            "name": "BG Avg",
+            "project_id": hierarchy["project_1"],
+            "jahresstueckzahl": 999_999,
+            "spritzguss_zuordnungen": [],
+            "kaufteil_zuordnungen": [],
+            "veredelung_zuordnungen": [],
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["jahresstueckzahl"] == 1001  # ceil((1000+1001)/2)
+    assert body["program_id"] == hierarchy["program_1"]
+
+
+def test_update_same_project_ignores_client_jahresstueckzahl(
+    client: TestClient, db: Session, hierarchy: dict[str, int]
+):
+    from app.models.program import ProgramVolume
+
+    db.add(
+        ProgramVolume(program_id=hierarchy["program_1"], calendar_year=2024, vehicle_volume=2000)
+    )
+    db.commit()
+    created = client.post(
+        "/api/v1/baugruppen",
+        json={
+            "name": "BG Keep",
+            "project_id": hierarchy["project_1"],
+            "jahresstueckzahl": 1,
+            "spritzguss_zuordnungen": [],
+            "kaufteil_zuordnungen": [],
+            "veredelung_zuordnungen": [],
+        },
+    )
+    assert created.status_code == 201
+    bg_id = created.json()["id"]
+    assert created.json()["jahresstueckzahl"] == 2000
+
+    upd = client.put(
+        f"/api/v1/baugruppen/{bg_id}",
+        json={"project_id": hierarchy["project_1"], "jahresstueckzahl": 1, "name": "BG Keep 2"},
+    )
+    assert upd.status_code == 200
+    assert upd.json()["jahresstueckzahl"] == 2000
+    assert upd.json()["name"] == "BG Keep 2"
+
+
+def test_average_jahresstueckzahl_endpoint(client: TestClient, db: Session, hierarchy: dict[str, int]):
+    from app.models.program import ProgramVolume
+
+    db.add_all(
+        [
+            ProgramVolume(program_id=hierarchy["program_1"], calendar_year=2024, vehicle_volume=10),
+            ProgramVolume(program_id=hierarchy["program_1"], calendar_year=2025, vehicle_volume=11),
+        ]
+    )
+    db.commit()
+    r = client.get(f"/api/v1/projects/{hierarchy['project_1']}/average-jahresstueckzahl")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["has_volumes"] is True
+    assert body["jahresstueckzahl"] == 11  # ceil(10.5)
+    assert body["year_count"] == 2
+
+
+def test_average_jahresstueckzahl_endpoint_empty(client: TestClient, hierarchy: dict[str, int]):
+    r = client.get(f"/api/v1/projects/{hierarchy['project_1']}/average-jahresstueckzahl")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["has_volumes"] is False
+    assert body["jahresstueckzahl"] is None

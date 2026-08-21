@@ -10,6 +10,7 @@ from app.models.program import Program, ProgramVolume
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.hierarchy import (
+    ProjectAverageJahresstueckzahlRead,
     ProjectCreate,
     ProjectRead,
     ProjectUpdate,
@@ -17,7 +18,10 @@ from app.schemas.hierarchy import (
     ProjectVolumeProfileRead,
 )
 from app.services.hierarchy import calculate_project_volume, validate_calendar_year
-from app.services.project_volume_service import build_project_volume_profile
+from app.services.project_volume_service import (
+    average_jahresstueckzahl_for_project,
+    build_project_volume_profile,
+)
 
 router = APIRouter(prefix="/projects", tags=["Projekte"])
 
@@ -122,6 +126,21 @@ def get_project_volume_profile(
 ):
     _get_project_or_404(db, project_id)
     return build_project_volume_profile(db, project_id)
+
+
+@router.get(
+    "/{project_id}/average-jahresstueckzahl",
+    response_model=ProjectAverageJahresstueckzahlRead,
+)
+def get_average_jahresstueckzahl(
+    project_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_viewer),
+):
+    """Durchschnitt der Projektstückzahlen über alle hinterlegten Jahre, aufgerundet (ceil)."""
+    _get_project_or_404(db, project_id)
+    result = average_jahresstueckzahl_for_project(db, project_id)
+    return ProjectAverageJahresstueckzahlRead(**result.to_dict())
 
 
 @router.get("/{project_id}/calculated-volume", response_model=ProjectVolumeCalculation)

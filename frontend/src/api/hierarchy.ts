@@ -6,6 +6,7 @@ import type {
   ProgramVolumeBulkItem,
   ProgramVolumeProfile,
   Project,
+  ProjectAverageJahresstueckzahl,
   ProjectVolumeCalculation,
   ProjectVolumeProfile,
   SopEopChangeWarning,
@@ -38,8 +39,12 @@ export async function deactivateCustomer(id: number): Promise<void> {
   return api.delete(`/customers/${id}`);
 }
 
-export async function listPrograms(customerId?: number, search?: string): Promise<Program[]> {
-  return api.get<Program[]>(`/programs${q({ customer_id: customerId, search })}`);
+export async function listPrograms(
+  customerId?: number,
+  search?: string,
+  active?: boolean,
+): Promise<Program[]> {
+  return api.get<Program[]>(`/programs${q({ customer_id: customerId, search, active })}`);
 }
 
 export async function createProgram(payload: Omit<Program, "id" | "created_at" | "updated_at">): Promise<Program> {
@@ -113,6 +118,10 @@ export async function getCustomer(id: number): Promise<Customer> {
   return api.get<Customer>(`/customers/${id}`);
 }
 
+export async function getProgram(id: number): Promise<Program> {
+  return api.get<Program>(`/programs/${id}`);
+}
+
 export async function getProject(id: number): Promise<Project> {
   return api.get<Project>(`/projects/${id}`);
 }
@@ -131,6 +140,12 @@ export async function deactivateProject(id: number): Promise<void> {
 
 export async function getProjectVolumeProfile(projectId: number): Promise<ProjectVolumeProfile> {
   return api.get<ProjectVolumeProfile>(`/projects/${projectId}/volume-profile`);
+}
+
+export async function getAverageJahresstueckzahl(
+  projectId: number,
+): Promise<ProjectAverageJahresstueckzahl> {
+  return api.get<ProjectAverageJahresstueckzahl>(`/projects/${projectId}/average-jahresstueckzahl`);
 }
 
 export async function getProgramVolumeProfile(programId: number): Promise<ProgramVolumeProfile> {

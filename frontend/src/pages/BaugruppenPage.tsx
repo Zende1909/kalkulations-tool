@@ -28,6 +28,7 @@ import {
   type CustomerProjectSelection,
   type LegacyFreitext,
 } from "../components/hierarchy/customerProjectSelection";
+import { getAverageJahresstueckzahl } from "../api/hierarchy";
 import { useAuth } from "../context/AuthContext";
 import type { SpritzgussListItem } from "../types/spritzguss";
 import type { Veredelungsschritt } from "../types/veredelung";
@@ -84,25 +85,36 @@ export function BaugruppenPage() {
   const [legacyFreitext, setLegacyFreitext] = useState<LegacyFreitext | null>(null);
   const [loadedHierarchy, setLoadedHierarchy] = useState<CustomerProjectSelection>({
     customer_id: null,
+    program_id: null,
     project_id: null,
   });
   const [unlinkConfirmed, setUnlinkConfirmed] = useState(false);
   /** Liste: aktive (Standard) oder archivierte Baugruppen */
   const [listFilter, setListFilter] = useState<"aktiv" | "archiviert">("aktiv");
+  const [jahresstueckzahlHint, setJahresstueckzahlHint] = useState<string | null>(null);
+  const [jahresstueckzahlLoading, setJahresstueckzahlLoading] = useState(false);
+
+  const formHierarchy = useMemo(
+    (): CustomerProjectSelection => ({
+      customer_id: form.customer_id,
+      program_id: form.program_id,
+      project_id: form.project_id,
+    }),
+    [form.customer_id, form.program_id, form.project_id],
+  );
 
   const setField = <K extends keyof BaugruppeFormData>(key: K, value: BaugruppeFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
   const calcPayload = useMemo(() => {
-    const selection = { customer_id: form.customer_id, project_id: form.project_id };
     const hierarchyFields = resolveHierarchySaveFields({
-      formSelection: selection,
+      formSelection: formHierarchy,
       loadedProjectId: loadedHierarchy.project_id,
       unlinkConfirmed,
     });
     const freitext = resolveFreitextForSave(
-      selection,
+      formHierarchy,
       { kunde: form.kunde, projekt: form.projekt },
       legacyFreitext,
     );
@@ -131,6 +143,7 @@ export function BaugruppenPage() {
     };
   }, [
     form,
+    formHierarchy,
     legacyFreitext,
     loadedHierarchy.project_id,
     unlinkConfirmed,
@@ -140,7 +153,7 @@ export function BaugruppenPage() {
   ]);
 
   const hierarchyClearedPendingUnlink = isHierarchyClearedPendingUnlink(
-    { customer_id: form.customer_id, project_id: form.project_id },
+    formHierarchy,
     loadedHierarchy.project_id,
     unlinkConfirmed,
   );
@@ -168,12 +181,65 @@ export function BaugruppenPage() {
     loadReferences().catch(() => undefined);
   }, [loadList, loadReferences]);
 
+  // Jahresstückzahl aus Projekt-Durchschnitt (serverseitig berechnet).
+  // Gespeicherte Werte beim bloßen Öffnen nicht überschreiben – nur bei Projektwechsel / Neuanlage.
+  useEffect(() => {
+    let cancelled = false;
+    if (form.project_id == null) {
+      setJahresstueckzahlHint(
+        form.customer_id != null || form.program_id != null
+          ? "Jahresstückzahl wird nach Projektauswahl aus den Projektstückzahlen berechnet."
+          : null,
+      );
+      setJahresstueckzahlLoading(false);
+      return;
+    }
+    const projectChangedFromLoaded =
+      editId == null || form.project_id !== loadedHierarchy.project_id;
+    setJahresstueckzahlLoading(true);
+    setJahresstueckzahlHint(null);
+    getAverageJahresstueckzahl(form.project_id)
+      .then((avg) => {
+        if (cancelled) return;
+        if (!avg.has_volumes || avg.jahresstueckzahl == null) {
+          setJahresstueckzahlHint(
+            "Für dieses Projekt sind keine Jahresstückzahlen hinterlegt. Bitte Mengenprofil im Programm pflegen.",
+          );
+          return;
+        }
+        if (projectChangedFromLoaded) {
+          setForm((current) =>
+            current.project_id === form.project_id
+              ? { ...current, jahresstueckzahl: avg.jahresstueckzahl! }
+              : current,
+          );
+        }
+        setJahresstueckzahlHint(
+          `Automatisch: ⌈Summe / ${avg.year_count} Jahre⌉ = ${avg.jahresstueckzahl.toLocaleString("de-DE")}`,
+        );
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setJahresstueckzahlHint(
+            err instanceof Error ? err.message : "Jahresstückzahl konnte nicht geladen werden.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setJahresstueckzahlLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.project_id, form.customer_id, form.program_id, editId, loadedHierarchy.project_id]);
+
   const handleNew = () => {
     setEditId(null);
     setForm(emptyBaugruppeForm());
     setLegacyFreitext(null);
-    setLoadedHierarchy({ customer_id: null, project_id: null });
+    setLoadedHierarchy({ customer_id: null, program_id: null, project_id: null });
     setUnlinkConfirmed(false);
+    setJahresstueckzahlHint(null);
     setSelectedSpritzguss([]);
     setSelectedKaufteile([]);
     setSelectedVeredelung([]);
@@ -291,26 +357,33 @@ export function BaugruppenPage() {
     setSuccess(null);
     try {
       if (!form.name.trim()) throw new Error("Baugruppenname ist für das Speichern erforderlich.");
-      if (hierarchySelectionRequiresIds({ customer_id: form.customer_id, project_id: form.project_id })) {
+      if (hierarchySelectionRequiresIds(formHierarchy)) {
         if (form.customer_id == null) throw new Error("Bitte einen Kunden auswählen.");
+        if (form.program_id == null) throw new Error("Bitte ein Programm auswählen.");
         if (form.project_id == null) throw new Error("Bitte ein Projekt auswählen.");
       }
+      const wasArchived = editId != null && !form.aktiv;
+      const reactivating = wasArchived && form.status === "aktiv";
       const wasNew = editId == null;
-      // aktiv nur über Archivieren steuern – kein versehentliches Reaktivieren beim Speichern
+      // aktiv nie blind mitsenden – Reaktivierung nur über status=aktiv
       const { aktiv: _omitAktiv, ...saveBody } = calcPayload;
       let updatePayload: Partial<typeof calcPayload> = saveBody;
-      if (!form.aktiv) {
-        // Archivierte Baugruppe: Status/aktiv unverändert lassen
+      if (wasArchived && !reactivating) {
+        // Archiviert bleibt archiviert, solange Status nicht auf Aktiv gesetzt wird
         const { status: _omitStatus, ...rest } = saveBody;
         updatePayload = rest;
+      }
+      if (reactivating) {
+        updatePayload = { ...saveBody, status: "aktiv", aktiv: true };
       }
       const saved =
         editId == null
           ? await createBaugruppe(calcPayload)
           : await updateBaugruppe(editId, updatePayload);
       setEditId(saved.id);
-      const nextHierarchy = {
+      const nextHierarchy: CustomerProjectSelection = {
         customer_id: saved.customer_id ?? null,
+        program_id: saved.program_id ?? null,
         project_id: saved.project_id ?? null,
       };
       setForm({
@@ -320,6 +393,7 @@ export function BaugruppenPage() {
         projekt: saved.projekt,
         project_id: nextHierarchy.project_id,
         customer_id: nextHierarchy.customer_id,
+        program_id: nextHierarchy.program_id,
         jahresstueckzahl: saved.jahresstueckzahl,
         beschreibung: saved.beschreibung,
         status: saved.status,
@@ -337,9 +411,18 @@ export function BaugruppenPage() {
       setInvestitionen(saved.investitionen ?? []);
       loadFromSaved(saved);
       setSuccess(
-        wasNew ? `Baugruppe #${saved.id} gespeichert.` : `Baugruppe #${saved.id} aktualisiert.`,
+        wasNew
+          ? `Baugruppe #${saved.id} gespeichert.`
+          : reactivating
+            ? `Baugruppe #${saved.id} reaktiviert und aktualisiert.`
+            : `Baugruppe #${saved.id} aktualisiert.`,
       );
-      await loadList();
+      // Liste neu laden; bei Reaktivierung ggf. Filter auf Aktiv
+      if (reactivating && listFilter === "archiviert") {
+        setListFilter("aktiv");
+      } else {
+        await loadList();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
     } finally {
@@ -389,8 +472,9 @@ export function BaugruppenPage() {
     try {
       const item = await getBaugruppe(id);
       setEditId(item.id);
-      const nextHierarchy = {
+      const nextHierarchy: CustomerProjectSelection = {
         customer_id: item.customer_id ?? null,
+        program_id: item.program_id ?? null,
         project_id: item.project_id ?? null,
       };
       setForm({
@@ -400,6 +484,7 @@ export function BaugruppenPage() {
         projekt: item.projekt,
         project_id: nextHierarchy.project_id,
         customer_id: nextHierarchy.customer_id,
+        program_id: nextHierarchy.program_id,
         jahresstueckzahl: item.jahresstueckzahl,
         beschreibung: item.beschreibung,
         status: item.status,
@@ -546,8 +631,9 @@ export function BaugruppenPage() {
       )}
       {editId != null && !form.aktiv && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          Diese Baugruppe ist archiviert. Speichern ändert den Archivstatus nicht. Zum endgültigen
-          Entfernen „Löschen“ in der Liste verwenden.
+          Diese Baugruppe ist archiviert. Zum Reaktivieren im Statusfeld „Aktiv“ wählen und speichern.
+          Ohne Statusänderung bleibt sie archiviert. Zum endgültigen Entfernen „Löschen“ in der Liste
+          verwenden.
         </div>
       )}
 
@@ -574,7 +660,7 @@ export function BaugruppenPage() {
               </label>
               <CustomerProjectSelector
                 disabled={busy}
-                value={{ customer_id: form.customer_id, project_id: form.project_id }}
+                value={formHierarchy}
                 legacyText={
                   form.project_id == null &&
                   loadedHierarchy.project_id == null &&
@@ -592,8 +678,8 @@ export function BaugruppenPage() {
               {hierarchyClearedPendingUnlink && (
                 <div className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                   <p>
-                    Die Kunden-/Projektauswahl wurde geleert. Beim Speichern bleibt die bestehende
-                    Verknüpfung erhalten.
+                    Die Kunden-/Programm-/Projektauswahl wurde geleert. Beim Speichern bleibt die
+                    bestehende Verknüpfung erhalten.
                   </p>
                   <button
                     type="button"
@@ -602,7 +688,7 @@ export function BaugruppenPage() {
                     onClick={() => {
                       if (
                         !window.confirm(
-                          "Verknüpfung zu Kunde und Projekt wirklich entfernen? Die Änderung wird erst beim Speichern übernommen.",
+                          "Verknüpfung zu Kunde, Programm und Projekt wirklich entfernen? Die Änderung wird erst beim Speichern übernommen.",
                         )
                       ) {
                         return;
@@ -611,6 +697,7 @@ export function BaugruppenPage() {
                       setForm((current) => ({
                         ...current,
                         customer_id: null,
+                        program_id: null,
                         project_id: null,
                       }));
                     }}
@@ -630,6 +717,7 @@ export function BaugruppenPage() {
                       setForm((current) => ({
                         ...current,
                         customer_id: loadedHierarchy.customer_id,
+                        program_id: loadedHierarchy.program_id,
                         project_id: loadedHierarchy.project_id,
                       }));
                     }}
@@ -639,30 +727,46 @@ export function BaugruppenPage() {
                 </div>
               )}
               <label className="block text-sm">
-                <span className="text-gray-600">Jahresstückzahl</span>
+                <span className="text-gray-600">Jahresstückzahl (aus Projekt)</span>
                 <input
                   type="number"
-                  min={0}
-                  className="mt-1 w-full rounded border px-2 py-1.5"
+                  readOnly
+                  disabled
+                  data-testid="baugruppe-jahresstueckzahl"
+                  className="mt-1 w-full rounded border bg-gray-50 px-2 py-1.5 text-gray-800"
                   value={form.jahresstueckzahl}
-                  onChange={(e) => setField("jahresstueckzahl", Number(e.target.value))}
                 />
+                {jahresstueckzahlLoading && (
+                  <p className="mt-1 text-xs text-gray-500">Jahresstückzahl wird berechnet…</p>
+                )}
+                {jahresstueckzahlHint && (
+                  <p className="mt-1 text-xs text-amber-800">{jahresstueckzahlHint}</p>
+                )}
               </label>
               <label className="block text-sm">
                 <span className="text-gray-600">Status</span>
                 <select
-                  className="mt-1 w-full rounded border px-2 py-1.5 disabled:bg-gray-100"
+                  className="mt-1 w-full rounded border px-2 py-1.5"
                   value={form.status}
-                  disabled={!form.aktiv}
                   onChange={(e) => setField("status", e.target.value)}
                 >
-                  <option value="entwurf">Entwurf</option>
-                  <option value="aktiv">Aktiv</option>
-                  <option value="archiviert">Archiviert</option>
+                  {form.aktiv ? (
+                    <>
+                      <option value="entwurf">Entwurf</option>
+                      <option value="aktiv">Aktiv</option>
+                      <option value="archiviert">Archiviert</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="archiviert">Archiviert</option>
+                      <option value="aktiv">Aktiv</option>
+                    </>
+                  )}
                 </select>
                 {!form.aktiv && (
                   <p className="mt-1 text-xs text-amber-800">
-                    Archivierte Baugruppe – Status wird beim Speichern nicht geändert.
+                    Zum Reaktivieren „Aktiv“ wählen und speichern. Ohne Statusänderung bleibt die
+                    Baugruppe archiviert.
                   </p>
                 )}
               </label>

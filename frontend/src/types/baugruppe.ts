@@ -107,6 +107,7 @@ export interface BaugruppeFormData {
   projekt: string;
   project_id: number | null;
   customer_id: number | null;
+  program_id: number | null;
   jahresstueckzahl: number;
   beschreibung: string;
   status: string;
@@ -186,6 +187,7 @@ export function emptyBaugruppeForm(): BaugruppeFormData {
     projekt: "",
     project_id: null,
     customer_id: null,
+    program_id: null,
     jahresstueckzahl: 0,
     beschreibung: "",
     status: "entwurf",

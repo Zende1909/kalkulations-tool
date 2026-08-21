@@ -13,141 +13,142 @@ import {
 } from "./customerProjectSelection";
 
 describe("applyCustomerProjectChange", () => {
-  it("setzt die Projektauswahl zurück, wenn der Kunde wechselt", () => {
+  it("setzt Programm und Projekt zurück, wenn der Kunde wechselt", () => {
     const next = applyCustomerProjectChange(
-      { customer_id: 1, project_id: 10 },
-      { customer_id: 2, project_id: 10 },
+      { customer_id: 1, program_id: 5, project_id: 10 },
+      { customer_id: 2, program_id: 5, project_id: 10 },
     );
-    expect(next).toEqual({ customer_id: 2, project_id: null });
+    expect(next).toEqual({ customer_id: 2, program_id: null, project_id: null });
   });
 
-  it("behält die Projektauswahl, wenn nur das Projekt wechselt", () => {
+  it("setzt Projekt zurück, wenn das Programm wechselt", () => {
     const next = applyCustomerProjectChange(
-      { customer_id: 1, project_id: 10 },
-      { customer_id: 1, project_id: 11 },
+      { customer_id: 1, program_id: 5, project_id: 10 },
+      { customer_id: 1, program_id: 6, project_id: 10 },
     );
-    expect(next).toEqual({ customer_id: 1, project_id: 11 });
+    expect(next).toEqual({ customer_id: 1, program_id: 6, project_id: null });
   });
 
-  it("setzt beides zurück, wenn der Kunde geleert wird", () => {
+  it("behält die Auswahl, wenn nur das Projekt wechselt", () => {
     const next = applyCustomerProjectChange(
-      { customer_id: 1, project_id: 10 },
-      { customer_id: null, project_id: 10 },
+      { customer_id: 1, program_id: 5, project_id: 10 },
+      { customer_id: 1, program_id: 5, project_id: 11 },
     );
-    expect(next).toEqual({ customer_id: null, project_id: null });
+    expect(next).toEqual({ customer_id: 1, program_id: 5, project_id: 11 });
+  });
+
+  it("setzt alles zurück, wenn der Kunde geleert wird", () => {
+    const next = applyCustomerProjectChange(
+      { customer_id: 1, program_id: 5, project_id: 10 },
+      { customer_id: null, program_id: 5, project_id: 10 },
+    );
+    expect(next).toEqual({ customer_id: null, program_id: null, project_id: null });
   });
 });
 
 describe("hierarchySelectionRequiresIds", () => {
   it("ist false ohne Auswahl (Legacy / reine Inhaltsänderung)", () => {
-    expect(hierarchySelectionRequiresIds({ customer_id: null, project_id: null })).toBe(false);
+    expect(
+      hierarchySelectionRequiresIds({ customer_id: null, program_id: null, project_id: null }),
+    ).toBe(false);
   });
 
   it("ist true bei teilweiser oder voller Hierarchieauswahl", () => {
-    expect(hierarchySelectionRequiresIds({ customer_id: 1, project_id: null })).toBe(true);
-    expect(hierarchySelectionRequiresIds({ customer_id: null, project_id: 2 })).toBe(true);
-    expect(hierarchySelectionRequiresIds({ customer_id: 1, project_id: 2 })).toBe(true);
-  });
-});
-
-describe("legacy freitext across hierarchy start/abort", () => {
-  const legacy = { kunde: "Freitext-Kunde", projekt: "Freitext-Projekt" };
-  const base = {
-    customer_id: null as number | null,
-    project_id: null as number | null,
-    kunde: legacy.kunde,
-    projekt: legacy.projekt,
-  };
-
-  it("beginnt Hierarchieauswahl ohne Freitext zu löschen", () => {
-    const mid = applyHierarchyToFormFields(base, { customer_id: 1, project_id: null }, legacy);
-    expect(mid.customer_id).toBe(1);
-    expect(mid.project_id).toBeNull();
-    expect(mid.kunde).toBe(legacy.kunde);
-    expect(mid.projekt).toBe(legacy.projekt);
-    expect(hasCompleteHierarchySelection(mid)).toBe(false);
-  });
-
-  it("stellt Freitext nach Abbruch wieder her", () => {
-    const mid = applyHierarchyToFormFields(base, { customer_id: 1, project_id: null }, legacy);
-    const aborted = applyHierarchyToFormFields(mid, { customer_id: null, project_id: null }, legacy);
-    expect(aborted).toEqual({
-      customer_id: null,
-      project_id: null,
-      kunde: legacy.kunde,
-      projekt: legacy.projekt,
-    });
-  });
-
-  it("lässt Freitext bis zur vollständigen Auswahl stehen und Save nutzt Legacy ohne project_id", () => {
-    const mid = applyHierarchyToFormFields(base, { customer_id: 1, project_id: null }, legacy);
-    const saveText = resolveFreitextForSave(
-      { customer_id: mid.customer_id, project_id: mid.project_id },
-      { kunde: "", projekt: "" },
-      legacy,
-    );
-    expect(saveText).toEqual(legacy);
-
-    const complete = applyHierarchyToFormFields(mid, { customer_id: 1, project_id: 10 }, legacy);
-    expect(hasCompleteHierarchySelection(complete)).toBe(true);
-  });
-});
-
-describe("resolveProjectIdForSave / unlink", () => {
-  it("stellt die geladene Verknüpfung wieder her, wenn Dropdowns versehentlich geleert wurden", () => {
     expect(
-      resolveHierarchySaveFields({
-        formSelection: { customer_id: null, project_id: null },
-        loadedProjectId: 42,
-        unlinkConfirmed: false,
-      }),
-    ).toEqual({ project_id: 42, clear_project_link: false });
+      hierarchySelectionRequiresIds({ customer_id: 1, program_id: null, project_id: null }),
+    ).toBe(true);
     expect(
-      isHierarchyClearedPendingUnlink({ customer_id: null, project_id: null }, 42, false),
+      hierarchySelectionRequiresIds({ customer_id: 1, program_id: 2, project_id: null }),
+    ).toBe(true);
+    expect(
+      hierarchySelectionRequiresIds({ customer_id: 1, program_id: 2, project_id: 3 }),
     ).toBe(true);
   });
+});
 
-  it("sendet clear_project_link nach explizit bestätigtem Entfernen", () => {
+describe("hasCompleteHierarchySelection", () => {
+  it("erfordert Kunde, Programm und Projekt", () => {
     expect(
-      resolveHierarchySaveFields({
-        formSelection: { customer_id: null, project_id: null },
-        loadedProjectId: 42,
-        unlinkConfirmed: true,
-      }),
-    ).toEqual({ project_id: null, clear_project_link: true });
-  });
-
-  it("sendet die neue Hierarchie bei vollständiger Auswahl ohne clear-Flag", () => {
+      hasCompleteHierarchySelection({ customer_id: 1, program_id: 2, project_id: null }),
+    ).toBe(false);
     expect(
-      resolveHierarchySaveFields({
-        formSelection: { customer_id: 1, project_id: 99 },
-        loadedProjectId: 42,
-        unlinkConfirmed: false,
-      }),
-    ).toEqual({ project_id: 99, clear_project_link: false });
-  });
-
-  it("belässt Legacy ohne project_id bei null ohne clear-Flag", () => {
-    expect(
-      resolveHierarchySaveFields({
-        formSelection: { customer_id: null, project_id: null },
-        loadedProjectId: null,
-        unlinkConfirmed: false,
-      }),
-    ).toEqual({ project_id: null, clear_project_link: false });
+      hasCompleteHierarchySelection({ customer_id: 1, program_id: 2, project_id: 3 }),
+    ).toBe(true);
   });
 });
 
-describe("inactive stammdaten display helpers", () => {
-  it("kennzeichnet inaktive Optionen", () => {
-    expect(formatStammdatenOptionLabel("C-1 – Acme", true)).toBe("C-1 – Acme");
-    expect(formatStammdatenOptionLabel("C-1 – Acme", false)).toBe("C-1 – Acme (inaktiv)");
+describe("applyHierarchyToFormFields", () => {
+  it("stellt Freitext wieder her, wenn die Hierarchie unvollständig wird", () => {
+    const current = {
+      name: "BG",
+      kunde: "Neu",
+      projekt: "NeuP",
+      customer_id: 1,
+      program_id: 2,
+      project_id: 3,
+    };
+    const next = applyHierarchyToFormFields(
+      current,
+      { customer_id: 1, program_id: null, project_id: null },
+      { kunde: "Alt", projekt: "AltP" },
+    );
+    expect(next.kunde).toBe("Alt");
+    expect(next.projekt).toBe("AltP");
+    expect(next.program_id).toBeNull();
+    expect(next.project_id).toBeNull();
+  });
+});
+
+describe("resolveFreitextForSave / resolveHierarchySaveFields", () => {
+  it("behält geladene project_id, wenn Dropdowns geleert und Unlink nicht bestätigt", () => {
+    const fields = resolveHierarchySaveFields({
+      formSelection: { customer_id: null, program_id: null, project_id: null },
+      loadedProjectId: 42,
+      unlinkConfirmed: false,
+    });
+    expect(fields).toEqual({ project_id: 42, clear_project_link: false });
   });
 
-  it("hängt die aktuell gesetzte inaktive Entität an die aktiven Optionen", () => {
-    const active = [{ id: 2, name: "Aktiv" }];
-    const pinned = { id: 1, name: "Alt", active: false };
-    expect(ensurePinnedEntity(active, pinned)).toEqual([pinned, ...active]);
-    expect(ensurePinnedEntity(active, { id: 2, name: "Aktiv" })).toEqual(active);
+  it("entfernt die Verknüpfung nur bei bestätigtem Unlink", () => {
+    const fields = resolveHierarchySaveFields({
+      formSelection: { customer_id: null, program_id: null, project_id: null },
+      loadedProjectId: 42,
+      unlinkConfirmed: true,
+    });
+    expect(fields).toEqual({ project_id: null, clear_project_link: true });
+  });
+
+  it("nutzt Legacy-Freitext ohne Hierarchie", () => {
+    expect(
+      resolveFreitextForSave(
+        { customer_id: null, program_id: null, project_id: null },
+        { kunde: "X", projekt: "Y" },
+        { kunde: "LegacyK", projekt: "LegacyP" },
+      ),
+    ).toEqual({ kunde: "LegacyK", projekt: "LegacyP" });
+  });
+});
+
+describe("isHierarchyClearedPendingUnlink", () => {
+  it("erkennt geleerte Kaskade bei bestehender Verknüpfung", () => {
+    expect(
+      isHierarchyClearedPendingUnlink(
+        { customer_id: null, program_id: null, project_id: null },
+        9,
+        false,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("formatStammdatenOptionLabel / ensurePinnedEntity", () => {
+  it("kennzeichnet inaktive Einträge", () => {
+    expect(formatStammdatenOptionLabel("A – B", false)).toBe("A – B (inaktiv)");
+    expect(formatStammdatenOptionLabel("A – B", true)).toBe("A – B");
+  });
+
+  it("pinnt fehlende Entitäten an den Listenanfang", () => {
+    expect(ensurePinnedEntity([{ id: 2 }], { id: 1 })).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(ensurePinnedEntity([{ id: 1 }], { id: 1 })).toEqual([{ id: 1 }]);
   });
 });

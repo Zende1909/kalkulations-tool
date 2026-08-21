@@ -223,6 +223,7 @@ class BaugruppeRead(BaugruppeBase):
 
     id: int
     customer_id: int | None = None
+    program_id: int | None = None
     ergebnis: dict | None = None
     ergebnis_bloecke: dict | None = None
     created_at: datetime

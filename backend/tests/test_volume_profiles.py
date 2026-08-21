@@ -21,7 +21,10 @@ from app.services.program_volume_service import (
     generate_years_from_sop_eop,
     years_with_data_outside_sop_eop,
 )
-from app.services.project_volume_service import build_project_volume_profile
+from app.services.project_volume_service import (
+    average_jahresstueckzahl_for_project,
+    build_project_volume_profile,
+)
 from app.services.spritzguss_hierarchy import resolve_hierarchy_for_spritzguss
 
 
@@ -223,6 +226,50 @@ def test_resolve_hierarchy_with_legacy_year(db):
     assert resolved["calculation_year"] == 2028
     assert resolved["jahresstueckzahl"] == 40_000
 
+
+def test_average_jahresstueckzahl_ceil(db):
+    """Durchschnitt = Summe / Jahre, aufgerundet mit ceil."""
+    _, program, project = _seed_hierarchy(db, qty=1.0)
+    # Jahre: 1000, 2000 → Ø 1500 → ceil 1500
+    # Jahre: 1000, 1001 → Ø 1000.5 → ceil 1001
+    bulk_save_program_volumes(
+        db,
+        program.id,
+        [
+            {"calendar_year": 2028, "vehicle_volume": 1000},
+            {"calendar_year": 2029, "vehicle_volume": 1001},
+        ],
+    )
+    db.commit()
+    avg = average_jahresstueckzahl_for_project(db, project.id)
+    assert avg.has_volumes is True
+    assert avg.year_count == 2
+    assert avg.sum_project_volume == 2001.0
+    assert avg.jahresstueckzahl == 1001  # ceil(1000.5)
+
+
+def test_average_jahresstueckzahl_with_quantity_per_vehicle(db):
+    _, program, project = _seed_hierarchy(db, qty=2.5)
+    bulk_save_program_volumes(
+        db,
+        program.id,
+        [
+            {"calendar_year": 2028, "vehicle_volume": 1000},  # 2500
+            {"calendar_year": 2029, "vehicle_volume": 2000},  # 5000
+        ],
+    )
+    db.commit()
+    avg = average_jahresstueckzahl_for_project(db, project.id)
+    # (2500+5000)/2 = 3750
+    assert avg.jahresstueckzahl == 3750
+
+
+def test_average_jahresstueckzahl_ohne_volumen(db):
+    _, _, project = _seed_hierarchy(db)
+    avg = average_jahresstueckzahl_for_project(db, project.id)
+    assert avg.has_volumes is False
+    assert avg.jahresstueckzahl is None
+    assert avg.year_count == 0
 
 
 def test_business_case_lifetime_revenue_calculation():

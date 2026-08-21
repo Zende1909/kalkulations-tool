@@ -1,7 +1,8 @@
-/** Cascading reset when customer changes in Baugruppen hierarchy selection. */
+/** Cascading Kunde → Programm → Projekt selection for Baugruppen. */
 
 export interface CustomerProjectSelection {
   customer_id: number | null;
+  program_id: number | null;
   project_id: number | null;
 }
 
@@ -15,18 +16,29 @@ export function applyCustomerProjectChange(
   next: CustomerProjectSelection,
 ): CustomerProjectSelection {
   if (next.customer_id !== current.customer_id) {
-    return { customer_id: next.customer_id, project_id: null };
+    return { customer_id: next.customer_id, program_id: null, project_id: null };
   }
-  return { customer_id: next.customer_id, project_id: next.project_id };
+  if (next.program_id !== current.program_id) {
+    return {
+      customer_id: next.customer_id,
+      program_id: next.program_id,
+      project_id: null,
+    };
+  }
+  return {
+    customer_id: next.customer_id,
+    program_id: next.program_id,
+    project_id: next.project_id,
+  };
 }
 
 /** Hierarchie ist nur Pflicht, wenn der Benutzer eine (Teil-)Zuordnung gewählt hat. */
 export function hierarchySelectionRequiresIds(selection: CustomerProjectSelection): boolean {
-  return selection.customer_id != null || selection.project_id != null;
+  return selection.customer_id != null || selection.program_id != null || selection.project_id != null;
 }
 
 export function hasCompleteHierarchySelection(selection: CustomerProjectSelection): boolean {
-  return selection.customer_id != null && selection.project_id != null;
+  return selection.customer_id != null && selection.program_id != null && selection.project_id != null;
 }
 
 /**
@@ -39,7 +51,11 @@ export function applyHierarchyToFormFields<T extends CustomerProjectSelection & 
   legacyFreitext: LegacyFreitext | null,
 ): T {
   const selection = applyCustomerProjectChange(
-    { customer_id: current.customer_id, project_id: current.project_id },
+    {
+      customer_id: current.customer_id,
+      program_id: current.program_id,
+      project_id: current.project_id,
+    },
     nextSelection,
   );
 
@@ -121,6 +137,7 @@ export function isHierarchyClearedPendingUnlink(
     loadedProjectId != null &&
     !unlinkConfirmed &&
     formSelection.customer_id == null &&
+    formSelection.program_id == null &&
     formSelection.project_id == null
   );
 }

@@ -113,6 +113,15 @@ export interface ProjectVolumeProfile {
   rows: ProjectVolumeProfileRow[];
 }
 
+export interface ProjectAverageJahresstueckzahl {
+  project_id: number;
+  year_count: number;
+  sum_project_volume: number;
+  average_raw: number | null;
+  jahresstueckzahl: number | null;
+  has_volumes: boolean;
+}
+
 export interface SopEopChangeWarning {
   years_with_data_outside_new_range: number[];
   message: string;

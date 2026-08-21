@@ -297,6 +297,53 @@ def test_archivieren_behaelt_datensatz(client, db):
     assert row[1] == "archiviert"
 
 
+def test_get_archiviert_ohne_reaktivierung(client, db):
+    _insert_bg(db, bg_id=11, name="ArchivedOpen", aktiv=False)
+    resp = client.get(f"{LIST_URL}/11")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["aktiv"] is False
+    assert body["status"] == "archiviert"
+    # GET ändert nichts
+    row = db.execute(text("SELECT aktiv, status FROM baugruppen WHERE id = 11")).one()
+    assert row[0] in (0, False)
+    assert row[1] == "archiviert"
+
+
+def test_update_ohne_status_laesst_archiviert(client, db):
+    _insert_bg(db, bg_id=12, name="StayArchived", aktiv=False)
+    resp = client.put(
+        f"{LIST_URL}/12",
+        json={"name": "StayArchived-updated", "beschreibung": "nur Inhalt"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["name"] == "StayArchived-updated"
+    assert body["aktiv"] is False
+    assert body["status"] == "archiviert"
+
+
+def test_reaktivierung_via_status_aktiv(client, db):
+    _insert_bg(db, bg_id=13, name="ReactivateMe", aktiv=False)
+    resp = client.put(f"{LIST_URL}/13", json={"status": "aktiv"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["aktiv"] is True
+    assert body["status"] == "aktiv"
+    row = db.execute(text("SELECT aktiv, status FROM baugruppen WHERE id = 13")).one()
+    assert row[0] in (1, True)
+    assert row[1] == "aktiv"
+
+
+def test_erneutes_archivieren_nach_reaktivierung(client, db):
+    _insert_bg(db, bg_id=14, name="Cycle", aktiv=False)
+    assert client.put(f"{LIST_URL}/14", json={"status": "aktiv"}).status_code == 200
+    assert client.post(ARCHIVE_URL.format(item_id=14)).status_code == 204
+    row = db.execute(text("SELECT aktiv, status FROM baugruppen WHERE id = 14")).one()
+    assert row[0] in (0, False)
+    assert row[1] == "archiviert"
+
+
 def test_delete_ohne_positionen(client, db):
     _insert_bg(db, bg_id=20, name="Empty")
     resp = client.delete(DELETE_URL.format(item_id=20))

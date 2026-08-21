@@ -51,6 +51,7 @@ from app.services.central_markup_rates import (
     CentralMarkupRatesError,
     load_central_markup_rates,
 )
+from app.services.project_volume_service import average_jahresstueckzahl_for_project
 from app.services.veredelung_kalkulation import VeredelungInput as VeredelungCalcInput
 from app.services.veredelung_kalkulation import berechne_veredelung
 from decimal import Decimal, ROUND_HALF_UP
@@ -569,11 +570,61 @@ def _resolve_customer_id_for_project(db: Session, project_id: int | None) -> int
     return program.customer_id if program else None
 
 
+def _resolve_program_id_for_project(db: Session, project_id: int | None) -> int | None:
+    if project_id is None:
+        return None
+    project = db.get(Project, project_id)
+    return project.program_id if project else None
+
+
 def _effective_project_id(obj: Baugruppe) -> int | None:
     """Bevorzugt project_id, fällt auf linked_project_id zurück (Übergangsdaten)."""
     if obj.project_id is not None:
         return obj.project_id
     return obj.linked_project_id
+
+
+def _apply_jahresstueckzahl_from_project(
+    db: Session,
+    payload: dict[str, Any],
+    *,
+    existing_project_id: int | None = None,
+    existing_jahresstueckzahl: int | None = None,
+    project_changed: bool,
+    clear_project_link: bool = False,
+) -> dict[str, Any]:
+    """Setzt jahresstueckzahl aus dem Projekt-Durchschnitt (ceil), wenn fachlich nötig.
+
+    Entscheidung (keine Migration bestehender Daten ungefragt):
+    - Create/Update mit Projektwechsel + Volumen: Wert aus Durchschnitt speichern.
+    - Create mit Projekt ohne Volumen: 0 speichern (FE zeigt Hinweis).
+    - Update bei Projektwechsel ohne Volumen: bestehenden Wert behalten.
+    - Update ohne Projektwechsel: Client-jahresstueckzahl ignorieren (kein Override).
+    - Verknüpfung entfernt: gespeicherten Wert belassen.
+    - Legacy ohne Projekt: Client-jahresstueckzahl unverändert (Maske ist read-only;
+      API bleibt für Bestandswerte speicherbar).
+    """
+    if clear_project_link:
+        payload.pop("jahresstueckzahl", None)
+        return payload
+
+    project_id = payload.get("project_id")
+    if project_id is None:
+        # Kein Projektbezug in diesem Payload → keine serverseitige Ableitung
+        return payload
+
+    # Mit Projekt: Client darf den Wert nicht überschreiben
+    payload.pop("jahresstueckzahl", None)
+
+    if not project_changed and existing_project_id is not None:
+        return payload
+
+    avg = average_jahresstueckzahl_for_project(db, int(project_id))
+    if avg.jahresstueckzahl is not None:
+        payload["jahresstueckzahl"] = avg.jahresstueckzahl
+    elif existing_jahresstueckzahl is None:
+        payload["jahresstueckzahl"] = 0
+    return payload
 
 
 def _apply_project_to_baugruppe_payload(
@@ -676,6 +727,7 @@ def _baugruppe_to_read(db: Session, obj: Baugruppe) -> BaugruppeRead:
         update={
             "project_id": effective_project_id,
             "customer_id": _resolve_customer_id_for_project(db, effective_project_id),
+            "program_id": _resolve_program_id_for_project(db, effective_project_id),
             "spritzguss_zuordnungen": [
                 SpritzgussZuordnungRead(
                     id=r.id,
@@ -811,6 +863,20 @@ def create_baugruppe(
         exclude={"spritzguss_zuordnungen", "kaufteil_zuordnungen", "veredelung_zuordnungen"}
     )
     payload = _apply_project_to_baugruppe_payload(db, payload)
+    project_id = payload.get("project_id")
+    payload = _apply_jahresstueckzahl_from_project(
+        db,
+        payload,
+        existing_project_id=None,
+        existing_jahresstueckzahl=None,
+        project_changed=project_id is not None,
+        clear_project_link=False,
+    )
+    # Status → aktiv konsistent
+    if payload.get("status") == "archiviert":
+        payload["aktiv"] = False
+    elif payload.get("status") == "aktiv":
+        payload["aktiv"] = True
     obj = Baugruppe(**payload)
     db.add(obj)
     db.flush()
@@ -839,12 +905,34 @@ def update_baugruppe(
     kt_z = updates.pop("kaufteil_zuordnungen", None)
     vd_z = updates.pop("veredelung_zuordnungen", None)
     clear_project_link = bool(updates.pop("clear_project_link", False))
+    existing_pid = _effective_project_id(obj)
     updates = _apply_project_to_baugruppe_payload(
         db,
         updates,
-        existing_project_id=_effective_project_id(obj),
+        existing_project_id=existing_pid,
         clear_project_link=clear_project_link,
     )
+    new_pid = updates.get("project_id", existing_pid if not clear_project_link else None)
+    project_changed = clear_project_link or (
+        "project_id" in body.model_dump(exclude_unset=True)
+        and new_pid != existing_pid
+    )
+    updates = _apply_jahresstueckzahl_from_project(
+        db,
+        updates,
+        existing_project_id=existing_pid,
+        existing_jahresstueckzahl=obj.jahresstueckzahl,
+        project_changed=project_changed,
+        clear_project_link=clear_project_link,
+    )
+
+    # Bewusste Reaktivierung / Archivierung über Status
+    if "status" in updates:
+        if updates["status"] == "aktiv":
+            updates["aktiv"] = True
+        elif updates["status"] == "archiviert":
+            updates["aktiv"] = False
+
     for field, value in updates.items():
         setattr(obj, field, value)
 
