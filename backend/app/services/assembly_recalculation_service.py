@@ -84,7 +84,7 @@ def _live_process_cost(schritt: Veredelungsschritt) -> float:
             maschinenstundensatz=schritt.maschinenstundensatz,
             verbrauchskosten_je_stueck=schritt.verbrauchskosten_je_stueck,
             ausschussquote_pct=schritt.ausschussquote_pct,
-            fgk_pct=schritt.fgk_pct,
+            fgk_pct=0,
             reihenfolge=schritt.reihenfolge,
         )
     ).kosten_inkl_ausschuss
@@ -205,9 +205,7 @@ def _compute_part_live_values(
                 f"Veredelungsschritt {zuordnung.veredelungsschritt_id} nicht gefunden",
                 status_code=404,
             )
-        # Direkte Veredelungskosten (ohne FGK); Snapshots ggf. historisch mit FGK –
-        # bei Live-Refresh immer neu ohne FGK berechnen.
-        kosten = berechne_veredelung(
+        kosten_result = berechne_veredelung(
             VeredelungInput(
                 taktzeit_s=schritt_row[2],
                 anzahl_mitarbeiter=schritt_row[3],
@@ -218,7 +216,7 @@ def _compute_part_live_values(
                 fgk_pct=0,
                 reihenfolge=schritt_row[9],
             )
-        ).kosten_inkl_ausschuss
+        )
         veredelung_eingaben.append(
             VeredelungSchrittEingabe(
                 veredelungsschritt_id=zuordnung.veredelungsschritt_id,
@@ -227,7 +225,9 @@ def _compute_part_live_values(
                 reihenfolge=zuordnung.reihenfolge,
                 aktiv=zuordnung.aktiv,
                 mengenfaktor=zuordnung.mengenfaktor,
-                kosten_inkl_ausschuss=kosten,
+                kosten_inkl_ausschuss=kosten_result.kosten_inkl_ausschuss,
+                kosten_vor_ausschuss=kosten_result.kosten_vor_ausschuss,
+                ausschussquote_pct=float(schritt_row[7]),
             )
         )
 
@@ -363,7 +363,8 @@ def _refresh_position_snapshot(
             raise AssemblyRecalculationError(
                 f"{prefix}: Veredelungsschritt nicht gefunden", status_code=404
             )
-        pos.cost_snapshot = berechne_veredelung(
+        # FGK zentral in der Baugruppe – hier nur direkte Kosten
+        vk = berechne_veredelung(
             VeredelungInput(
                 taktzeit_s=row[1],
                 anzahl_mitarbeiter=row[2],
@@ -371,10 +372,11 @@ def _refresh_position_snapshot(
                 maschinenstundensatz=row[4],
                 verbrauchskosten_je_stueck=row[5],
                 ausschussquote_pct=row[6],
-                fgk_pct=row[7],
+                fgk_pct=0,
                 reihenfolge=row[8],
             )
-        ).kosten_inkl_ausschuss
+        )
+        pos.cost_snapshot = vk.kosten_inkl_ausschuss
         pos.name_snapshot = row[0]
 
     elif pos.position_type == "SUBASSEMBLY":
@@ -437,6 +439,7 @@ def _child_recalc_order(db: Session, root_id: int) -> list[int]:
 
 
 def _build_calc_inputs(
+    db: Session,
     positions: list[AssemblyPosition],
     child_herstellkosten: dict[int, float],
 ) -> list[PositionCalcInput]:
@@ -445,6 +448,41 @@ def _build_calc_inputs(
         child_hk = None
         if pos.position_type == "SUBASSEMBLY" and pos.child_assembly_id:
             child_hk = child_herstellkosten.get(pos.child_assembly_id)
+        ausschussquote_pct = None
+        cost_before_scrap = None
+        if pos.position_type == "PROCESS" and pos.finishing_step_id:
+            row = db.execute(
+                text(
+                    "SELECT taktzeit_s, anzahl_mitarbeiter, lohnstundensatz, "
+                    "maschinenstundensatz, verbrauchskosten_je_stueck, ausschussquote_pct, "
+                    "reihenfolge FROM veredelungsschritte WHERE id = :id"
+                ),
+                {"id": pos.finishing_step_id},
+            ).first()
+            if row:
+                quote = float(row[5] or 0)
+                ausschussquote_pct = quote
+                if pos.cost_snapshot is not None and pos.cost_snapshot > 0:
+                    # Vorhandener Snapshot: Vor-Kosten aus Snapshot ableiten
+                    # (inkl. Eigenausschuss → vor = inkl × (1−q)), Quote aus Stammdaten
+                    if quote > 0:
+                        cost_before_scrap = float(pos.cost_snapshot) * (1.0 - quote / 100.0)
+                    else:
+                        cost_before_scrap = float(pos.cost_snapshot)
+                else:
+                    vk = berechne_veredelung(
+                        VeredelungInput(
+                            taktzeit_s=row[0],
+                            anzahl_mitarbeiter=row[1],
+                            lohnstundensatz=row[2],
+                            maschinenstundensatz=row[3],
+                            verbrauchskosten_je_stueck=row[4],
+                            ausschussquote_pct=row[5],
+                            fgk_pct=0,
+                            reihenfolge=row[6],
+                        )
+                    )
+                    cost_before_scrap = vk.kosten_vor_ausschuss
         inputs.append(
             PositionCalcInput(
                 position_id=pos.id,
@@ -459,6 +497,8 @@ def _build_calc_inputs(
                 cost_snapshot=pos.cost_snapshot,
                 price_snapshot=pos.price_snapshot,
                 child_herstellkosten=child_hk,
+                ausschussquote_pct=ausschussquote_pct,
+                cost_before_scrap=cost_before_scrap,
             )
         )
     return inputs
@@ -513,6 +553,19 @@ def _persist_calculation(
             for line in result.position_lines
         ],
         "warnings": [w.model_dump() for w in result.warnings],
+        "process_yield_details": [
+            {
+                "position_id": d.position_id,
+                "label": d.label,
+                "name_snapshot": d.name_snapshot,
+                "ausschussquote_pct": d.ausschussquote_pct,
+                "vorprodukt_eingang": d.vorprodukt_eingang,
+                "process_kosten_vor_ausschuss": d.process_kosten_vor_ausschuss,
+                "ausschuss_zuschlag": d.ausschuss_zuschlag,
+                "kosten_nach_ausbeute": d.kosten_nach_ausbeute,
+            }
+            for d in (result.process_yield_details or [])
+        ],
     }
     baugruppe.ergebnis = payload
     if refresh_snapshots:
@@ -550,7 +603,7 @@ def _recalculate_single(
         for index, pos in enumerate(sorted(positions, key=lambda p: p.sequence), start=1):
             _ensure_snapshots_present(db, pos, position_index=index)
 
-    calc_inputs = _build_calc_inputs(positions, child_herstellkosten)
+    calc_inputs = _build_calc_inputs(db, positions, child_herstellkosten)
     try:
         result = calculate_assembly(
             assembly_type=baugruppe.assembly_type,

@@ -26,6 +26,7 @@ from app.services.dashboard import (
     parse_json_dict,
     preis_aus_baugruppe,
 )
+from app.services.baugruppe_export_detail import build_baugruppe_detail_kalkulation
 from app.services.dashboard_assembly import build_assembly_overview
 from app.services.export_models import (
     BaugruppeExportData,
@@ -49,7 +50,9 @@ def _euro_str(value: float | None) -> str:
     return f"{value:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def _pct_str(value: float) -> str:
+def _pct_str(value: float | None) -> str:
+    if value is None:
+        return "–"
     return f"{value:.2f} %".replace(".", ",")
 
 
@@ -105,16 +108,31 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
         ExportRow("Material", material_name),
         ExportRow("Teilegewicht netto", f"{obj.teilegewicht_netto_g:.2f} g"),
         ExportRow("Schussgewicht", f"{obj.schussgewicht_g:.2f} g"),
-        ExportRow("Ausschussquote", _pct_str(obj.ausschussquote_pct)),
+        ExportRow("Material-Ausschussquote", _pct_str(obj.ausschussquote_pct)),
         ExportRow("Materialpreis", _euro_str(obj.materialpreis_pro_kg) + " / kg"),
+        ExportRow(
+            "Material-Nominierung",
+            str(
+                getattr(obj, "material_nominierung", None)
+                or ergebnis.get("material_nominierung")
+                or "–"
+            ),
+        ),
         ExportRow("Maschine", maschine_name),
         ExportRow("Zykluszeit", f"{obj.zykluszeit_s:.2f} s"),
         ExportRow("Kavitäten", str(obj.kavitaeten)),
         ExportRow("Jahresstückzahl", str(obj.jahresstueckzahl)),
-        ExportRow("MGK", _pct_applied_or_stored(ergebnis, "applied_mgk_pct", obj.mgk_pct)),
+        ExportRow(
+            "Material-MGK",
+            _pct_applied_or_stored(ergebnis, "applied_mgk_pct", obj.mgk_pct),
+        ),
         ExportRow("FGK", _pct_applied_or_stored(ergebnis, "applied_fgk_pct", obj.fgk_pct)),
-        ExportRow("VVGK", _pct_applied_or_stored(ergebnis, "applied_vvgk_pct", obj.vvgk_pct)),
-        ExportRow("Gewinn", _pct_applied_or_stored(ergebnis, "applied_gewinn_pct", obj.gewinn_pct)),
+        ExportRow(
+            "FGK-Basis",
+            _euro_str(_float_from(ergebnis, "fgk_basis")),
+        ),
+        ExportRow("SG&A / VVGK", _pct_applied_or_stored(ergebnis, "applied_vvgk_pct", obj.vvgk_pct)),
+        ExportRow("Profit / Gewinn", _pct_applied_or_stored(ergebnis, "applied_gewinn_pct", obj.gewinn_pct)),
         ExportRow("Skonto", _pct_applied_or_stored(ergebnis, "applied_skonto_pct", obj.skonto_pct)),
     ]
 
@@ -126,20 +144,25 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
 
     kosten = [
         ExportMoneyRow(
-            "Materialkosten",
+            "Materialkosten vor Ausschuss",
+            _float_from(ergebnis, "materialkosten"),
+        ),
+        ExportMoneyRow(
+            "Materialkosten inkl. Ausschuss",
             _float_from(ergebnis, "materialkosten_inkl_ausschuss")
             or _float_from(ergebnis, "materialkosten"),
         ),
-        ExportMoneyRow("Materialgemeinkosten", _float_from(ergebnis, "materialgemeinkosten")),
+        ExportMoneyRow("Material-MGK", _float_from(ergebnis, "materialgemeinkosten")),
         money("Maschinenkosten", "maschinenkosten"),
         money("Fertigungslohn", "fertigungslohn"),
-        money("Fertigungsgemeinkosten", "fertigungsgemeinkosten"),
+        ExportMoneyRow("FGK-Basis", _float_from(ergebnis, "fgk_basis")),
+        money("Fertigungsgemeinkosten (FGK)", "fertigungsgemeinkosten"),
         money("Spritzguss-Herstellkosten", "spritzguss_herstellkosten"),
         money("Veredelungskosten gesamt", "veredelung_gesamt"),
         money("Herstellkosten gesamt", "gesamte_herstellkosten"),
-        money("VVGK", "vvgk"),
+        money("SG&A / VVGK", "vvgk"),
         money("Selbstkosten", "selbstkosten"),
-        money("Gewinn", "gewinn"),
+        money("Profit / Gewinn", "gewinn"),
         money("Nettoverkaufspreis", "nettoverkaufspreis_gesamt"),
         money("Skonto", "skonto"),
         ExportMoneyRow(
@@ -155,6 +178,20 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
             label = schritt.get("bezeichnung", "Veredelung")
             amount = _float_from(schritt, "kosten_gesamt")
             veredelung_steps.append(ExportMoneyRow(label, amount))
+            quote = _float_from(schritt, "ausschussquote_pct")
+            if quote is not None and quote > 0:
+                veredelung_steps.append(
+                    ExportMoneyRow(
+                        f"{label} – Ausschuss {_pct_str(quote)}",
+                        _float_from(schritt, "ausschuss_zuschlag"),
+                    )
+                )
+                veredelung_steps.append(
+                    ExportMoneyRow(
+                        f"{label} – Vorprodukt-Eingang",
+                        _float_from(schritt, "vorprodukt_eingang"),
+                    )
+                )
 
     if not veredelung_steps:
         veredel_block = bloecke.get("veredelung") if isinstance(bloecke.get("veredelung"), dict) else {}
@@ -368,9 +405,14 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
         ExportMoneyRow("Kaufteilkosten", overview["kaufteilkosten"]),
         ExportMoneyRow("Veredelungskosten", overview["veredelungskosten"]),
         ExportMoneyRow("Investitions-/Werkzeugkosten", overview["investitionskosten"]),
+        ExportMoneyRow("FGK-Basis", _float_from(ergebnis, "fgk_basis")),
+        ExportMoneyRow(
+            "Fertigungsgemeinkosten (FGK)",
+            _float_from(ergebnis, "fertigungsgemeinkosten"),
+        ),
         ExportMoneyRow("Herstellkosten", overview["herstellkosten"]),
-        ExportMoneyRow("VVGK", overview["vvgk"]),
-        ExportMoneyRow("Gewinn", overview["gewinn"]),
+        ExportMoneyRow("SG&A / VVGK", overview["vvgk"]),
+        ExportMoneyRow("Profit / Gewinn", overview["gewinn"]),
         ExportMoneyRow("Skonto", skonto),
         ExportMoneyRow("Nettoverkaufspreis", overview["nettoverkaufspreis"]),
         ExportMoneyRow(
@@ -381,31 +423,168 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
         ExportMoneyRow("Jahresumsatz", overview["jahresumsatz"], highlight=True),
         ExportMoneyRow("Gesamtergebnis", overview["gesamtsumme"], highlight=True),
     ]
+    for detail in ergebnis.get("process_yield_details") or []:
+        if not isinstance(detail, dict):
+            continue
+        name = detail.get("name_snapshot") or detail.get("label") or "Prozess"
+        quote = _float_from(detail, "ausschussquote_pct")
+        kosten_aufstellung.append(
+            ExportMoneyRow(
+                f"ASSY/Prozess-Ausschuss {name}"
+                + (f" ({_pct_str(quote)})" if quote is not None else ""),
+                _float_from(detail, "ausschuss_zuschlag"),
+            )
+        )
 
     export_date = datetime.now(timezone.utc)
+    detail = build_baugruppe_detail_kalkulation(db, assembly_id)
+
+    # Detail-Tabellen für Excel/PDF (überschreiben Legacy-Kurzzeilen wenn vorhanden)
+    if detail.parts:
+        einzelteile_rows = []
+        for p in detail.parts:
+            einzelteile_rows.append(
+                [
+                    p.bezeichnung,
+                    p.teilenummer,
+                    str(p.menge),
+                    p.price_basis,
+                    _euro_str(p.materialkosten),
+                    _pct_str(p.material_ausschussquote_pct),
+                    _euro_str(p.materialkosten_inkl_ausschuss),
+                    p.material_nominierung or "fehlend",
+                    _pct_str(p.mgk_pct),
+                    _euro_str(p.material_mgk),
+                    _euro_str(p.maschinenkosten),
+                    _euro_str(p.fertigungslohn),
+                    _euro_str(p.veredelung_direkt_vor),
+                    _euro_str(p.fgk_basis),
+                    _pct_str(p.fgk_pct),
+                    _euro_str(p.fgk_betrag),
+                    _euro_str(p.herstellkosten),
+                    _euro_str(p.zwischensumme),
+                    "; ".join(p.hinweise) if p.hinweise else ("Legacy" if p.legacy else ""),
+                ]
+            )
+    if detail.purchased:
+        kaufteile_rows = []
+        for k in detail.purchased:
+            kaufteile_rows.append(
+                [
+                    k.bezeichnung,
+                    k.artikelnummer,
+                    k.lieferant,
+                    str(k.menge),
+                    _euro_str(k.einkaufspreis),
+                    k.nominierung or "fehlend",
+                    _pct_str(k.mgk_pct),
+                    _euro_str(k.kaufteil_mgk),
+                    _euro_str(k.preis_inkl_mgk),
+                    _euro_str(k.zwischensumme),
+                    "; ".join(k.hinweise) if k.hinweise else ("Legacy" if k.legacy else ""),
+                ]
+            )
+    if detail.processes:
+        veredelung_rows = []
+        for proc in detail.processes:
+            veredelung_rows.append(
+                [
+                    str(proc.sequence),
+                    proc.bezeichnung,
+                    _euro_str(proc.lohnkosten),
+                    _euro_str(proc.maschinenkosten),
+                    _euro_str(proc.verbrauchskosten),
+                    _euro_str(proc.kosten_vor_ausschuss),
+                    _pct_str(proc.ausschussquote_pct),
+                    _pct_str(proc.ausbeute_pct),
+                    _euro_str(proc.vorprodukt_eingang),
+                    _euro_str(proc.ausschuss_zuschlag),
+                    _euro_str(proc.kosten_nach_ausbeute),
+                    _euro_str(proc.fgk_basis),
+                    _pct_str(proc.fgk_pct),
+                    _euro_str(proc.fgk_betrag),
+                    _euro_str(proc.zwischensumme),
+                ]
+            )
+
+    selbstkosten = _float_from(ergebnis, "selbstkosten")
     return BaugruppeExportData(
         company_name=settings.COMPANY_NAME,
         assembly_id=obj.id,
         name=obj.name,
         teilenummer=obj.teilenummer,
-        kunde=obj.kunde,
-        projekt=obj.projekt,
+        kunde=detail.customer_name or obj.kunde,
+        projekt=detail.project_name or obj.projekt,
         jahresstueckzahl=obj.jahresstueckzahl,
         created_at=obj.created_at,
         updated_at=obj.updated_at,
         einzelteile=ExportTable(
-            "Einzelteile / Komponenten",
-            ["Bezeichnung", "Teilenummer", "Menge", "Einzelpreis", "Zwischensumme"],
+            "Einzelteile / PART-Detail",
+            [
+                "Bezeichnung",
+                "Teilenummer",
+                "Menge",
+                "Kostenbasis",
+                "Material direkt",
+                "Mat.-Ausschuss %",
+                "Material inkl. Ausschuss",
+                "Nominierung",
+                "MGK %",
+                "Material-MGK",
+                "Maschinenkosten",
+                "Fertigungslohn",
+                "Veredelung direkt vor Ausschuss",
+                "FGK-Basis",
+                "FGK %",
+                "FGK",
+                "Herstellkosten",
+                "Zwischensumme",
+                "Hinweise",
+            ]
+            if detail.parts
+            else ["Bezeichnung", "Teilenummer", "Menge", "Einzelpreis", "Zwischensumme"],
             einzelteile_rows,
         ),
         kaufteile=ExportTable(
             "Kaufteile",
-            ["Bezeichnung", "Lieferant", "Menge", "Einzelpreis", "Zwischensumme"],
+            [
+                "Bezeichnung",
+                "Artikelnummer",
+                "Lieferant",
+                "Menge",
+                "Einkaufspreis",
+                "Nominierung",
+                "MGK %",
+                "Kaufteil-MGK",
+                "Preis inkl. MGK",
+                "Zwischensumme",
+                "Hinweise",
+            ]
+            if detail.purchased
+            else ["Bezeichnung", "Lieferant", "Menge", "Einzelpreis", "Zwischensumme"],
             kaufteile_rows,
         ),
         veredelung=ExportTable(
-            "Montage / Veredelung",
-            ["Reihenfolge", "Bezeichnung", "Kosten/St.", "Faktor", "Zwischensumme"],
+            "ASSY / Prozesskette",
+            [
+                "Reihenfolge",
+                "Bezeichnung",
+                "Lohn",
+                "Maschine",
+                "Verbrauch",
+                "Direkt vor Ausschuss",
+                "Ausschuss %",
+                "Ausbeute %",
+                "Vorprodukt",
+                "Ausschusszuschlag",
+                "Nach Ausbeute",
+                "FGK-Basis",
+                "FGK %",
+                "FGK",
+                "Zwischensumme",
+            ]
+            if detail.processes
+            else ["Reihenfolge", "Bezeichnung", "Kosten/St.", "Faktor", "Zwischensumme"],
             veredelung_rows,
         ),
         investitionen=investitionen,
@@ -434,6 +613,9 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
         skonto=skonto,
         nettoverkaufspreis=overview["nettoverkaufspreis"],
         gesamtergebnis=overview["gesamtsumme"],
+        program=detail.program_name or "",
+        selbstkosten=selbstkosten,
+        detail=detail,
     )
 
 

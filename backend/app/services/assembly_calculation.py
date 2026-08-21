@@ -8,6 +8,9 @@ from decimal import Decimal, ROUND_HALF_UP
 from app.schemas.assembly_calculation import CalculationWarning
 
 
+from app.services.process_yield import apply_process_yield
+
+
 class AssemblyCalculationError(ValueError):
     """Fachlicher Kalkulationsfehler."""
 
@@ -49,6 +52,21 @@ class PositionCalcInput:
     cost_snapshot: float | None
     price_snapshot: float | None
     child_herstellkosten: float | None = None
+    # PROCESS: Ausbeutekette (optional – ohne Werte: Legacy-Additiv)
+    ausschussquote_pct: float | None = None
+    cost_before_scrap: float | None = None
+
+
+@dataclass(frozen=True)
+class ProcessYieldDetail:
+    position_id: int | None
+    label: str | None
+    name_snapshot: str
+    ausschussquote_pct: float
+    vorprodukt_eingang: float
+    process_kosten_vor_ausschuss: float
+    ausschuss_zuschlag: float
+    kosten_nach_ausbeute: float
 
 
 @dataclass(frozen=True)
@@ -83,6 +101,7 @@ class AssemblyCalculationResult:
     applied_vvgk_pct: float | None = None
     applied_gewinn_pct: float | None = None
     applied_skonto_pct: float | None = None
+    process_yield_details: list[ProcessYieldDetail] | None = None
 
 
 def _pct_rate(pct: float) -> Decimal:
@@ -235,33 +254,79 @@ def calculate_assembly(
 
     lines: list[PositionCalculationLine] = []
     warnings: list[CalculationWarning] = list(extra_warnings or [])
-    position_sum = Decimal("0")
-    process_sum = Decimal("0")
+    yield_details: list[ProcessYieldDetail] = []
+    running = Decimal("0")
+    process_direct_sum = Decimal("0")
 
     for index, position in enumerate(active_positions, start=1):
+        if position.position_type == "PROCESS":
+            quote = float(position.ausschussquote_pct or 0)
+            if position.cost_before_scrap is not None:
+                vor_unit = _d(position.cost_before_scrap)
+            elif position.cost_snapshot is not None and quote > 0:
+                # Snapshot war inkl. Eigenausschuss → Vor-Kosten ableiten
+                vor_unit = _d(position.cost_snapshot) * (Decimal("1") - _d(quote) / Decimal("100"))
+            else:
+                vor_unit = _require_positive_snapshot(
+                    position.cost_snapshot,
+                    label="cost_snapshot",
+                    position_index=index,
+                )
+            vor = _money(vor_unit * _d(position.quantity_factor))
+            vorprodukt = running
+            try:
+                output, surcharge, _yf = apply_process_yield(running, vor, quote)
+            except ValueError as exc:
+                raise AssemblyCalculationError(str(exc)) from exc
+            beitrag = _money(output - running)
+            running = output
+            process_direct_sum += vor
+            lines.append(
+                PositionCalculationLine(
+                    position_id=position.position_id,
+                    position_type=position.position_type,
+                    sequence=position.sequence,
+                    label=position.label,
+                    name_snapshot=position.name_snapshot,
+                    einzelpreis=float(vor_unit),
+                    quantity=position.quantity,
+                    quantity_factor=position.quantity_factor,
+                    zwischensumme=float(beitrag),
+                )
+            )
+            yield_details.append(
+                ProcessYieldDetail(
+                    position_id=position.position_id,
+                    label=position.label,
+                    name_snapshot=position.name_snapshot,
+                    ausschussquote_pct=quote,
+                    vorprodukt_eingang=float(vorprodukt),
+                    process_kosten_vor_ausschuss=float(vor),
+                    ausschuss_zuschlag=float(surcharge),
+                    kosten_nach_ausbeute=float(output),
+                )
+            )
+            continue
+
         line, line_warnings = calculate_position_line(position, position_index=index)
         lines.append(line)
         warnings.extend(line_warnings)
-        position_sum += _d(line.zwischensumme)
-        if position.position_type == "PROCESS":
-            process_sum += _d(line.zwischensumme)
+        running = _money(running + _d(line.zwischensumme))
 
-    # FGK nur auf direkte Veredelung (PROCESS); PART/SUBASSEMBLY bereits inkl. FGK
+    # FGK nur auf direkte Veredelung (PROCESS) *vor* Ausschuss
     rates = markup_rates or MarkupRates()
-    fgk_basis = _money(process_sum)
+    fgk_basis = _money(process_direct_sum)
     fertigungsgemeinkosten = Decimal("0")
     if assembly_type == "TOP_LEVEL":
         if rates.fgk_pct is None:
             raise AssemblyCalculationError("Fehlende Zuschlagssätze: FGK")
         fertigungsgemeinkosten = _money(fgk_basis * _pct_rate(rates.fgk_pct))
-    elif assembly_type == "SUBASSEMBLY" and process_sum > 0:
-        # Unterbaugruppe: FGK auf PROCESS in HK einbetten, damit TOP_LEVEL
-        # nicht erneut auf Kind-Veredelung zuschlägt und Kind-HK vollständig ist.
+    elif assembly_type == "SUBASSEMBLY" and process_direct_sum > 0:
         if rates.fgk_pct is None:
             raise AssemblyCalculationError("Fehlende Zuschlagssätze: FGK")
         fertigungsgemeinkosten = _money(fgk_basis * _pct_rate(rates.fgk_pct))
 
-    herstellkosten = _money(position_sum + fertigungsgemeinkosten)
+    herstellkosten = _money(running + fertigungsgemeinkosten)
 
     if assembly_type == "SUBASSEMBLY":
         return AssemblyCalculationResult(
@@ -279,6 +344,7 @@ def calculate_assembly(
             fertigungsgemeinkosten=float(fertigungsgemeinkosten),
             fgk_basis=float(fgk_basis),
             applied_fgk_pct=float(rates.fgk_pct) if rates.fgk_pct is not None else None,
+            process_yield_details=yield_details,
         )
 
     if assembly_type != "TOP_LEVEL":
@@ -307,4 +373,5 @@ def calculate_assembly(
         applied_vvgk_pct=float(rates.vvgk_pct) if rates.vvgk_pct is not None else None,
         applied_gewinn_pct=float(rates.gewinn_pct) if rates.gewinn_pct is not None else None,
         applied_skonto_pct=float(rates.skonto_pct) if rates.skonto_pct is not None else None,
+        process_yield_details=yield_details,
     )

@@ -208,11 +208,26 @@ def _live_kosten_fuer_veredelungsschritt(schritt: Veredelungsschritt) -> float:
             maschinenstundensatz=schritt.maschinenstundensatz,
             verbrauchskosten_je_stueck=schritt.verbrauchskosten_je_stueck,
             ausschussquote_pct=schritt.ausschussquote_pct,
-            fgk_pct=schritt.fgk_pct,
+            fgk_pct=0,
             reihenfolge=schritt.reihenfolge,
         )
     )
     return kosten.kosten_inkl_ausschuss
+
+
+def _live_veredelung_kosten(schritt: Veredelungsschritt):
+    return berechne_veredelung(
+        VeredelungCalcInput(
+            taktzeit_s=schritt.taktzeit_s,
+            anzahl_mitarbeiter=schritt.anzahl_mitarbeiter,
+            lohnstundensatz=schritt.lohnstundensatz,
+            maschinenstundensatz=schritt.maschinenstundensatz,
+            verbrauchskosten_je_stueck=schritt.verbrauchskosten_je_stueck,
+            ausschussquote_pct=schritt.ausschussquote_pct,
+            fgk_pct=0,
+            reihenfolge=schritt.reihenfolge,
+        )
+    )
 
 
 def _resolve_veredelung_eingaben(
@@ -250,12 +265,18 @@ def _resolve_veredelung_eingaben(
             )
 
         snapshot = snapshot_map.get(zuordnung.veredelungsschritt_id)
+        kosten_vor: float | None = None
+        ausschuss_q = 0.0
         if use_snapshots and snapshot is not None:
             kosten = snapshot.snapshot_kosten_inkl_ausschuss
             bezeichnung = snapshot.snapshot_bezeichnung
             art = snapshot.snapshot_veredelungsart
+            # Snapshot ohne Vor-Kosten → Legacy-Additiv (keine Vorprodukt-Kaskade)
         else:
-            kosten = _live_kosten_fuer_veredelungsschritt(schritt)
+            live = _live_veredelung_kosten(schritt)
+            kosten = live.kosten_inkl_ausschuss
+            kosten_vor = live.kosten_vor_ausschuss
+            ausschuss_q = float(schritt.ausschussquote_pct)
             bezeichnung = schritt.bezeichnung
             art = schritt.veredelungsart
 
@@ -268,6 +289,8 @@ def _resolve_veredelung_eingaben(
                 aktiv=zuordnung.aktiv,
                 mengenfaktor=zuordnung.mengenfaktor,
                 kosten_inkl_ausschuss=kosten,
+                kosten_vor_ausschuss=kosten_vor,
+                ausschussquote_pct=ausschuss_q,
             )
         )
     return eingaben

@@ -48,7 +48,11 @@ def is_local_development_database(database_url: str) -> bool:
 
 
 def seed_top_level_markup_rates(db: Session) -> list[str]:
-    """Legt je technischem Typ höchstens einen aktiven Satz an."""
+    """Legt je technischem Typ höchstens einen aktiven Satz an.
+
+    Korrigiert zusätzlich vertauschte MGK-Defaults (selbst=5 / OEM=3 → 3 / 5),
+    ohne andere manuell gepflegte Sätze zu überschreiben.
+    """
     if set(typ for typ, _, _ in TOP_LEVEL_MARKUP_SEED) != set(CENTRAL_MARKUP_TYPEN):
         raise RuntimeError("TOP_LEVEL_MARKUP_SEED stimmt nicht mit CENTRAL_MARKUP_TYPEN überein.")
 
@@ -72,6 +76,31 @@ def seed_top_level_markup_rates(db: Session) -> list[str]:
             )
         )
         actions.append(f"insert:{typ}")
+
+    # Vertauschte zentrale MGK-Defaults korrigieren (nur exakt 5/3)
+    selbst = db.scalars(
+        select(Zuschlagssatz).where(
+            Zuschlagssatz.typ == "mgk_kaufteil_selbst",
+            Zuschlagssatz.aktiv.is_(True),
+        )
+    ).first()
+    oem = db.scalars(
+        select(Zuschlagssatz).where(
+            Zuschlagssatz.typ == "mgk_kaufteil_oem",
+            Zuschlagssatz.aktiv.is_(True),
+        )
+    ).first()
+    if (
+        selbst is not None
+        and oem is not None
+        and float(selbst.satz_prozent) == 5.0
+        and float(oem.satz_prozent) == 3.0
+    ):
+        selbst.satz_prozent = 3.0
+        oem.satz_prozent = 5.0
+        actions.append("fix:mgk_kaufteil_selbst:5→3")
+        actions.append("fix:mgk_kaufteil_oem:3→5")
+
     db.commit()
     return actions
 

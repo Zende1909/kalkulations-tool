@@ -309,9 +309,12 @@ def test_excel_export_http_200_xlsx(client, db):
     assert response.status_code == 200
     assert response.content[:2] == b"PK"
     workbook = load_workbook(BytesIO(response.content))
-    assert "Übersicht" in workbook.sheetnames
+    assert "Deckblatt" in workbook.sheetnames
     assert "BOM" in workbook.sheetnames
     assert "Zuschlagssaetze" in workbook.sheetnames
+    assert "Ueberleitung" in workbook.sheetnames
+    assert "Annahmen" in workbook.sheetnames
+    assert "ASSY_Prozesskette" in workbook.sheetnames
     sheet = workbook["Zuschlagssaetze"]
     values = [cell.value for row in sheet.iter_rows(max_col=3) for cell in row]
     assert any(value and "Skonto" in str(value) for value in values)

@@ -1,15 +1,22 @@
 """Gesamtkalkulation: Spritzguss + Veredelungsschritte.
 
-FGK wird hier genau einmal auf der Basis
-Maschinenkosten + Fertigungslohn + direkte Veredelungskosten berechnet
-(nicht erneut auf bereits FGK-haltige Spritzguss-Herstellkosten).
-SG&A (VVGK) und Profit folgen auf die so ermittelten Herstellkosten.
+Ausschussmodell
+---------------
+- Materialausschuss: lokal in der Spritzguss-Kalkulation.
+- Veredelungsausschuss (z. B. Kaschieren): Ausbeutekette
+  ``(Vorprodukt + Prozess_vor) / (1 − q)`` – einmal pro Schritt,
+  inkl. Kosten bereits hergestellter Vorprodukte.
+- FGK genau einmal auf Maschine + Lohn + direkte Veredelungskosten *vor*
+  Ausschuss (keine Doppelanwendung desselben Ausschusses auf die FGK-Basis).
+- SG&A (VVGK) und Profit folgen auf die so ermittelten Herstellkosten.
 """
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from decimal import Decimal, ROUND_HALF_UP
+
+from app.services.process_yield import apply_process_yield
 
 
 class GesamtValidationError(ValueError):
@@ -36,7 +43,10 @@ class VeredelungSchrittEingabe:
     reihenfolge: int
     aktiv: bool
     mengenfaktor: float
-    kosten_inkl_ausschuss: float  # direkte Veredelungskosten (ohne FGK)
+    kosten_inkl_ausschuss: float  # Eigenkosten inkl. Prozessausschuss (Anzeige)
+    # Für Ausbeutekette; wenn gesetzt, wird kaskadiert.
+    kosten_vor_ausschuss: float | None = None
+    ausschussquote_pct: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -49,6 +59,11 @@ class VeredelungSchrittErgebnis:
     mengenfaktor: float
     kosten_inkl_ausschuss: float
     kosten_gesamt: float
+    kosten_vor_ausschuss: float = 0.0
+    ausschussquote_pct: float = 0.0
+    vorprodukt_eingang: float = 0.0
+    ausschuss_zuschlag: float = 0.0
+    kosten_nach_ausbeute: float = 0.0
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -78,6 +93,10 @@ class GesamtErgebnis:
     applied_vvgk_pct: float
     applied_gewinn_pct: float
     applied_skonto_pct: float
+    materialkosten_vor_ausschuss: float | None = None
+    material_ausschussquote_pct: float | None = None
+    applied_mgk_pct: float | None = None
+    material_nominierung: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -97,6 +116,13 @@ class GesamtErgebnis:
             "applied_vvgk_pct": self.applied_vvgk_pct,
             "applied_gewinn_pct": self.applied_gewinn_pct,
             "applied_skonto_pct": self.applied_skonto_pct,
+            "materialkosten_gesamt": self.materialkosten_gesamt,
+            "materialkosten_vor_ausschuss": self.materialkosten_vor_ausschuss,
+            "material_ausschussquote_pct": self.material_ausschussquote_pct,
+            "applied_mgk_pct": self.applied_mgk_pct,
+            "material_nominierung": self.material_nominierung,
+            "maschinenkosten": self.maschinenkosten,
+            "fertigungslohn": self.fertigungslohn,
             "veredelung_schritte": [s.to_dict() for s in self.veredelung_schritte],
         }
 
@@ -145,6 +171,11 @@ def berechne_veredelung_schritt(
     unit = _money(_d(schritt.kosten_inkl_ausschuss))
     faktor = _d(schritt.mengenfaktor)
     kosten_gesamt = _money(unit * faktor) if schritt.aktiv else _money(Decimal("0"))
+    vor = (
+        float(_money(_d(schritt.kosten_vor_ausschuss) * faktor))
+        if schritt.kosten_vor_ausschuss is not None and schritt.aktiv
+        else float(kosten_gesamt)
+    )
     return VeredelungSchrittErgebnis(
         veredelungsschritt_id=schritt.veredelungsschritt_id,
         bezeichnung=schritt.bezeichnung,
@@ -154,6 +185,8 @@ def berechne_veredelung_schritt(
         mengenfaktor=float(faktor),
         kosten_inkl_ausschuss=float(unit),
         kosten_gesamt=float(kosten_gesamt),
+        kosten_vor_ausschuss=vor if schritt.aktiv else 0.0,
+        ausschussquote_pct=schritt.ausschussquote_pct if schritt.aktiv else 0.0,
     )
 
 
@@ -166,12 +199,7 @@ def berechne_gesamt(
     gewinn_pct: float = 0,
     skonto_pct: float = 0,
 ) -> GesamtErgebnis:
-    """Kombiniert Spritzguss-Direktkosten mit Veredelung und wendet Zuschläge einmal an.
-
-    Erwartet vom Spritzguss-Ergebnis die Komponenten
-    materialkosten_gesamt, maschinenkosten, fertigungslohn (ohne eingebettete
-    Veredelungs-FGK). FGK wird neu auf Maschine + Lohn + Veredelung berechnet.
-    """
+    """Kombiniert Spritzguss-Direktkosten mit Veredelung und wendet Zuschläge einmal an."""
     spritzguss_vp = float(spritzguss_ergebnis.get("verkaufspreis", 0))
 
     material = _d(spritzguss_ergebnis.get("materialkosten_gesamt", 0))
@@ -180,7 +208,9 @@ def berechne_gesamt(
 
     sorted_steps = sorted(veredelung_schritte, key=lambda s: s.reihenfolge)
     ergebnis_schritte: list[VeredelungSchrittErgebnis] = []
-    veredelung_summe = Decimal("0")
+    process_direct_sum = Decimal("0")
+    # Laufende Fertigungskosten vor FGK (Material inkl. Materialausschuss + Maschine + Lohn)
+    running = _money(material + maschinenkosten + fertigungslohn)
 
     seen_ids: set[int] = set()
     for schritt in sorted_steps:
@@ -189,21 +219,74 @@ def berechne_gesamt(
                 f"Veredelungsschritt {schritt.veredelungsschritt_id} ist doppelt zugeordnet"
             )
         seen_ids.add(schritt.veredelungsschritt_id)
-        ergebnis = berechne_veredelung_schritt(schritt)
-        ergebnis_schritte.append(ergebnis)
-        if ergebnis.aktiv:
-            veredelung_summe += _d(ergebnis.kosten_gesamt)
 
-    veredelung_gesamt = _money(veredelung_summe)
+        if not schritt.aktiv:
+            ergebnis_schritte.append(berechne_veredelung_schritt(schritt))
+            continue
 
-    # FGK-Basis: Maschine + Lohn + direkte Veredelung (kein Material/Kaufteil/Werkzeug)
-    fgk_basis = _money(maschinenkosten + fertigungslohn + veredelung_gesamt)
+        faktor = _d(schritt.mengenfaktor)
+        vorprodukt_eingang = float(running)
+
+        if schritt.kosten_vor_ausschuss is not None:
+            vor = _money(_d(schritt.kosten_vor_ausschuss) * faktor)
+            try:
+                output, surcharge, _yf = apply_process_yield(
+                    running, vor, schritt.ausschussquote_pct
+                )
+            except ValueError as exc:
+                raise GesamtValidationError(str(exc)) from exc
+            process_direct_sum += vor
+            beitrag = _money(output - running)
+            running = output
+            unit_inkl = _money(_d(schritt.kosten_inkl_ausschuss))
+            ergebnis_schritte.append(
+                VeredelungSchrittErgebnis(
+                    veredelungsschritt_id=schritt.veredelungsschritt_id,
+                    bezeichnung=schritt.bezeichnung,
+                    veredelungsart=schritt.veredelungsart,
+                    reihenfolge=schritt.reihenfolge,
+                    aktiv=True,
+                    mengenfaktor=float(faktor),
+                    kosten_inkl_ausschuss=float(unit_inkl),
+                    kosten_gesamt=float(beitrag),
+                    kosten_vor_ausschuss=float(vor),
+                    ausschussquote_pct=schritt.ausschussquote_pct,
+                    vorprodukt_eingang=vorprodukt_eingang,
+                    ausschuss_zuschlag=float(surcharge),
+                    kosten_nach_ausbeute=float(output),
+                )
+            )
+        else:
+            # Legacy: nur Eigenkosten inkl. Ausschuss addieren (keine Vorprodukt-Kaskade)
+            unit = _money(_d(schritt.kosten_inkl_ausschuss))
+            kosten_gesamt = _money(unit * faktor)
+            process_direct_sum += kosten_gesamt
+            running = _money(running + kosten_gesamt)
+            ergebnis_schritte.append(
+                VeredelungSchrittErgebnis(
+                    veredelungsschritt_id=schritt.veredelungsschritt_id,
+                    bezeichnung=schritt.bezeichnung,
+                    veredelungsart=schritt.veredelungsart,
+                    reihenfolge=schritt.reihenfolge,
+                    aktiv=True,
+                    mengenfaktor=float(faktor),
+                    kosten_inkl_ausschuss=float(unit),
+                    kosten_gesamt=float(kosten_gesamt),
+                    kosten_vor_ausschuss=float(kosten_gesamt),
+                    ausschussquote_pct=0.0,
+                    vorprodukt_eingang=vorprodukt_eingang,
+                    ausschuss_zuschlag=0.0,
+                    kosten_nach_ausbeute=float(running),
+                )
+            )
+
+    veredelung_gesamt = _money(running - material - maschinenkosten - fertigungslohn)
+
+    # FGK-Basis: Maschine + Lohn + direkte Veredelung *vor* Ausschuss
+    fgk_basis = _money(maschinenkosten + fertigungslohn + process_direct_sum)
     fertigungsgemeinkosten = _money(fgk_basis * _pct_to_rate(fgk_pct))
 
-    gesamte_hk = _money(
-        material + maschinenkosten + fertigungslohn + veredelung_gesamt + fertigungsgemeinkosten
-    )
-    # Spritzguss-HK ohne Veredelung, aber mit FGK nur auf Maschine+Lohn (Anzeige)
+    gesamte_hk = _money(running + fertigungsgemeinkosten)
     spritzguss_hk = _money(
         material
         + maschinenkosten
@@ -218,6 +301,7 @@ def berechne_gesamt(
     skonto = _money(nettoverkaufspreis * _pct_to_rate(skonto_pct))
     endpreis = _money(nettoverkaufspreis + skonto)
 
+    mat_vor = spritzguss_ergebnis.get("materialkosten")
     return GesamtErgebnis(
         spritzguss_herstellkosten=float(spritzguss_hk),
         spritzguss_verkaufspreis=spritzguss_vp,
@@ -241,4 +325,16 @@ def berechne_gesamt(
         applied_vvgk_pct=float(vvgk_pct),
         applied_gewinn_pct=float(gewinn_pct),
         applied_skonto_pct=float(skonto_pct),
+        materialkosten_vor_ausschuss=float(mat_vor) if mat_vor is not None else None,
+        material_ausschussquote_pct=(
+            float(spritzguss_ergebnis["ausschussquote_pct"])
+            if spritzguss_ergebnis.get("ausschussquote_pct") is not None
+            else None
+        ),
+        applied_mgk_pct=(
+            float(spritzguss_ergebnis["applied_mgk_pct"])
+            if spritzguss_ergebnis.get("applied_mgk_pct") is not None
+            else None
+        ),
+        material_nominierung=spritzguss_ergebnis.get("material_nominierung"),
     )

@@ -87,6 +87,10 @@ class BaugruppeExportData:
     skonto: float | None = None
     nettoverkaufspreis: float | None = None
     gesamtergebnis: float | None = None
+    # Detailkalkulation (optional, abwärtskompatibel)
+    program: str = ""
+    selbstkosten: float | None = None
+    detail: object | None = None
 
 
 @dataclass
