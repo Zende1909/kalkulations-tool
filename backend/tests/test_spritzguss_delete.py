@@ -77,6 +77,8 @@ def _create_schema(engine) -> None:
                 snapshot_bezeichnung VARCHAR(255) NOT NULL DEFAULT '',
                 snapshot_veredelungsart VARCHAR(64) NOT NULL DEFAULT '',
                 snapshot_kosten_inkl_ausschuss FLOAT NOT NULL DEFAULT 0,
+                snapshot_kosten_vor_ausschuss FLOAT,
+                snapshot_ausschussquote_pct FLOAT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )

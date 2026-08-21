@@ -10,6 +10,7 @@ import type {
 export type CalcPayload = Pick<
   SpritzgussFormData,
   | "teilegewicht_netto_g"
+  | "schussgewicht_g"
   | "materialpreis_pro_kg"
   | "ausschussquote_pct"
   | "mgk_pct"

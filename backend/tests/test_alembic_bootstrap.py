@@ -100,13 +100,16 @@ def test_baseline_revision_is_discoverable():
     assert BASELINE_REVISION in {r.revision for r in scripts.walk_revisions()}
 
 
-def test_alembic_head_is_spritzguss_material_nominierung_revision():
+def test_alembic_head_is_veredelung_snapshot_yield_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0006_spritzguss_material_nominierung"]
-    rev = scripts.get_revision("e1a0006_spritzguss_material_nominierung")
+    assert scripts.get_heads() == ["e1a0007_veredelung_snapshot_yield"]
+    rev = scripts.get_revision("e1a0007_veredelung_snapshot_yield")
     assert rev is not None
-    assert rev.down_revision == "e1a0005_central_markups_kaufteil"
+    assert rev.down_revision == "e1a0006_spritzguss_material_nominierung"
+    e6 = scripts.get_revision("e1a0006_spritzguss_material_nominierung")
+    assert e6 is not None
+    assert e6.down_revision == "e1a0005_central_markups_kaufteil"
     e5 = scripts.get_revision("e1a0005_central_markups_kaufteil")
     assert e5 is not None
     assert e5.down_revision == "e1a0004_m5_assembly_positions"

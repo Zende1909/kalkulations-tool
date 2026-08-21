@@ -37,3 +37,6 @@ class SpritzgussVeredelungZuordnung(Base, TimestampMixin):
     snapshot_bezeichnung: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     snapshot_veredelungsart: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     snapshot_kosten_inkl_ausschuss: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    # Für Ausbeutekette (Vorprodukt + Prozess) / (1 − Ausschuss); None = Legacy ohne Kaskade
+    snapshot_kosten_vor_ausschuss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    snapshot_ausschussquote_pct: Mapped[float | None] = mapped_column(Float, nullable=True)

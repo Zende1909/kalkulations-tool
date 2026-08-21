@@ -99,17 +99,20 @@ def test_m5_revision_module_contract():
     assert "pauschale" in source.lower() or "keine" in source.lower()
 
 
-def test_m5_is_alembic_head():
+def test_m5_is_in_alembic_chain_before_head():
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0006_spritzguss_material_nominierung"]
+    assert scripts.get_heads() == ["e1a0007_veredelung_snapshot_yield"]
     rev = scripts.get_revision(REVISION)
     assert rev is not None
     assert rev.down_revision == PREV
+    head = scripts.get_revision("e1a0007_veredelung_snapshot_yield")
+    assert head is not None
+    assert head.down_revision == "e1a0006_spritzguss_material_nominierung"
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="PostgreSQL not available for smoke DB")

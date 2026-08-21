@@ -267,15 +267,22 @@ def _resolve_veredelung_eingaben(
             )
 
         snapshot = snapshot_map.get(zuordnung.veredelungsschritt_id)
-        kosten_vor: float | None = None
-        ausschuss_q = 0.0
+        live = _live_veredelung_kosten(schritt)
         if use_snapshots and snapshot is not None:
             kosten = snapshot.snapshot_kosten_inkl_ausschuss
             bezeichnung = snapshot.snapshot_bezeichnung
             art = snapshot.snapshot_veredelungsart
-            # Snapshot ohne Vor-Kosten → Legacy-Additiv (keine Vorprodukt-Kaskade)
+            # Ausbeutekette: Snapshot-Vor-Kosten/Quote (wie beim Speichern geschrieben).
+            # Legacy-Zeilen ohne Vor-Snapshot → Live, damit Speichern = Berechnen.
+            snap_vor = getattr(snapshot, "snapshot_kosten_vor_ausschuss", None)
+            snap_q = getattr(snapshot, "snapshot_ausschussquote_pct", None)
+            if snap_vor is not None and snap_q is not None:
+                kosten_vor = float(snap_vor)
+                ausschuss_q = float(snap_q)
+            else:
+                kosten_vor = live.kosten_vor_ausschuss
+                ausschuss_q = float(schritt.ausschussquote_pct)
         else:
-            live = _live_veredelung_kosten(schritt)
             kosten = live.kosten_inkl_ausschuss
             kosten_vor = live.kosten_vor_ausschuss
             ausschuss_q = float(schritt.ausschussquote_pct)
@@ -353,7 +360,7 @@ def _sync_veredelung_zuordnungen(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Veredelungsschritt {zuordnung.veredelungsschritt_id} nicht gefunden",
             )
-        kosten = _live_kosten_fuer_veredelungsschritt(schritt)
+        live = _live_veredelung_kosten(schritt)
         row = SpritzgussVeredelungZuordnung(
             kalkulation_id=obj.id,
             veredelungsschritt_id=zuordnung.veredelungsschritt_id,
@@ -362,7 +369,9 @@ def _sync_veredelung_zuordnungen(
             mengenfaktor=zuordnung.mengenfaktor,
             snapshot_bezeichnung=schritt.bezeichnung,
             snapshot_veredelungsart=schritt.veredelungsart,
-            snapshot_kosten_inkl_ausschuss=kosten,
+            snapshot_kosten_inkl_ausschuss=live.kosten_inkl_ausschuss,
+            snapshot_kosten_vor_ausschuss=live.kosten_vor_ausschuss,
+            snapshot_ausschussquote_pct=float(schritt.ausschussquote_pct),
         )
         db.add(row)
         created.append(row)
@@ -721,7 +730,7 @@ def add_veredelung_zuordnung(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Veredelungsschritt nicht gefunden"
         )
-    kosten = _live_kosten_fuer_veredelungsschritt(schritt)
+    live = _live_veredelung_kosten(schritt)
     row = SpritzgussVeredelungZuordnung(
         kalkulation_id=item_id,
         veredelungsschritt_id=body.veredelungsschritt_id,
@@ -730,7 +739,9 @@ def add_veredelung_zuordnung(
         mengenfaktor=body.mengenfaktor,
         snapshot_bezeichnung=schritt.bezeichnung,
         snapshot_veredelungsart=schritt.veredelungsart,
-        snapshot_kosten_inkl_ausschuss=kosten,
+        snapshot_kosten_inkl_ausschuss=live.kosten_inkl_ausschuss,
+        snapshot_kosten_vor_ausschuss=live.kosten_vor_ausschuss,
+        snapshot_ausschussquote_pct=float(schritt.ausschussquote_pct),
     )
     db.add(row)
     db.flush()
