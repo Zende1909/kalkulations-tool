@@ -48,13 +48,13 @@ export interface SpritzgussErgebnis {
 }
 
 export interface SpritzgussBloecke {
-  material: Record<string, number>;
-  fertigung: Record<string, number>;
-  werkzeug: Record<string, number>;
-  gemeinkosten: Record<string, number>;
-  verkaufspreis: Record<string, number>;
-  veredelung?: Record<string, number>;
-  zusammenfassung?: Record<string, number>;
+  material: Record<string, number | string | null>;
+  fertigung: Record<string, number | string | null>;
+  werkzeug: Record<string, number | string | null>;
+  gemeinkosten: Record<string, number | string | null>;
+  verkaufspreis: Record<string, number | string | null>;
+  veredelung?: Record<string, number | string | null>;
+  zusammenfassung?: Record<string, number | string | null>;
 }
 
 export interface SpritzgussCalcResponse {
@@ -83,6 +83,8 @@ export interface SpritzgussFormData {
   teilegewicht_netto_g: number;
   ausschussquote_pct: number;
   materialpreis_pro_kg: number;
+  /** Nominierung am Materialeinsatz dieser Kalkulation */
+  material_nominierung: "selbstnominiert" | "oem_nominiert" | null;
 
   maschine_id: number | null;
   zykluszeit_s: number;
@@ -143,6 +145,7 @@ export const emptySpritzgussForm = (): SpritzgussFormData => ({
   teilegewicht_netto_g: 0,
   ausschussquote_pct: 0,
   materialpreis_pro_kg: 0,
+  material_nominierung: null,
   maschine_id: null,
   zykluszeit_s: 0,
   kavitaeten: 1,

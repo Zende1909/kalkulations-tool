@@ -15,7 +15,6 @@ from app.models.kaufteil import Kaufteil
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.spritzguss_veredelung_zuordnung import SpritzgussVeredelungZuordnung
 from app.models.veredelungsschritt import Veredelungsschritt
-from app.models.zuschlagssatz import Zuschlagssatz
 from app.schemas.assembly_calculation import (
     AssemblyCalculationResultRead,
     AssemblyRecalculateRequest,
@@ -40,6 +39,10 @@ from app.services.assembly_structure_service import (
     validate_referenced_entities_exist,
     validate_subassembly_rules,
 )
+from app.services.central_markup_rates import (
+    CentralMarkupRatesError,
+    load_central_markup_rates,
+)
 from app.services.spritzguss_gesamt_kalkulation import (
     GesamtValidationError,
     VeredelungSchrittEingabe,
@@ -47,6 +50,11 @@ from app.services.spritzguss_gesamt_kalkulation import (
 )
 from app.services.spritzguss_kalkulation import SpritzgussInput, berechne_spritzguss
 from app.services.veredelung_kalkulation import VeredelungInput, berechne_veredelung
+from decimal import Decimal, ROUND_HALF_UP
+
+
+def _money(value: float | Decimal) -> float:
+    return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 class AssemblyRecalculationError(Exception):
@@ -89,7 +97,7 @@ def _load_spritzguss_calc_input(db: Session, part_calculation_id: int) -> Spritz
             SELECT teilegewicht_netto_g, materialpreis_pro_kg, ausschussquote_pct, mgk_pct,
                    zykluszeit_s, maschinenstundensatz, kavitaeten, lohnstundensatz, fgk_pct,
                    werkzeugkosten_eur, werkzeug_abrechnungsart, amortisationsvolumen,
-                   vvgk_pct, gewinn_pct, skonto_pct
+                   vvgk_pct, gewinn_pct, skonto_pct, material_nominierung
             FROM spritzguss_kalkulationen WHERE id = :id
             """
         ),
@@ -116,6 +124,7 @@ def _load_spritzguss_calc_input(db: Session, part_calculation_id: int) -> Spritz
         vvgk_pct=row[12],
         gewinn_pct=row[13],
         skonto_pct=row[14],
+        material_nominierung=row[15],  # type: ignore[arg-type]
     )
 
 
@@ -138,8 +147,40 @@ def _load_part_meta(db: Session, part_calculation_id: int) -> tuple[str, str, fl
 def _compute_part_live_values(
     db: Session, part_calculation_id: int
 ) -> tuple[float, float, str, str]:
+    try:
+        rates = load_central_markup_rates(db)
+    except CentralMarkupRatesError as exc:
+        raise AssemblyRecalculationError(str(exc)) from exc
+
     calc_input = _load_spritzguss_calc_input(db, part_calculation_id)
-    name, part_number, vvgk_pct, gewinn_pct, skonto_pct = _load_part_meta(db, part_calculation_id)
+    try:
+        mgk_pct = rates.mgk_pct_for_nominierung(
+            calc_input.material_nominierung,
+            kontext=f"Spritzguss-Materialeinsatz (Kalkulation {part_calculation_id})",
+        )
+    except CentralMarkupRatesError as exc:
+        raise AssemblyRecalculationError(str(exc)) from exc
+
+    # Zentrale Sätze überschreiben gespeicherte Prozentsätze
+    calc_input = SpritzgussInput(
+        teilegewicht_netto_g=calc_input.teilegewicht_netto_g,
+        materialpreis_pro_kg=calc_input.materialpreis_pro_kg,
+        ausschussquote_pct=calc_input.ausschussquote_pct,
+        mgk_pct=mgk_pct,
+        material_nominierung=calc_input.material_nominierung,
+        zykluszeit_s=calc_input.zykluszeit_s,
+        maschinenstundensatz=calc_input.maschinenstundensatz,
+        kavitaeten=calc_input.kavitaeten,
+        lohnstundensatz=calc_input.lohnstundensatz,
+        fgk_pct=rates.fgk_pct,
+        werkzeugkosten_eur=calc_input.werkzeugkosten_eur,
+        werkzeug_abrechnungsart=calc_input.werkzeug_abrechnungsart,
+        amortisationsvolumen=calc_input.amortisationsvolumen,
+        vvgk_pct=rates.vvgk_pct,
+        gewinn_pct=rates.gewinn_pct,
+        skonto_pct=rates.skonto_pct,
+    )
+    name, part_number, *_legacy = _load_part_meta(db, part_calculation_id)
 
     spritzguss = berechne_spritzguss(calc_input)
     spritzguss_dict = spritzguss.to_dict()
@@ -164,22 +205,20 @@ def _compute_part_live_values(
                 f"Veredelungsschritt {zuordnung.veredelungsschritt_id} nicht gefunden",
                 status_code=404,
             )
-        kosten = (
-            zuordnung.snapshot_kosten_inkl_ausschuss
-            if zuordnung.snapshot_kosten_inkl_ausschuss > 0
-            else berechne_veredelung(
-                VeredelungInput(
-                    taktzeit_s=schritt_row[2],
-                    anzahl_mitarbeiter=schritt_row[3],
-                    lohnstundensatz=schritt_row[4],
-                    maschinenstundensatz=schritt_row[5],
-                    verbrauchskosten_je_stueck=schritt_row[6],
-                    ausschussquote_pct=schritt_row[7],
-                    fgk_pct=schritt_row[8],
-                    reihenfolge=schritt_row[9],
-                )
-            ).kosten_inkl_ausschuss
-        )
+        # Direkte Veredelungskosten (ohne FGK); Snapshots ggf. historisch mit FGK –
+        # bei Live-Refresh immer neu ohne FGK berechnen.
+        kosten = berechne_veredelung(
+            VeredelungInput(
+                taktzeit_s=schritt_row[2],
+                anzahl_mitarbeiter=schritt_row[3],
+                lohnstundensatz=schritt_row[4],
+                maschinenstundensatz=schritt_row[5],
+                verbrauchskosten_je_stueck=schritt_row[6],
+                ausschussquote_pct=schritt_row[7],
+                fgk_pct=0,
+                reihenfolge=schritt_row[9],
+            )
+        ).kosten_inkl_ausschuss
         veredelung_eingaben.append(
             VeredelungSchrittEingabe(
                 veredelungsschritt_id=zuordnung.veredelungsschritt_id,
@@ -196,9 +235,10 @@ def _compute_part_live_values(
         gesamt = berechne_gesamt(
             spritzguss_dict,
             veredelung_eingaben,
-            vvgk_pct=vvgk_pct,
-            gewinn_pct=gewinn_pct,
-            skonto_pct=skonto_pct,
+            fgk_pct=rates.fgk_pct,
+            vvgk_pct=rates.vvgk_pct,
+            gewinn_pct=rates.gewinn_pct,
+            skonto_pct=rates.skonto_pct,
         )
     except GesamtValidationError as exc:
         raise AssemblyRecalculationError(
@@ -214,13 +254,16 @@ def _compute_part_live_values(
 
 
 def load_global_markup_rates(db: Session) -> MarkupRates:
-    values: dict[str, float | None] = dict(vvgk_pct=None, gewinn_pct=None, skonto_pct=None)
-    mapping = {"vvgk": "vvgk_pct", "gewinn": "gewinn_pct", "skonto": "skonto_pct"}
-    for row in db.scalars(select(Zuschlagssatz).where(Zuschlagssatz.aktiv.is_(True))).all():
-        key = row.typ.strip()
-        if key in mapping:
-            values[mapping[key]] = row.satz_prozent
-    return MarkupRates(**values)
+    try:
+        rates = load_central_markup_rates(db)
+    except CentralMarkupRatesError as exc:
+        raise AssemblyRecalculationError(str(exc)) from exc
+    return MarkupRates(
+        vvgk_pct=rates.vvgk_pct,
+        gewinn_pct=rates.gewinn_pct,
+        skonto_pct=rates.skonto_pct,
+        fgk_pct=rates.fgk_pct,
+    )
 
 
 def _validate_recalc_prerequisites(db: Session, baugruppe: Baugruppe) -> list[AssemblyPosition]:
@@ -286,12 +329,23 @@ def _refresh_position_snapshot(
 
     elif pos.position_type == "PURCHASED_PART":
         row = db.execute(
-            text("SELECT bezeichnung, lieferant, preis FROM kaufteile WHERE id = :id"),
+            text(
+                "SELECT bezeichnung, lieferant, preis, nominierung FROM kaufteile WHERE id = :id"
+            ),
             {"id": pos.purchased_part_id},
         ).first()
         if not row:
             raise AssemblyRecalculationError(f"{prefix}: Kaufteil nicht gefunden", status_code=404)
-        pos.price_snapshot = row[2]
+        try:
+            rates = load_central_markup_rates(db)
+            mgk_pct = rates.mgk_pct_for_nominierung(row[3])
+        except CentralMarkupRatesError as exc:
+            raise AssemblyRecalculationError(
+                f"{prefix}: {exc}",
+            ) from exc
+        einkauf = float(row[2])
+        pos.price_snapshot = _money(einkauf * (1 + mgk_pct / 100.0))
+        pos.cost_snapshot = einkauf  # Roh-Einkaufspreis zur Transparenz
         pos.name_snapshot = row[0]
         pos.supplier_snapshot = row[1]
 
@@ -431,6 +485,8 @@ def _persist_calculation(
 ) -> None:
     payload = {
         "herstellkosten": result.herstellkosten,
+        "fgk_basis": getattr(result, "fgk_basis", None),
+        "fertigungsgemeinkosten": getattr(result, "fertigungsgemeinkosten", None),
         "vvgk": result.vvgk,
         "selbstkosten": result.selbstkosten,
         "gewinn": result.gewinn,
@@ -438,6 +494,10 @@ def _persist_calculation(
         "skonto": result.skonto,
         "endpreis_je_stueck": result.endpreis_je_stueck,
         "markup_applied": result.markup_applied,
+        "applied_fgk_pct": getattr(result, "applied_fgk_pct", None),
+        "applied_vvgk_pct": getattr(result, "applied_vvgk_pct", None),
+        "applied_gewinn_pct": getattr(result, "applied_gewinn_pct", None),
+        "applied_skonto_pct": getattr(result, "applied_skonto_pct", None),
         "positions": [
             {
                 "position_id": line.position_id,
@@ -471,9 +531,12 @@ def _recalculate_single(
     child_herstellkosten: dict[int, float],
     markup_rates: MarkupRates | None,
     recalculated_ids: list[int],
+    positions_preloaded: list[AssemblyPosition] | None = None,
 ) -> tuple[AssemblyCalculationResultRead, list[PositionCalculationLineRead], list[CalculationWarning], float]:
     baugruppe = get_baugruppe_or_raise(db, baugruppe_id)
-    positions = _validate_recalc_prerequisites(db, baugruppe)
+    positions = positions_preloaded or _validate_recalc_prerequisites(db, baugruppe)
+    if markup_rates is None:
+        markup_rates = load_global_markup_rates(db)
 
     for index, pos in enumerate(sorted(positions, key=lambda p: p.sequence), start=1):
         _validate_price_basis_for_calc(pos, index)
@@ -492,7 +555,7 @@ def _recalculate_single(
         result = calculate_assembly(
             assembly_type=baugruppe.assembly_type,
             positions=calc_inputs,
-            markup_rates=markup_rates if baugruppe.assembly_type == "TOP_LEVEL" else None,
+            markup_rates=markup_rates,
             extra_warnings=process_warnings,
         )
     except AssemblyCalculationError as exc:
@@ -525,7 +588,8 @@ def recalculate_assembly_tree(
     request: AssemblyRecalculateRequest,
 ) -> AssemblyRecalculateResponse:
     root = get_baugruppe_or_raise(db, root_id)
-    markup_rates = load_global_markup_rates(db) if root.assembly_type == "TOP_LEVEL" else None
+    # Zuschlagssätze erst nach Struktur-/Basis-Validierung laden (klarere Fehlerreihenfolge)
+    markup_rates: MarkupRates | None = None
     child_herstellkosten: dict[int, float] = {}
     recalculated_ids: list[int] = []
 
@@ -533,23 +597,33 @@ def recalculate_assembly_tree(
         for child_id in _child_recalc_order(db, root_id):
             if not load_positions(db, child_id):
                 continue
+            if markup_rates is None:
+                markup_rates = load_global_markup_rates(db)
             _, _, _, hk = _recalculate_single(
                 db,
                 child_id,
                 request,
                 child_herstellkosten=child_herstellkosten,
-                markup_rates=None,
+                markup_rates=markup_rates,
                 recalculated_ids=recalculated_ids,
             )
             child_herstellkosten[child_id] = hk
 
-    calc_read, positions, warnings, _ = _recalculate_single(
+    # Root: Voraussetzungen prüfen; Markups erst danach laden
+    positions = _validate_recalc_prerequisites(db, root)
+    for index, pos in enumerate(sorted(positions, key=lambda p: p.sequence), start=1):
+        _validate_price_basis_for_calc(pos, index)
+    if markup_rates is None:
+        markup_rates = load_global_markup_rates(db)
+
+    calc_read, positions_read, warnings, _ = _recalculate_single(
         db,
         root_id,
         request,
         child_herstellkosten=child_herstellkosten,
         markup_rates=markup_rates,
         recalculated_ids=recalculated_ids,
+        positions_preloaded=positions,
     )
 
     if not request.validate_only:
@@ -569,7 +643,7 @@ def recalculate_assembly_tree(
         pricing_status=pricing_status,
         snapshots_captured_at=root.snapshots_captured_at,
         calculation=calc_read,
-        positions=positions,
+        positions=positions_read,
         warnings=warnings,
         recalculated_assembly_ids=recalculated_ids,
     )

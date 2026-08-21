@@ -62,7 +62,6 @@ function validateForm(form: VeredelungsschrittPayload): string | null {
   if (form.ausschussquote_pct < 0 || form.ausschussquote_pct >= 100) {
     return "Ausschussquote muss >= 0 und < 100 % sein.";
   }
-  if (form.fgk_pct < 0) return "FGK-Satz darf nicht negativ sein.";
   return null;
 }
 
@@ -627,21 +626,6 @@ export function VeredelungPage() {
                 />
               </label>
 
-              <label className="block text-sm">
-                <span className="font-medium text-gray-700">FGK-Zuschlag (%)</span>
-                <input
-                  type="number"
-                  required
-                  min={0}
-                  step="0.01"
-                  value={form.fgk_pct}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, fgk_pct: Number(e.target.value) }))
-                  }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
-
               <label className="flex items-center gap-2 text-sm md:col-span-2">
                 <input
                   type="checkbox"
@@ -653,6 +637,12 @@ export function VeredelungPage() {
                 />
                 <span className="font-medium text-gray-700">Aktiv</span>
               </label>
+
+              <p className="text-sm text-gray-600 md:col-span-2">
+                FGK wird zentral aus Stammdaten → Zuschlagssätze auf Maschinenkosten,
+                Fertigungslohn und direkte Veredelungskosten angewendet – nicht mehr in diesem
+                Formular.
+              </p>
 
               <div className="flex justify-end gap-2 pt-2 md:col-span-2">
                 <button

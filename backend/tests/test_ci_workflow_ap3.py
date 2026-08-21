@@ -71,11 +71,11 @@ def test_ci_workflow_yaml_parses():
     assert mig_idx < test_idx
 
 
-def test_alembic_head_is_e1a0004_for_ci_expectation():
+def test_alembic_head_is_e1a0006_for_ci_expectation():
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     heads = ScriptDirectory.from_config(cfg).get_heads()
-    assert heads == ["e1a0004_m5_assembly_positions"]
+    assert heads == ["e1a0006_spritzguss_material_nominierung"]

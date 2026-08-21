@@ -150,7 +150,7 @@ export function BaugruppenPage() {
   const loadReferences = useCallback(async () => {
     const [sg, kt, vd] = await Promise.all([
       listKalkulationen(),
-      listKaufteile(true),
+      listKaufteile({ nurAktiv: true }),
       listVeredelungsschritte(),
     ]);
     setSpritzgussList(sg.filter((s) => s.aktiv));

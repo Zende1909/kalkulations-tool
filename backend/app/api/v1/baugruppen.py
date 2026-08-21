@@ -45,10 +45,31 @@ from app.services.baugruppe_kalkulation import (
     VeredelungEingabe,
     berechne_baugruppe,
 )
+from app.services.central_markup_rates import (
+    CentralMarkupRatesError,
+    load_central_markup_rates,
+)
 from app.services.veredelung_kalkulation import VeredelungInput as VeredelungCalcInput
 from app.services.veredelung_kalkulation import berechne_veredelung
+from decimal import Decimal, ROUND_HALF_UP
 
 router = APIRouter(prefix="/baugruppen", tags=["Baugruppen"])
+
+
+def _money(value: float) -> float:
+    return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _kaufteil_preis_inkl_mgk(db: Session, kt: Kaufteil) -> float:
+    """Einkaufspreis + MGK laut Nominierung (zentrale Sätze)."""
+    try:
+        rates = load_central_markup_rates(db)
+        mgk_pct = rates.mgk_pct_for_nominierung(kt.nominierung)
+    except CentralMarkupRatesError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    return _money(float(kt.preis) * (1 + mgk_pct / 100.0))
 
 
 def _endpreis_aus_spritzguss(kalk: SpritzgussKalkulation) -> float:
@@ -274,7 +295,7 @@ def _resolve_eingaben(
         elif use_snapshots and snap is not None:
             preis = snap.snapshot_preis
         else:
-            preis = kt.preis
+            preis = _kaufteil_preis_inkl_mgk(db, kt)
         bezeichnung = snap.snapshot_bezeichnung if snap else kt.bezeichnung
         lieferant = snap.snapshot_lieferant if snap else kt.lieferant
         kaufteile.append(
@@ -425,7 +446,11 @@ def _sync_kaufteil_zuordnungen(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Kaufteil {z.kaufteil_id} nicht gefunden",
             )
-        preis = z.snapshot_preis if z.snapshot_preis is not None else kt.preis
+        preis = (
+            z.snapshot_preis
+            if z.snapshot_preis is not None
+            else _kaufteil_preis_inkl_mgk(db, kt)
+        )
         db.add(
             BaugruppeKaufteilZuordnung(
                 baugruppe_id=obj.id,
@@ -536,7 +561,7 @@ def _resolve_customer_id_for_project(db: Session, project_id: int | None) -> int
     if project_id is None:
         return None
     project = db.get(Project, project_id)
-    if not project:
+    if not project or getattr(project, "program_id", None) is None:
         return None
     program = db.get(Program, project.program_id)
     return program.customer_id if program else None

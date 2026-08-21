@@ -150,6 +150,10 @@ export interface Kaufteil {
   waehrung: string;
   gueltig_ab: string | null;
   aktiv: boolean;
+  nominierung: "selbstnominiert" | "oem_nominiert" | null;
+  customer_id: number | null;
+  program_id: number | null;
+  project_id: number | null;
   created_at: string;
   updated_at: string;
 }

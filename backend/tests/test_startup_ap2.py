@@ -215,9 +215,9 @@ def test_ensure_investition_schema_contains_no_dml():
     assert "except Exception:\n                    pass" not in module_source
 
 
-def test_alembic_head_revision_is_m5_assembly_positions():
+def test_alembic_head_revision_is_spritzguss_material_nominierung():
     heads = get_alembic_head_revisions()
-    assert heads == ("e1a0004_m5_assembly_positions",)
+    assert heads == ("e1a0006_spritzguss_material_nominierung",)
 
 
 def test_verify_alembic_head_fails_when_unversioned(monkeypatch: pytest.MonkeyPatch):

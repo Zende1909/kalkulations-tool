@@ -36,6 +36,8 @@ class SpritzgussKalkulation(Base, TimestampMixin):
     teilegewicht_netto_g: Mapped[float] = mapped_column(Float, nullable=False)
     ausschussquote_pct: Mapped[float] = mapped_column(Float, nullable=False)
     materialpreis_pro_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    # selbstnominiert | oem_nominiert | None (Altbestand ohne Klassifizierung)
+    material_nominierung: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
 
     # Maschine
     maschine_id: Mapped[int | None] = mapped_column(ForeignKey("maschinen.id"), nullable=True)

@@ -30,7 +30,7 @@ from app.schemas.assembly_structure import AssemblyPositionInput, AssemblyStruct
 
 def _create_phase_c_schema(engine) -> None:
     statements = [
-        "CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY)",
+        "CREATE TABLE IF NOT EXISTS projects (id INTEGER PRIMARY KEY, program_id INTEGER, name VARCHAR(255) DEFAULT '', active BOOLEAN DEFAULT 1)",
         """
         CREATE TABLE IF NOT EXISTS baugruppen (
             id INTEGER PRIMARY KEY,
@@ -68,6 +68,7 @@ def _create_phase_c_schema(engine) -> None:
             teilegewicht_netto_g FLOAT NOT NULL DEFAULT 100,
             ausschussquote_pct FLOAT NOT NULL DEFAULT 10,
             materialpreis_pro_kg FLOAT NOT NULL DEFAULT 10,
+            material_nominierung VARCHAR(32),
             zykluszeit_s FLOAT NOT NULL DEFAULT 36,
             kavitaeten INTEGER NOT NULL DEFAULT 2,
             maschinenstundensatz FLOAT NOT NULL DEFAULT 100,
@@ -113,6 +114,10 @@ def _create_phase_c_schema(engine) -> None:
             waehrung VARCHAR(8) NOT NULL DEFAULT 'EUR',
             gueltig_ab DATE,
             aktiv BOOLEAN NOT NULL DEFAULT 1,
+            nominierung VARCHAR(32),
+            customer_id INTEGER,
+            program_id INTEGER,
+            project_id INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -365,7 +370,7 @@ def test_top_level_with_markups(db):
                 price_snapshot=150.0,
             )
         ],
-        markup_rates=MarkupRates(vvgk_pct=10, gewinn_pct=10, skonto_pct=2),
+        markup_rates=MarkupRates(vvgk_pct=10, gewinn_pct=10, skonto_pct=2, fgk_pct=22),
     )
     assert result.herstellkosten == pytest.approx(100.0)
     assert result.vvgk == pytest.approx(10.0)
@@ -405,7 +410,7 @@ def test_inactive_position_skipped():
                 price_snapshot=None,
             ),
         ],
-        markup_rates=MarkupRates(vvgk_pct=0, gewinn_pct=0, skonto_pct=0),
+        markup_rates=MarkupRates(vvgk_pct=0, gewinn_pct=0, skonto_pct=0, fgk_pct=0),
     )
     assert result.herstellkosten == pytest.approx(50.0)
     assert len(result.position_lines) == 1
@@ -416,8 +421,8 @@ def test_duplicate_process_warning_not_blocking(db):
     top = _top(db)
     db.execute(
         text(
-            "INSERT INTO spritzguss_kalkulationen (id, teilebezeichnung, teilenummer, project_id) "
-            "VALUES (501, 'Träger', 'T-1', 100)"
+            "INSERT INTO spritzguss_kalkulationen (id, teilebezeichnung, teilenummer, project_id, material_nominierung) "
+            "VALUES (501, 'Träger', 'T-1', 100, 'selbstnominiert')"
         )
     )
     db.execute(
@@ -466,15 +471,35 @@ def test_duplicate_process_warning_not_blocking(db):
     assert warnings[0].code == "DUPLICATE_PROCESS_REVIEW"
 
 
-def _seed_markups(db, *, vvgk_pct: float = 0.0, gewinn_pct: float = 0.0, skonto_pct: float = 0.0) -> None:
+def _seed_markups(
+    db,
+    *,
+    vvgk_pct: float = 0.0,
+    gewinn_pct: float = 0.0,
+    skonto_pct: float = 0.0,
+    fgk_pct: float = 22.0,
+    mgk_selbst_pct: float = 3.0,
+    mgk_oem_pct: float = 5.0,
+) -> None:
     db.execute(text("DELETE FROM zuschlagssaetze"))
     db.execute(
         text(
-            "INSERT INTO zuschlagssaetze (id, bezeichnung, satz_prozent, typ, aktiv) "
-            "VALUES (1, 'VVGK', :vvgk, 'vvgk', 1), (2, 'Gewinn', :gewinn, 'gewinn', 1), "
-            "(3, 'Skonto', :skonto, 'skonto', 1)"
+            "INSERT INTO zuschlagssaetze (id, bezeichnung, satz_prozent, typ, aktiv) VALUES "
+            "(1, 'VVGK', :vvgk, 'vvgk', 1), "
+            "(2, 'Gewinn', :gewinn, 'gewinn', 1), "
+            "(3, 'Skonto', :skonto, 'skonto', 1), "
+            "(4, 'FGK', :fgk, 'fgk', 1), "
+            "(5, 'MGK selbst', :mgk_s, 'mgk_kaufteil_selbst', 1), "
+            "(6, 'MGK OEM', :mgk_o, 'mgk_kaufteil_oem', 1)"
         ),
-        {"vvgk": vvgk_pct, "gewinn": gewinn_pct, "skonto": skonto_pct},
+        {
+            "vvgk": vvgk_pct,
+            "gewinn": gewinn_pct,
+            "skonto": skonto_pct,
+            "fgk": fgk_pct,
+            "mgk_s": mgk_selbst_pct,
+            "mgk_o": mgk_oem_pct,
+        },
     )
     db.commit()
 
@@ -482,14 +507,14 @@ def _seed_markups(db, *, vvgk_pct: float = 0.0, gewinn_pct: float = 0.0, skonto_
 def _seed_references(db) -> None:
     db.execute(
         text(
-            "INSERT INTO spritzguss_kalkulationen (id, teilebezeichnung, teilenummer, project_id) "
-            "VALUES (501, 'Träger', 'T-1', 100)"
+            "INSERT INTO spritzguss_kalkulationen (id, teilebezeichnung, teilenummer, project_id, material_nominierung) "
+            "VALUES (501, 'Träger', 'T-1', 100, 'selbstnominiert')"
         )
     )
     db.execute(
         text(
-            "INSERT INTO kaufteile (id, artikelnummer, bezeichnung, preis) "
-            "VALUES (301, 'K-1', 'Lautsprecher', 8.0)"
+            "INSERT INTO kaufteile (id, artikelnummer, bezeichnung, preis, nominierung) "
+            "VALUES (301, 'K-1', 'Lautsprecher', 8.0, 'selbstnominiert')"
         )
     )
     db.execute(
@@ -550,7 +575,7 @@ def test_recalculate_with_existing_snapshots(db):
         top.id,
         AssemblyRecalculateRequest(refresh_snapshots=False, include_descendants=False),
     )
-    assert result.calculation.herstellkosten == pytest.approx(4.2 + 16.0 + 3.0)
+    assert result.calculation.herstellkosten == pytest.approx(4.2 + 16.0 + 3.0 + 0.66)
     assert result.pricing_status == "CALCULATED"
     assert result.recalculated_assembly_ids == [top.id]
 
@@ -701,8 +726,8 @@ def test_duplicate_process_recalc_returns_warning(db):
     top = _top(db)
     db.execute(
         text(
-            "INSERT INTO spritzguss_kalkulationen (id, teilebezeichnung, teilenummer, project_id) "
-            "VALUES (501, 'Träger', 'T-1', 100)"
+            "INSERT INTO spritzguss_kalkulationen (id, teilebezeichnung, teilenummer, project_id, material_nominierung) "
+            "VALUES (501, 'Träger', 'T-1', 100, 'selbstnominiert')"
         )
     )
     db.execute(
@@ -748,7 +773,7 @@ def test_duplicate_process_recalc_returns_warning(db):
         AssemblyRecalculateRequest(refresh_snapshots=False),
     )
     assert any(w.code == "DUPLICATE_PROCESS_REVIEW" for w in result.warnings)
-    assert result.calculation.herstellkosten == pytest.approx(5.7)
+    assert result.calculation.herstellkosten == pytest.approx(6.03)
 
 
 def test_recalculate_missing_markup_rates_422(db):
@@ -776,8 +801,8 @@ def test_recalculate_missing_markup_rates_422(db):
         )
     assert exc.value.status_code == 422
     message = str(exc.value)
-    assert "Gewinn" in message
-    assert "Skonto" in message
+    assert "Fehlende aktive Zuschlagssätze" in message
+    assert "gewinn" in message or "fgk" in message
 
 
 def test_recalculate_zero_percent_markups_are_present(db):

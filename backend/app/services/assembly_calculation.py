@@ -22,9 +22,17 @@ def _money(value: Decimal) -> Decimal:
 
 @dataclass(frozen=True)
 class MarkupRates:
+    """TOP_LEVEL-Zuschläge.
+
+    FGK wird nur auf PROCESS-Positionen (direkte Veredelung) addiert –
+    PART-/SUBASSEMBLY-Herstellkosten enthalten FGK bereits.
+    VVGK/Gewinn/Skonto einmal auf die so ermittelten Herstellkosten.
+    """
+
     vvgk_pct: float | None = None
     gewinn_pct: float | None = None
     skonto_pct: float | None = None
+    fgk_pct: float | None = None
 
 
 @dataclass(frozen=True)
@@ -69,6 +77,12 @@ class AssemblyCalculationResult:
     markup_applied: bool
     position_lines: list[PositionCalculationLine]
     warnings: list[CalculationWarning]
+    fertigungsgemeinkosten: float | None = None
+    fgk_basis: float | None = None
+    applied_fgk_pct: float | None = None
+    applied_vvgk_pct: float | None = None
+    applied_gewinn_pct: float | None = None
+    applied_skonto_pct: float | None = None
 
 
 def _pct_rate(pct: float) -> Decimal:
@@ -127,6 +141,7 @@ def calculate_position_line(
         einzelpreis = float(unit)
 
     elif position.position_type == "PURCHASED_PART":
+        # price_snapshot enthält bereits Einkaufspreis inkl. MGK (beim Refresh)
         unit = _require_positive_snapshot(
             position.price_snapshot,
             label="price_snapshot",
@@ -220,15 +235,33 @@ def calculate_assembly(
 
     lines: list[PositionCalculationLine] = []
     warnings: list[CalculationWarning] = list(extra_warnings or [])
-    herstellkosten = Decimal("0")
+    position_sum = Decimal("0")
+    process_sum = Decimal("0")
 
     for index, position in enumerate(active_positions, start=1):
         line, line_warnings = calculate_position_line(position, position_index=index)
         lines.append(line)
         warnings.extend(line_warnings)
-        herstellkosten += _d(line.zwischensumme)
+        position_sum += _d(line.zwischensumme)
+        if position.position_type == "PROCESS":
+            process_sum += _d(line.zwischensumme)
 
-    herstellkosten = _money(herstellkosten)
+    # FGK nur auf direkte Veredelung (PROCESS); PART/SUBASSEMBLY bereits inkl. FGK
+    rates = markup_rates or MarkupRates()
+    fgk_basis = _money(process_sum)
+    fertigungsgemeinkosten = Decimal("0")
+    if assembly_type == "TOP_LEVEL":
+        if rates.fgk_pct is None:
+            raise AssemblyCalculationError("Fehlende Zuschlagssätze: FGK")
+        fertigungsgemeinkosten = _money(fgk_basis * _pct_rate(rates.fgk_pct))
+    elif assembly_type == "SUBASSEMBLY" and process_sum > 0:
+        # Unterbaugruppe: FGK auf PROCESS in HK einbetten, damit TOP_LEVEL
+        # nicht erneut auf Kind-Veredelung zuschlägt und Kind-HK vollständig ist.
+        if rates.fgk_pct is None:
+            raise AssemblyCalculationError("Fehlende Zuschlagssätze: FGK")
+        fertigungsgemeinkosten = _money(fgk_basis * _pct_rate(rates.fgk_pct))
+
+    herstellkosten = _money(position_sum + fertigungsgemeinkosten)
 
     if assembly_type == "SUBASSEMBLY":
         return AssemblyCalculationResult(
@@ -243,12 +276,14 @@ def calculate_assembly(
             markup_applied=False,
             position_lines=lines,
             warnings=warnings,
+            fertigungsgemeinkosten=float(fertigungsgemeinkosten),
+            fgk_basis=float(fgk_basis),
+            applied_fgk_pct=float(rates.fgk_pct) if rates.fgk_pct is not None else None,
         )
 
     if assembly_type != "TOP_LEVEL":
         raise AssemblyCalculationError(f"Unbekannter assembly_type '{assembly_type}'")
 
-    rates = markup_rates or MarkupRates()
     vvgk, selbstkosten, gewinn, netto, skonto, endpreis, markup_warnings = apply_top_level_markups(
         herstellkosten, rates
     )
@@ -266,4 +301,10 @@ def calculate_assembly(
         markup_applied=True,
         position_lines=lines,
         warnings=warnings,
+        fertigungsgemeinkosten=float(fertigungsgemeinkosten),
+        fgk_basis=float(fgk_basis),
+        applied_fgk_pct=float(rates.fgk_pct) if rates.fgk_pct is not None else None,
+        applied_vvgk_pct=float(rates.vvgk_pct) if rates.vvgk_pct is not None else None,
+        applied_gewinn_pct=float(rates.gewinn_pct) if rates.gewinn_pct is not None else None,
+        applied_skonto_pct=float(rates.skonto_pct) if rates.skonto_pct is not None else None,
     )

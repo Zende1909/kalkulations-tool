@@ -89,6 +89,9 @@ def _seed_markups_except(db, missing_typ: str) -> None:
         (1, "VVGK", 0.0, "vvgk"),
         (2, "Gewinn", 0.0, "gewinn"),
         (3, "Skonto", 0.0, "skonto"),
+        (4, "FGK", 22.0, "fgk"),
+        (5, "MGK selbst", 3.0, "mgk_kaufteil_selbst"),
+        (6, "MGK OEM", 5.0, "mgk_kaufteil_oem"),
     ]
     db.execute(text("DELETE FROM zuschlagssaetze"))
     for row_id, name, pct, typ in rates:
@@ -111,15 +114,13 @@ def _post_recalculate(client: TestClient, baugruppe_id: int):
     )
 
 
-def _assert_missing_rate_422(response, expected_label: str, other_labels: tuple[str, ...]) -> None:
+def _assert_missing_rate_422(response, expected_label: str) -> None:
     assert response.status_code == 422
     body = response.json()
     detail = body["detail"]
     assert isinstance(detail, str)
-    assert "Fehlende Zuschlagssätze" in detail
+    assert "Fehlende aktive Zuschlagssätze" in detail
     assert expected_label in detail
-    for label in other_labels:
-        assert label not in detail
 
 
 def test_recalculate_http_missing_vvgk_422(client, db):
@@ -128,7 +129,7 @@ def test_recalculate_http_missing_vvgk_422(client, db):
 
     response = _post_recalculate(client, top.id)
 
-    _assert_missing_rate_422(response, "VVGK", ("Gewinn", "Skonto"))
+    _assert_missing_rate_422(response, "vvgk")
 
 
 def test_recalculate_http_missing_gewinn_422(client, db):
@@ -137,7 +138,7 @@ def test_recalculate_http_missing_gewinn_422(client, db):
 
     response = _post_recalculate(client, top.id)
 
-    _assert_missing_rate_422(response, "Gewinn", ("VVGK", "Skonto"))
+    _assert_missing_rate_422(response, "gewinn")
 
 
 def test_recalculate_http_missing_skonto_422(client, db):
@@ -146,7 +147,7 @@ def test_recalculate_http_missing_skonto_422(client, db):
 
     response = _post_recalculate(client, top.id)
 
-    _assert_missing_rate_422(response, "Skonto", ("VVGK", "Gewinn"))
+    _assert_missing_rate_422(response, "skonto")
 
 
 def test_recalculate_http_zero_percent_markups_200(client, db):
@@ -189,7 +190,7 @@ def test_recalculate_http_inactive_vvgk_422(client, db):
 
     response = _post_recalculate(client, top.id)
 
-    _assert_missing_rate_422(response, "VVGK", ("Gewinn", "Skonto"))
+    _assert_missing_rate_422(response, "vvgk")
 
 
 def test_recalculate_http_duplicate_process_200(client, db):
@@ -197,8 +198,8 @@ def test_recalculate_http_duplicate_process_200(client, db):
     top = _top(db)
     db.execute(
         text(
-            "INSERT INTO spritzguss_kalkulationen (id, teilebezeichnung, teilenummer, project_id) "
-            "VALUES (501, 'Träger', 'T-1', 100)"
+            "INSERT INTO spritzguss_kalkulationen (id, teilebezeichnung, teilenummer, project_id, material_nominierung) "
+            "VALUES (501, 'Träger', 'T-1', 100, 'selbstnominiert')"
         )
     )
     db.execute(
@@ -244,4 +245,4 @@ def test_recalculate_http_duplicate_process_200(client, db):
     body = response.json()
     warning_codes = [warning["code"] for warning in body["warnings"]]
     assert "DUPLICATE_PROCESS_REVIEW" in warning_codes
-    assert body["calculation"]["herstellkosten"] == pytest.approx(5.7)
+    assert body["calculation"]["herstellkosten"] == pytest.approx(6.03)

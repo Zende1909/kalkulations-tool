@@ -155,9 +155,23 @@ def test_seed_inserts_rates_and_is_idempotent(db):
     db.commit()
 
     first = seed_top_level_markup_rates(db)
-    assert first == ["insert:vvgk", "insert:gewinn", "insert:skonto"]
+    assert first == [
+        "insert:mgk_kaufteil_selbst",
+        "insert:mgk_kaufteil_oem",
+        "insert:fgk",
+        "insert:vvgk",
+        "insert:gewinn",
+        "insert:skonto",
+    ]
     second = seed_top_level_markup_rates(db)
-    assert second == ["skip:vvgk", "skip:gewinn", "skip:skonto"]
+    assert second == [
+        "skip:mgk_kaufteil_selbst",
+        "skip:mgk_kaufteil_oem",
+        "skip:fgk",
+        "skip:vvgk",
+        "skip:gewinn",
+        "skip:skonto",
+    ]
 
     by_typ = {
         typ: db.execute(
@@ -168,8 +182,8 @@ def test_seed_inserts_rates_and_is_idempotent(db):
     }
     assert by_typ["GEMEINKOSTEN"] == 2
     assert by_typ["vvgk"] == 1
-    assert by_typ["gewinn"] == 1
-    assert by_typ["skonto"] == 1
+    assert by_typ["fgk"] == 1
+    assert by_typ["mgk_kaufteil_selbst"] == 1
 
     gemeinkosten = db.execute(
         text("SELECT id, bezeichnung, typ, satz_prozent FROM zuschlagssaetze WHERE typ = 'GEMEINKOSTEN' ORDER BY id")
@@ -194,7 +208,14 @@ def test_seed_leaves_stammdaten_gewinn_and_verschrottung_unchanged(db):
     )
     db.commit()
 
-    assert seed_top_level_markup_rates(db) == ["insert:vvgk", "insert:gewinn", "insert:skonto"]
+    assert seed_top_level_markup_rates(db) == [
+        "insert:mgk_kaufteil_selbst",
+        "insert:mgk_kaufteil_oem",
+        "insert:fgk",
+        "insert:vvgk",
+        "insert:gewinn",
+        "insert:skonto",
+    ]
 
     rows = db.execute(
         text(
@@ -216,21 +237,30 @@ def test_seed_leaves_stammdaten_gewinn_and_verschrottung_unchanged(db):
 def test_uppercase_gewinn_is_not_assembly_markup(db):
     db.add(Zuschlagssatz(bezeichnung="Katalog-Gewinn", satz_prozent=99, typ="GEWINN", aktiv=True))
     db.commit()
-    rates = load_global_markup_rates(db)
-    assert rates.vvgk_pct is None
-    assert rates.gewinn_pct is None
-    assert rates.skonto_pct is None
+    from app.services.assembly_recalculation_service import AssemblyRecalculationError
+
+    with pytest.raises(AssemblyRecalculationError, match="Fehlende aktive Zuschlagssätze"):
+        load_global_markup_rates(db)
 
 
 def test_inactive_assembly_markup_is_missing(db):
     db.add(Zuschlagssatz(bezeichnung="VVGK", satz_prozent=10, typ="vvgk", aktiv=False))
     db.add(Zuschlagssatz(bezeichnung="Gewinn", satz_prozent=15, typ="gewinn", aktiv=True))
     db.add(Zuschlagssatz(bezeichnung="Skonto", satz_prozent=0, typ="skonto", aktiv=True))
+    db.add(Zuschlagssatz(bezeichnung="FGK", satz_prozent=22, typ="fgk", aktiv=True))
+    db.add(
+        Zuschlagssatz(
+            bezeichnung="MGK selbst", satz_prozent=3, typ="mgk_kaufteil_selbst", aktiv=True
+        )
+    )
+    db.add(
+        Zuschlagssatz(bezeichnung="MGK OEM", satz_prozent=5, typ="mgk_kaufteil_oem", aktiv=True)
+    )
     db.commit()
-    rates = load_global_markup_rates(db)
-    assert rates.vvgk_pct is None
-    assert rates.gewinn_pct == pytest.approx(15.0)
-    assert rates.skonto_pct == pytest.approx(0.0)
+    from app.services.assembly_recalculation_service import AssemblyRecalculationError
+
+    with pytest.raises(AssemblyRecalculationError, match="vvgk"):
+        load_global_markup_rates(db)
 
 
 def test_frontend_form_options_include_all_types():
@@ -295,12 +325,15 @@ def test_cli_seed_success_and_idempotent(monkeypatch: pytest.MonkeyPatch, capsys
     assert seed_markup_main([]) == 0
     out1 = capsys.readouterr().out
     assert "insert:vvgk" in out1
+    assert "insert:fgk" in out1
+    assert "insert:mgk_kaufteil_selbst" in out1
     assert "insert:gewinn" in out1
     assert "insert:skonto" in out1
 
     assert seed_markup_main([]) == 0
     out2 = capsys.readouterr().out
     assert "skip:vvgk" in out2
+    assert "skip:fgk" in out2
     assert "skip:gewinn" in out2
     assert "skip:skonto" in out2
 
@@ -310,9 +343,23 @@ def test_cli_seed_success_and_idempotent(monkeypatch: pytest.MonkeyPatch, capsys
                 text("SELECT COUNT(*) FROM zuschlagssaetze WHERE typ = :typ AND aktiv = 1"),
                 {"typ": typ},
             ).scalar()
-            for typ in ("vvgk", "gewinn", "skonto")
+            for typ in (
+                "mgk_kaufteil_selbst",
+                "mgk_kaufteil_oem",
+                "fgk",
+                "vvgk",
+                "gewinn",
+                "skonto",
+            )
         }
-    assert counts == {"vvgk": 1, "gewinn": 1, "skonto": 1}
+    assert counts == {
+        "mgk_kaufteil_selbst": 1,
+        "mgk_kaufteil_oem": 1,
+        "fgk": 1,
+        "vvgk": 1,
+        "gewinn": 1,
+        "skonto": 1,
+    }
 
 
 def test_alembic_versions_have_no_markup_seed_dml():

@@ -1,4 +1,10 @@
-"""Berechnungslogik für Veredelungsschritte."""
+"""Berechnungslogik für Veredelungsschritte.
+
+Direkte Veredelungskosten = Lohn + Maschine + Verbrauch (inkl. Ausschuss).
+FGK wird hier bewusst NICHT angewendet – der Zuschlag erfolgt zentral genau
+einmal auf der FGK-Basis (Maschine + Lohn + direkte Veredelung) in der
+übergeordneten Spritzguss-/Gesamt- bzw. Baugruppenkalkulation.
+"""
 
 from __future__ import annotations
 
@@ -52,17 +58,19 @@ class VeredelungInput:
     maschinenstundensatz: float | None
     verbrauchskosten_je_stueck: float
     ausschussquote_pct: float
-    fgk_pct: float
     reihenfolge: int
+    # Legacy: wird ignoriert (FGK zentral). Für API-Kompatibilität optional.
+    fgk_pct: float = 0
 
 
 @dataclass(frozen=True)
 class VeredelungKosten:
     lohnkosten_je_stueck: float
     maschinenkosten_je_stueck: float
-    fertigungsgemeinkosten: float
+    verbrauchskosten_je_stueck: float
+    fertigungsgemeinkosten: float  # immer 0 – FGK zentral
     kosten_vor_ausschuss: float
-    kosten_inkl_ausschuss: float
+    kosten_inkl_ausschuss: float  # = direkte Veredelungskosten
 
     def to_dict(self) -> dict[str, float]:
         return asdict(self)
@@ -94,7 +102,7 @@ def validate_veredelung_input(data: VeredelungInput) -> None:
 
 
 def berechne_veredelung(data: VeredelungInput) -> VeredelungKosten:
-    """Berechnet die Kosten eines Veredelungsschritts je Stück."""
+    """Berechnet die direkten Kosten eines Veredelungsschritts je Stück (ohne FGK)."""
     validate_veredelung_input(data)
 
     taktzeit = _d(data.taktzeit_s)
@@ -103,26 +111,18 @@ def berechne_veredelung(data: VeredelungInput) -> VeredelungKosten:
     maschinenstundensatz = _d(data.maschinenstundensatz or 0)
     verbrauch = _d(data.verbrauchskosten_je_stueck)
     ausschuss = _d(data.ausschussquote_pct) / Decimal("100")
-    fgk = _d(data.fgk_pct) / Decimal("100")
 
-    # Lohnkosten je Stück = Taktzeit / 3600 × Lohnstundensatz × Anzahl Mitarbeiter
     lohnkosten = _money(taktzeit / Decimal("3600") * lohnstundensatz * mitarbeiter)
-
-    # Maschinenkosten je Stück = Taktzeit / 3600 × Maschinenstundensatz
     maschinenkosten = _money(taktzeit / Decimal("3600") * maschinenstundensatz)
+    fertigungsgemeinkosten = _money(Decimal("0"))
 
-    # Fertigungsgemeinkosten = Lohnkosten × FGK-Satz
-    fertigungsgemeinkosten = _money(lohnkosten * fgk)
-
-    # Kosten vor Ausschuss
     kosten_vor = _money(lohnkosten + maschinenkosten + verbrauch + fertigungsgemeinkosten)
-
-    # Kosten einschließlich Ausschuss
     kosten_inkl = _money(kosten_vor / (Decimal("1") - ausschuss))
 
     return VeredelungKosten(
         lohnkosten_je_stueck=float(lohnkosten),
         maschinenkosten_je_stueck=float(maschinenkosten),
+        verbrauchskosten_je_stueck=float(verbrauch),
         fertigungsgemeinkosten=float(fertigungsgemeinkosten),
         kosten_vor_ausschuss=float(kosten_vor),
         kosten_inkl_ausschuss=float(kosten_inkl),

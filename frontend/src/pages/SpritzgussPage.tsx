@@ -70,11 +70,13 @@ const ERGEBNISUEBERSICHT: Array<{
   highlight?: boolean;
 }> = [
   { key: "spritzguss_herstellkosten", label: "Spritzguss-Herstellkosten (€)" },
-  { key: "veredelung_gesamt", label: "Veredelungskosten (€)" },
+  { key: "veredelung_gesamt", label: "Veredelungskosten direkt (€)" },
+  { key: "fgk_basis", label: "FGK-Basis (€)" },
+  { key: "fertigungsgemeinkosten", label: "FGK (€)" },
   { key: "gesamte_herstellkosten", label: "Herstellkosten gesamt (€)" },
-  { key: "vvgk", label: "VVGK (€)" },
+  { key: "vvgk", label: "SG&A / VVGK (€)" },
   { key: "selbstkosten", label: "Selbstkosten (€)" },
-  { key: "gewinn", label: "Gewinn (€)" },
+  { key: "gewinn", label: "Profit / Gewinn (€)" },
   { key: "nettoverkaufspreis_gesamt", label: "Nettoverkaufspreis (€)" },
   { key: "skonto", label: "Skonto (€)" },
   { key: "endpreis_je_stueck", label: "Endpreis je Stück (€)", highlight: true },
@@ -86,13 +88,23 @@ const FIELD_LABELS: Record<string, string> = {
   materialkosten_inkl_ausschuss: "Materialkosten inkl. Ausschuss (€)",
   materialgemeinkosten: "Materialgemeinkosten MGK (€)",
   materialkosten_gesamt: "Materialkosten gesamt (€)",
+  mgk_basis: "MGK-Basis (Material inkl. Ausschuss) (€)",
+  mgk_pct: "MGK-Satz (%)",
+  material_nominierung: "Material-Nominierung",
   maschinenkosten: "Maschinenkosten je Teil (€)",
   fertigungslohn: "Fertigungslohn je Teil (€)",
   fertigungsgemeinkosten: "Fertigungsgemeinkosten FGK (€)",
+  fgk_basis: "FGK-Basis (€)",
+  fgk_pct: "FGK-Satz (%)",
+  vvgk_pct: "VVGK-Satz (%)",
+  gewinn_pct: "Gewinn-Satz (%)",
+  skonto_pct: "Skonto-Satz (%)",
+  vvgk_basis: "VVGK-Basis / Herstellkosten (€)",
+  gewinn_basis: "Gewinn-Basis / Selbstkosten (€)",
   werkzeugkostenanteil: "Werkzeugkostenanteil je Stück (€)",
   werkzeug_einmalzahlung: "Einmalzahlung / Investition (€)",
   herstellkosten: "Herstellkosten (€)",
-  vvgk: "VVGK (€)",
+  vvgk: "VVGK / SG&A (€)",
   selbstkosten: "Selbstkosten (€)",
   gewinn: "Gewinn (€)",
   nettoverkaufspreis: "Nettoverkaufspreis (€)",
@@ -233,6 +245,7 @@ export function SpritzgussPage() {
       materialpreis_pro_kg: form.materialpreis_pro_kg,
       ausschussquote_pct: form.ausschussquote_pct,
       mgk_pct: form.mgk_pct,
+      material_nominierung: form.material_nominierung,
       zykluszeit_s: form.zykluszeit_s,
       maschinenstundensatz: form.maschinenstundensatz,
       kavitaeten: form.kavitaeten,
@@ -478,6 +491,7 @@ export function SpritzgussPage() {
         teilegewicht_netto_g: item.teilegewicht_netto_g,
         ausschussquote_pct: item.ausschussquote_pct,
         materialpreis_pro_kg: item.materialpreis_pro_kg,
+        material_nominierung: item.material_nominierung ?? null,
         maschine_id: item.maschine_id,
         zykluszeit_s: item.zykluszeit_s,
         kavitaeten: item.kavitaeten,
@@ -713,6 +727,32 @@ export function SpritzgussPage() {
                 min={0}
                 onChange={(v) => setField("materialpreis_pro_kg", v)}
               />
+              <label className="block text-sm md:col-span-2">
+                <span className="font-medium text-gray-700">Material-Nominierung (MGK)</span>
+                <select
+                  value={form.material_nominierung ?? ""}
+                  onChange={(e) =>
+                    setField(
+                      "material_nominierung",
+                      e.target.value
+                        ? (e.target.value as "selbstnominiert" | "oem_nominiert")
+                        : null,
+                    )
+                  }
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                >
+                  <option value="">– bitte wählen –</option>
+                  <option value="selbstnominiert">selbstnominiert (MGK aus Stammdaten)</option>
+                  <option value="oem_nominiert">OEM-nominiert (MGK aus Stammdaten)</option>
+                </select>
+                {!form.material_nominierung && (
+                  <p className="mt-1 text-xs text-amber-800">
+                    Ohne Nominierung kann die Kalkulation nicht berechnet werden. Bitte
+                    selbstnominiert oder OEM-nominiert wählen (Prozentsätze nur unter Stammdaten
+                    → Zuschlagssätze).
+                  </p>
+                )}
+              </label>
             </div>
           </section>
 
@@ -898,24 +938,13 @@ export function SpritzgussPage() {
             </p>
           </section>
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Zuschläge (%)</h3>
-            <div className="grid gap-3 md:grid-cols-3">
-              <NumberInput label="MGK %" value={form.mgk_pct} min={0} onChange={(v) => setField("mgk_pct", v)} />
-              <NumberInput label="FGK %" value={form.fgk_pct} min={0} onChange={(v) => setField("fgk_pct", v)} />
-              <NumberInput label="VVGK %" value={form.vvgk_pct} min={0} onChange={(v) => setField("vvgk_pct", v)} />
-              <NumberInput
-                label="Gewinnzuschlag %"
-                value={form.gewinn_pct}
-                min={0}
-                onChange={(v) => setField("gewinn_pct", v)}
-              />
-              <NumberInput
-                label="Skonto %"
-                value={form.skonto_pct}
-                min={0}
-                onChange={(v) => setField("skonto_pct", v)}
-              />
-            </div>
+            <h3 className="mb-3 font-semibold text-gray-900">Zuschläge (automatisch)</h3>
+            <p className="text-sm text-gray-600">
+              Material-MGK (laut Nominierung), FGK, SG&A/VVGK, Gewinn und Skonto kommen zentral aus{" "}
+              <span className="font-medium">Stammdaten → Zuschlagssätze</span>. Material-MGK bezieht
+              sich auf die Materialkosten inklusive Ausschuss; Kaufteil-MGK auf den Einkaufspreis.
+              Die Beträge und Kostenbasen erscheinen in der Ergebnisübersicht.
+            </p>
           </section>
         </form>
 
@@ -986,7 +1015,9 @@ export function SpritzgussPage() {
                               >
                                 <dt className="text-gray-600">{label}</dt>
                                 <dd className="font-medium tabular-nums text-gray-900">
-                                  {euro(typeof value === "number" ? value : Number(value))}
+                                  {typeof value === "string"
+                                    ? value || "–"
+                                    : euro(typeof value === "number" ? value : Number(value))}
                                 </dd>
                               </div>
                             );

@@ -53,6 +53,13 @@ def _pct_str(value: float) -> str:
     return f"{value:.2f} %".replace(".", ",")
 
 
+def _pct_applied_or_stored(
+    ergebnis: dict | None, applied_key: str, stored: float | None
+) -> str:
+    applied = _float_from(ergebnis, applied_key)
+    return _pct_str(applied if applied is not None else float(stored or 0))
+
+
 def _float_from(obj: dict | None, key: str) -> float | None:
     if not isinstance(obj, dict):
         return None
@@ -104,11 +111,11 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
         ExportRow("Zykluszeit", f"{obj.zykluszeit_s:.2f} s"),
         ExportRow("Kavitäten", str(obj.kavitaeten)),
         ExportRow("Jahresstückzahl", str(obj.jahresstueckzahl)),
-        ExportRow("MGK", _pct_str(obj.mgk_pct)),
-        ExportRow("FGK", _pct_str(obj.fgk_pct)),
-        ExportRow("VVGK", _pct_str(obj.vvgk_pct)),
-        ExportRow("Gewinn", _pct_str(obj.gewinn_pct)),
-        ExportRow("Skonto", _pct_str(obj.skonto_pct)),
+        ExportRow("MGK", _pct_applied_or_stored(ergebnis, "applied_mgk_pct", obj.mgk_pct)),
+        ExportRow("FGK", _pct_applied_or_stored(ergebnis, "applied_fgk_pct", obj.fgk_pct)),
+        ExportRow("VVGK", _pct_applied_or_stored(ergebnis, "applied_vvgk_pct", obj.vvgk_pct)),
+        ExportRow("Gewinn", _pct_applied_or_stored(ergebnis, "applied_gewinn_pct", obj.gewinn_pct)),
+        ExportRow("Skonto", _pct_applied_or_stored(ergebnis, "applied_skonto_pct", obj.skonto_pct)),
     ]
 
     def money(label: str, key: str, *, highlight: bool = False) -> ExportMoneyRow:

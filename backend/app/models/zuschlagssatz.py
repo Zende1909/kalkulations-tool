@@ -5,8 +5,18 @@ from app.database import Base
 from app.models.user import TimestampMixin
 
 STAMMDATEN_ZUSCHLAGSSATZ_TYPEN = ("GEMEINKOSTEN", "GEWINN", "VERSCHROTTUNG")
+# TOP_LEVEL / zentrale automatische Zuschläge (lowercase keys).
+CENTRAL_MARKUP_TYPEN = (
+    "mgk_kaufteil_selbst",
+    "mgk_kaufteil_oem",
+    "fgk",
+    "vvgk",
+    "gewinn",
+    "skonto",
+)
+# Abwärtskompatibler Alias: bisherige Assembly-Markups ⊆ CENTRAL_MARKUP_TYPEN
 ASSEMBLY_MARKUP_TYPEN = ("vvgk", "gewinn", "skonto")
-ALLOWED_ZUSCHLAGSSATZ_TYPEN = STAMMDATEN_ZUSCHLAGSSATZ_TYPEN + ASSEMBLY_MARKUP_TYPEN
+ALLOWED_ZUSCHLAGSSATZ_TYPEN = STAMMDATEN_ZUSCHLAGSSATZ_TYPEN + CENTRAL_MARKUP_TYPEN
 
 
 class Zuschlagssatz(Base, TimestampMixin):

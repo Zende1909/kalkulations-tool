@@ -27,6 +27,10 @@ from app.schemas.spritzguss_veredelung import (
     VeredelungZuordnungRead,
     VeredelungZuordnungUpdate,
 )
+from app.services.central_markup_rates import (
+    CentralMarkupRatesError,
+    load_central_markup_rates,
+)
 from app.services.spritzguss_gesamt_kalkulation import (
     GesamtValidationError,
     VeredelungSchrittEingabe,
@@ -42,6 +46,38 @@ from app.services.veredelung_kalkulation import berechne_veredelung
 from app.services.veredelung_kalkulation import VeredelungInput as VeredelungCalcInput
 
 router = APIRouter(prefix="/spritzguss", tags=["Spritzguss-Kalkulation"])
+
+
+def _apply_central_rates(db: Session, calc_input: SpritzgussInput) -> SpritzgussInput:
+    """Überschreibt Zuschlagssätze mit zentral gepflegten Stammdatenwerten."""
+    try:
+        rates = load_central_markup_rates(db)
+        mgk_pct = rates.mgk_pct_for_nominierung(
+            calc_input.material_nominierung,
+            kontext="Spritzguss-Materialeinsatz",
+        )
+    except CentralMarkupRatesError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    return SpritzgussInput(
+        teilegewicht_netto_g=calc_input.teilegewicht_netto_g,
+        materialpreis_pro_kg=calc_input.materialpreis_pro_kg,
+        ausschussquote_pct=calc_input.ausschussquote_pct,
+        mgk_pct=mgk_pct,
+        material_nominierung=calc_input.material_nominierung,
+        zykluszeit_s=calc_input.zykluszeit_s,
+        maschinenstundensatz=calc_input.maschinenstundensatz,
+        kavitaeten=calc_input.kavitaeten,
+        lohnstundensatz=calc_input.lohnstundensatz,
+        fgk_pct=rates.fgk_pct,
+        werkzeugkosten_eur=calc_input.werkzeugkosten_eur,
+        werkzeug_abrechnungsart=calc_input.werkzeug_abrechnungsart,
+        amortisationsvolumen=calc_input.amortisationsvolumen,
+        vvgk_pct=rates.vvgk_pct,
+        gewinn_pct=rates.gewinn_pct,
+        skonto_pct=rates.skonto_pct,
+    )
 
 
 def _apply_hierarchy_payload(db: Session, payload: dict) -> dict:
@@ -145,6 +181,7 @@ def _to_calc_input_from_model(obj: SpritzgussKalkulation) -> SpritzgussInput:
         materialpreis_pro_kg=obj.materialpreis_pro_kg,
         ausschussquote_pct=obj.ausschussquote_pct,
         mgk_pct=obj.mgk_pct,
+        material_nominierung=getattr(obj, "material_nominierung", None),  # type: ignore[arg-type]
         zykluszeit_s=obj.zykluszeit_s,
         maschinenstundensatz=obj.maschinenstundensatz,
         kavitaeten=obj.kavitaeten,
@@ -315,6 +352,7 @@ def _build_calc_response(
     saved_rows: list[SpritzgussVeredelungZuordnung] | None = None,
 ) -> SpritzgussCalcResponse:
     zuordnungen = _normalize_veredelung_zuordnungen(zuordnungen)
+    calc_input = _apply_central_rates(db, calc_input)
     try:
         spritzguss = berechne_spritzguss(calc_input)
     except SpritzgussValidationError as exc:
@@ -335,6 +373,7 @@ def _build_calc_response(
         gesamt = berechne_gesamt(
             spritzguss_dict,
             veredelung_eingaben,
+            fgk_pct=calc_input.fgk_pct,
             vvgk_pct=calc_input.vvgk_pct,
             gewinn_pct=calc_input.gewinn_pct,
             skonto_pct=calc_input.skonto_pct,
@@ -347,18 +386,37 @@ def _build_calc_response(
     ergebnis_dict = {
         **spritzguss_dict,
         **gesamt.to_dict(),
-        "verkaufspreis": spritzguss_dict["verkaufspreis"],
+        # Endpreis inkl. Veredelung und zentraler Zuschläge (nicht Spritzguss-VP allein)
+        "verkaufspreis": gesamt.endpreis_je_stueck,
+    }
+
+    # FGK genau einmal und konsistent anzeigen (Basis inkl. Veredelung)
+    bloecke["fertigung"] = {
+        **bloecke.get("fertigung", {}),
+        "maschinenkosten": gesamt.maschinenkosten,
+        "fertigungslohn": gesamt.fertigungslohn,
+        "fertigungsgemeinkosten": gesamt.fertigungsgemeinkosten,
+        "fgk_basis": gesamt.fgk_basis,
+        "fgk_pct": gesamt.applied_fgk_pct,
     }
 
     bloecke["gemeinkosten"] = {
         "herstellkosten": gesamt.gesamte_herstellkosten,
+        "fgk_basis": gesamt.fgk_basis,
+        "fertigungsgemeinkosten": gesamt.fertigungsgemeinkosten,
+        "fgk_pct": gesamt.applied_fgk_pct,
         "vvgk": gesamt.vvgk,
+        "vvgk_pct": gesamt.applied_vvgk_pct,
+        "vvgk_basis": gesamt.gesamte_herstellkosten,
         "selbstkosten": gesamt.selbstkosten,
         "gewinn": gesamt.gewinn,
+        "gewinn_pct": gesamt.applied_gewinn_pct,
+        "gewinn_basis": gesamt.selbstkosten,
     }
     bloecke["verkaufspreis"] = {
         "nettoverkaufspreis": gesamt.nettoverkaufspreis,
         "skonto": gesamt.skonto,
+        "skonto_pct": gesamt.applied_skonto_pct,
         "verkaufspreis": gesamt.endpreis_je_stueck,
     }
     bloecke["zusammenfassung"] = gesamt.as_ergebnisuebersicht()
@@ -430,7 +488,21 @@ def _apply_calculation(
         kalkulation_id=obj.id,
         saved_rows=_load_zuordnungen(db, obj.id) if obj.id else None,
     )
-    obj.ergebnis = response.ergebnis.model_dump()
+    # Angewandte zentrale Sätze am Datensatz spiegeln (Export/Transparenz)
+    ergebnis = response.ergebnis
+    if ergebnis.applied_mgk_pct is not None:
+        obj.mgk_pct = float(ergebnis.applied_mgk_pct)
+    if ergebnis.applied_fgk_pct is not None:
+        obj.fgk_pct = float(ergebnis.applied_fgk_pct)
+    if ergebnis.applied_vvgk_pct is not None:
+        obj.vvgk_pct = float(ergebnis.applied_vvgk_pct)
+    if ergebnis.applied_gewinn_pct is not None:
+        obj.gewinn_pct = float(ergebnis.applied_gewinn_pct)
+    if ergebnis.applied_skonto_pct is not None:
+        obj.skonto_pct = float(ergebnis.applied_skonto_pct)
+    if ergebnis.material_nominierung is not None:
+        obj.material_nominierung = ergebnis.material_nominierung
+    obj.ergebnis = ergebnis.model_dump()
     obj.ergebnis_bloecke = response.bloecke
     return response
 

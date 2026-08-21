@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AgGridReact } from "ag-grid-react";
 import type {
   ColDef,
@@ -19,6 +19,10 @@ interface StammdatenGridProps<T extends { id: number }> {
   /** Singular for form titles, e.g. "Material" → "Material anlegen/bearbeiten" */
   entityLabel: string;
   endpoint: string;
+  /** Optional query string (ohne führendes ?), z. B. customer_id=1&program_id=2 */
+  listQuery?: string;
+  /** Optional toolbar content above the grid (Filter etc.) */
+  toolbarExtra?: ReactNode;
   columnDefs: ColDef<T>[];
   formFields: FormField[];
   emptyFormValues: Omit<T, "id" | "created_at" | "updated_at">;
@@ -66,6 +70,8 @@ export function StammdatenGrid<T extends { id: number }>({
   title,
   entityLabel,
   endpoint,
+  listQuery = "",
+  toolbarExtra,
   columnDefs,
   formFields,
   emptyFormValues,
@@ -84,7 +90,12 @@ export function StammdatenGrid<T extends { id: number }>({
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string | number | boolean>>({});
 
-  const apiUrl = useMemo(() => `${getApiBaseUrl()}${endpoint}`, [endpoint]);
+  const listPath = useMemo(() => {
+    const q = listQuery.trim();
+    return q ? `${endpoint}?${q}` : endpoint;
+  }, [endpoint, listQuery]);
+
+  const apiUrl = useMemo(() => `${getApiBaseUrl()}${listPath}`, [listPath]);
 
   const loadData = useCallback(
     async (options?: { initial?: boolean }) => {
@@ -97,7 +108,7 @@ export function StammdatenGrid<T extends { id: number }>({
 
       try {
         setError(null);
-        const data = await api.get<T[]>(endpoint);
+        const data = await api.get<T[]>(listPath);
         const list = Array.isArray(data) ? data : [];
         setRows(list);
         return list;
@@ -112,7 +123,7 @@ export function StammdatenGrid<T extends { id: number }>({
         }
       }
     },
-    [apiUrl, endpoint],
+    [apiUrl, listPath],
   );
 
   useEffect(() => {
@@ -182,7 +193,9 @@ export function StammdatenGrid<T extends { id: number }>({
     } catch (err) {
       const method = formMode === "edit" ? "PUT" : "POST";
       const url =
-        formMode === "edit" && editingId != null ? `${apiUrl}/${editingId}` : apiUrl;
+        formMode === "edit" && editingId != null
+          ? `${getApiBaseUrl()}${endpoint}/${editingId}`
+          : `${getApiBaseUrl()}${endpoint}`;
       setFormError(formatFetchError(err, method, url));
     } finally {
       setSubmitting(false);
@@ -203,7 +216,9 @@ export function StammdatenGrid<T extends { id: number }>({
       await loadData();
       setSuccess("Eintrag erfolgreich gelöscht.");
     } catch (err) {
-      setError(formatFetchError(err, "DELETE", `${apiUrl}/${selectedId}`));
+      setError(
+        formatFetchError(err, "DELETE", `${getApiBaseUrl()}${endpoint}/${selectedId}`),
+      );
     }
   };
 
@@ -285,6 +300,8 @@ export function StammdatenGrid<T extends { id: number }>({
           )}
         </div>
       </div>
+
+      {toolbarExtra}
 
       {error && (
         <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>

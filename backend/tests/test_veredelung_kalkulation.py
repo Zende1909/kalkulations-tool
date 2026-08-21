@@ -37,30 +37,30 @@ def test_maschinenkosten_je_stueck():
     assert result.maschinenkosten_je_stueck == 1.0
 
 
-def test_fertigungsgemeinkosten():
-    # 1.00 * 0.20 = 0.20
-    result = berechne_veredelung(_sample())
-    assert result.fertigungsgemeinkosten == 0.2
+def test_fertigungsgemeinkosten_zentral_nicht_in_veredelung():
+    # FGK wird zentral angewendet – Veredelung liefert nur Direktkosten
+    result = berechne_veredelung(_sample(fgk_pct=99))
+    assert result.fertigungsgemeinkosten == 0.0
 
 
 def test_kosten_vor_ausschuss():
-    # 1.00 + 1.00 + 0.20 + 0.20 = 2.40
+    # 1.00 + 1.00 + 0.20 + 0 = 2.20
     result = berechne_veredelung(_sample())
-    assert result.kosten_vor_ausschuss == 2.4
+    assert result.kosten_vor_ausschuss == 2.2
 
 
 def test_kosten_inkl_ausschuss():
-    # 2.40 / 0.9 = 2.666... → 2.67
+    # 2.20 / 0.9 = 2.444... → 2.44
     result = berechne_veredelung(_sample())
-    assert result.kosten_inkl_ausschuss == 2.67
+    assert result.kosten_inkl_ausschuss == 2.44
 
 
 def test_ohne_maschinenstundensatz():
     result = berechne_veredelung(_sample(maschinenstundensatz=None))
     assert result.maschinenkosten_je_stueck == 0.0
-    # 1.00 + 0 + 0.20 + 0.20 = 1.40; /0.9 = 1.555... → 1.56
-    assert result.kosten_vor_ausschuss == 1.4
-    assert result.kosten_inkl_ausschuss == 1.56
+    # 1.00 + 0 + 0.20 + 0 = 1.20; /0.9 = 1.333... → 1.33
+    assert result.kosten_vor_ausschuss == 1.2
+    assert result.kosten_inkl_ausschuss == 1.33
 
 
 def test_taktzeit_negativ_invalid():

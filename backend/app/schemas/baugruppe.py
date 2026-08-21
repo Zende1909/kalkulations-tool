@@ -13,6 +13,23 @@ class KaufteilBase(BaseModel):
     waehrung: str = "EUR"
     gueltig_ab: date | None = None
     aktiv: bool = True
+    # selbstnominiert | oem_nominiert | None (Altbestand)
+    nominierung: str | None = None
+    customer_id: int | None = None
+    program_id: int | None = None
+    project_id: int | None = None
+
+    @field_validator("nominierung")
+    @classmethod
+    def validate_nominierung(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        allowed = {"selbstnominiert", "oem_nominiert"}
+        if value not in allowed:
+            raise ValueError(
+                "nominierung muss 'selbstnominiert' oder 'oem_nominiert' sein"
+            )
+        return value
 
 
 class KaufteilCreate(KaufteilBase):
@@ -29,6 +46,22 @@ class KaufteilUpdate(BaseModel):
     waehrung: str | None = None
     gueltig_ab: date | None = None
     aktiv: bool | None = None
+    nominierung: str | None = None
+    customer_id: int | None = None
+    program_id: int | None = None
+    project_id: int | None = None
+
+    @field_validator("nominierung")
+    @classmethod
+    def validate_nominierung(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        allowed = {"selbstnominiert", "oem_nominiert"}
+        if value not in allowed:
+            raise ValueError(
+                "nominierung muss 'selbstnominiert' oder 'oem_nominiert' sein"
+            )
+        return value
 
 
 class KaufteilRead(KaufteilBase):

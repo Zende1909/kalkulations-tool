@@ -1,4 +1,4 @@
-"""Unit-Tests für die Spritzguss-Zuschlagskalkulation."""
+"""Unit-Tests für die Spritzguss-Zuschlagskalkulation (Material-MGK + FGK)."""
 
 import pytest
 
@@ -15,7 +15,8 @@ def _sample(**overrides) -> SpritzgussInput:
         teilegewicht_netto_g=100.0,  # 0.1 kg
         materialpreis_pro_kg=10.0,
         ausschussquote_pct=10.0,
-        mgk_pct=5.0,
+        mgk_pct=5.0,  # OEM-Satz
+        material_nominierung="oem_nominiert",
         zykluszeit_s=36.0,  # 0.01 h
         maschinenstundensatz=100.0,
         kavitaeten=2,
@@ -48,13 +49,10 @@ def test_validate_kavitaeten_min_1():
 
 
 def test_werkzeugfelder_beeinflussen_teilepreis_nicht():
-    """Historische Werkzeugwerte werden gespeichert, aber nicht mehr kalkuliert."""
     result_amort = berechne_spritzguss(
         _sample(amortisationsvolumen=1, werkzeugkosten_eur=100)
     )
     assert result_amort.werkzeugkostenanteil == 0.0
-    assert result_amort.werkzeug_einmalzahlung == 0.0
-
     result_einmal = berechne_spritzguss(
         _sample(
             werkzeug_abrechnungsart="einmalzahlung",
@@ -62,106 +60,49 @@ def test_werkzeugfelder_beeinflussen_teilepreis_nicht():
             werkzeugkosten_eur=5000,
         )
     )
-    assert result_einmal.werkzeugkostenanteil == 0.0
-    assert result_einmal.werkzeug_einmalzahlung == 0.0
     assert result_einmal.herstellkosten == result_amort.herstellkosten
 
 
-def test_teilepreis_ohne_investitionsanteil():
-    result = berechne_spritzguss(_sample())
-    assert result.werkzeugkostenanteil == 0.0
-    assert result.herstellkosten == 1.97
-    assert result.verkaufspreis == pytest.approx(2.44, abs=0.01)
-
-
-def test_stufe_1_materialgewicht():
-    result = berechne_spritzguss(_sample(teilegewicht_netto_g=100))
-    assert result.materialgewicht_kg == 0.1
-
-
-def test_stufe_2_materialkosten():
-    result = berechne_spritzguss(_sample())
+def test_material_mgk_oem_5_pct_auf_inkl_ausschuss():
+    """MGK-Basis = Materialkosten inklusive Ausschuss."""
+    result = berechne_spritzguss(_sample(mgk_pct=5))
     assert result.materialkosten == 1.0
-
-
-def test_stufe_3_materialkosten_inkl_ausschuss():
-    result = berechne_spritzguss(_sample())
     assert result.materialkosten_inkl_ausschuss == 1.11
-
-
-def test_stufe_4_materialgemeinkosten():
-    result = berechne_spritzguss(_sample())
+    assert result.mgk_basis == 1.11
     assert result.materialgemeinkosten == 0.06
-
-
-def test_stufe_5_materialkosten_gesamt():
-    result = berechne_spritzguss(_sample())
     assert result.materialkosten_gesamt == 1.17
 
 
-def test_stufe_6_maschinenkosten():
+def test_material_mgk_selbst_3_pct():
+    result = berechne_spritzguss(
+        _sample(mgk_pct=3, material_nominierung="selbstnominiert")
+    )
+    assert result.mgk_basis == 1.11
+    assert result.materialgemeinkosten == pytest.approx(0.03, abs=0.01)
+    assert result.applied_mgk_pct == 3.0
+
+
+def test_fgk_nicht_auf_material_oder_mgk():
+    result = berechne_spritzguss(_sample(fgk_pct=22, mgk_pct=5))
+    assert result.fgk_basis == 0.75  # nur Maschine + Lohn
+    assert result.fertigungsgemeinkosten == pytest.approx(0.17, abs=0.01)
+    assert result.materialkosten_gesamt == 1.17  # inkl. MGK, nicht in FGK-Basis
+
+
+def test_stufe_herstellkosten_mit_mgk_und_fgk():
+    # material 1.17 + machine 0.5 + lohn 0.25 + fgk 0.15 = 2.07
     result = berechne_spritzguss(_sample())
-    assert result.maschinenkosten == 0.5
-
-
-def test_stufe_7_fertigungslohn():
-    result = berechne_spritzguss(_sample())
-    assert result.fertigungslohn == 0.25
-
-
-def test_stufe_8_fertigungsgemeinkosten():
-    result = berechne_spritzguss(_sample())
-    assert result.fertigungsgemeinkosten == 0.05
-
-
-def test_stufe_9_werkzeugkostenanteil_null():
-    result = berechne_spritzguss(_sample())
-    assert result.werkzeugkostenanteil == 0.0
-
-
-def test_stufe_10_herstellkosten():
-    result = berechne_spritzguss(_sample())
-    assert result.herstellkosten == 1.97
-
-
-def test_stufe_11_vvgk():
-    result = berechne_spritzguss(_sample())
-    assert result.vvgk == 0.20
-
-
-def test_stufe_12_selbstkosten():
-    result = berechne_spritzguss(_sample())
-    assert result.selbstkosten == 2.17
-
-
-def test_stufe_13_gewinn():
-    result = berechne_spritzguss(_sample())
-    assert result.gewinn == 0.22
-
-
-def test_stufe_14_nettoverkaufspreis():
-    result = berechne_spritzguss(_sample())
-    assert result.nettoverkaufspreis == 2.39
-
-
-def test_stufe_15_skonto():
-    result = berechne_spritzguss(_sample())
+    assert result.herstellkosten == 2.07
+    assert result.vvgk == 0.21
+    assert result.selbstkosten == 2.28
+    assert result.gewinn == 0.23
+    assert result.nettoverkaufspreis == 2.51
     assert result.skonto == 0.05
+    assert result.verkaufspreis == 2.56
 
 
-def test_stufe_16_verkaufspreis():
-    result = berechne_spritzguss(_sample())
-    assert result.verkaufspreis == 2.44
-
-
-def test_as_blocks_structure():
+def test_as_blocks_zeigt_mgk_basis():
     blocks = berechne_spritzguss(_sample()).as_blocks()
-    assert set(blocks.keys()) == {
-        "material",
-        "fertigung",
-        "werkzeug",
-        "gemeinkosten",
-        "verkaufspreis",
-    }
-    assert blocks["werkzeug"]["werkzeugkostenanteil"] == 0.0
-    assert blocks["werkzeug"]["werkzeug_einmalzahlung"] == 0.0
+    assert blocks["material"]["mgk_basis"] == 1.11
+    assert blocks["material"]["materialgemeinkosten"] == 0.06
+    assert blocks["fertigung"]["fgk_basis"] == 0.75

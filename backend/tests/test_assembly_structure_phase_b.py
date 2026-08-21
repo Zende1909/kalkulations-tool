@@ -36,7 +36,17 @@ def _create_phase_b_schema(engine) -> None:
     statements = [
         """
         CREATE TABLE IF NOT EXISTS projects (
-            id INTEGER PRIMARY KEY
+            id INTEGER PRIMARY KEY,
+            program_id INTEGER,
+            project_number VARCHAR(64) NOT NULL DEFAULT '',
+            name VARCHAR(255) NOT NULL DEFAULT '',
+            component_area VARCHAR(255) NOT NULL DEFAULT '',
+            quantity_per_vehicle FLOAT NOT NULL DEFAULT 1,
+            status VARCHAR(32) NOT NULL DEFAULT 'Anfrage',
+            notes TEXT NOT NULL DEFAULT '',
+            active BOOLEAN NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """,
         """

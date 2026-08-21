@@ -13,6 +13,7 @@ export type CalcPayload = Pick<
   | "materialpreis_pro_kg"
   | "ausschussquote_pct"
   | "mgk_pct"
+  | "material_nominierung"
   | "zykluszeit_s"
   | "maschinenstundensatz"
   | "kavitaeten"

@@ -106,7 +106,7 @@ def test_m5_is_alembic_head():
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == [REVISION]
+    assert scripts.get_heads() == ["e1a0006_spritzguss_material_nominierung"]
     rev = scripts.get_revision(REVISION)
     assert rev is not None
     assert rev.down_revision == PREV
@@ -322,7 +322,7 @@ def test_m5_legacy_mapping_snapshots_sequences_idempotency_on_smoke_db():
                 )
             }
 
-        up = _alembic(env, "upgrade", "head")
+        up = _alembic(env, "upgrade", REVISION)
         assert up.returncode == 0, up.stdout + up.stderr
 
         with engine.connect() as conn:

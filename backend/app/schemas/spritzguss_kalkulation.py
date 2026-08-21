@@ -66,18 +66,19 @@ class SpritzgussCalcRequest(BaseModel):
     teilegewicht_netto_g: float = Field(ge=0)
     materialpreis_pro_kg: float = Field(ge=0)
     ausschussquote_pct: float = Field(ge=0, lt=100)
-    mgk_pct: float = Field(ge=0)
+    mgk_pct: float = Field(ge=0, default=0)  # wird aus Stammdaten überschrieben
+    material_nominierung: Literal["selbstnominiert", "oem_nominiert"] | None = None
     zykluszeit_s: float = Field(ge=0)
     maschinenstundensatz: float = Field(ge=0)
     kavitaeten: int = Field(ge=1)
     lohnstundensatz: float = Field(ge=0)
-    fgk_pct: float = Field(ge=0)
+    fgk_pct: float = Field(ge=0, default=0)
     werkzeugkosten_eur: float = Field(ge=0)
     werkzeug_abrechnungsart: WerkzeugAbrechnungsart = "amortisation"
     amortisationsvolumen: int | None = None
-    vvgk_pct: float = Field(ge=0)
-    gewinn_pct: float = Field(ge=0)
-    skonto_pct: float = Field(ge=0)
+    vvgk_pct: float = Field(ge=0, default=0)
+    gewinn_pct: float = Field(ge=0, default=0)
+    skonto_pct: float = Field(ge=0, default=0)
     veredelung_zuordnungen: list[VeredelungZuordnungInput] = Field(default_factory=list)
 
     @field_validator("amortisationsvolumen", mode="before")
@@ -106,9 +107,11 @@ class SpritzgussErgebnisSchema(BaseModel):
     materialkosten_inkl_ausschuss: float
     materialgemeinkosten: float
     materialkosten_gesamt: float
+    mgk_basis: float | None = None
     maschinenkosten: float
     fertigungslohn: float
     fertigungsgemeinkosten: float
+    fgk_basis: float | None = None
     werkzeugkostenanteil: float
     werkzeug_einmalzahlung: float
     herstellkosten: float
@@ -118,6 +121,12 @@ class SpritzgussErgebnisSchema(BaseModel):
     nettoverkaufspreis: float
     skonto: float
     verkaufspreis: float
+    applied_mgk_pct: float | None = None
+    applied_fgk_pct: float | None = None
+    applied_vvgk_pct: float | None = None
+    applied_gewinn_pct: float | None = None
+    applied_skonto_pct: float | None = None
+    material_nominierung: str | None = None
     spritzguss_gesamt: float | None = None
     veredelung_gesamt: float = 0
     endpreis_je_stueck: float | None = None
@@ -126,7 +135,7 @@ class SpritzgussErgebnisSchema(BaseModel):
 
 class SpritzgussCalcResponse(BaseModel):
     ergebnis: SpritzgussErgebnisSchema
-    bloecke: dict[str, dict[str, float]]
+    bloecke: dict[str, dict[str, Any]]
     veredelung_zuordnungen: list[VeredelungZuordnungRead] = Field(default_factory=list)
 
 
@@ -148,6 +157,7 @@ class SpritzgussKalkulationBase(BaseModel):
     teilegewicht_netto_g: float = Field(ge=0)
     ausschussquote_pct: float = Field(ge=0, lt=100)
     materialpreis_pro_kg: float = Field(ge=0)
+    material_nominierung: Literal["selbstnominiert", "oem_nominiert"] | None = None
 
     maschine_id: int | None = None
     zykluszeit_s: float = Field(ge=0)
@@ -229,6 +239,7 @@ class SpritzgussKalkulationUpdate(BaseModel):
     teilegewicht_netto_g: float | None = Field(default=None, ge=0)
     ausschussquote_pct: float | None = Field(default=None, ge=0, lt=100)
     materialpreis_pro_kg: float | None = Field(default=None, ge=0)
+    material_nominierung: Literal["selbstnominiert", "oem_nominiert"] | None = None
 
     maschine_id: int | None = None
     zykluszeit_s: float | None = Field(default=None, ge=0)
