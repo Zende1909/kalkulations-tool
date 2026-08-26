@@ -81,6 +81,13 @@ class SpritzgussCalcRequest(BaseModel):
     gewinn_pct: float = Field(ge=0, default=0)
     skonto_pct: float = Field(ge=0, default=0)
     veredelung_zuordnungen: list[VeredelungZuordnungInput] = Field(default_factory=list)
+    werk_id: int | None = None
+    losgroesse: int | None = Field(default=None, ge=1)
+    setup_zeit_min: float = Field(ge=0, default=0)
+    setup_maschinenstundensatz: float = Field(ge=0, default=0)
+    setup_lohnstundensatz: float = Field(ge=0, default=0)
+    setup_mitarbeiter: float = Field(ge=0, default=0)
+    setup_aktiv: bool = False
 
     @field_validator("amortisationsvolumen", mode="before")
     @classmethod
@@ -132,6 +139,15 @@ class SpritzgussErgebnisSchema(BaseModel):
     veredelung_gesamt: float = 0
     endpreis_je_stueck: float | None = None
     veredelung_schritte: list[dict[str, Any]] = Field(default_factory=list)
+    setup_maschinenkosten_gesamt: float | None = None
+    setup_lohnkosten_gesamt: float | None = None
+    setup_kosten_je_teil: float | None = None
+    setup_maschinenkosten_je_teil: float | None = None
+    setup_lohnkosten_je_teil: float | None = None
+    losgroesse: int | None = None
+    setup_aktiv: bool | None = None
+    schussgewicht_g: float | None = None
+    teilegewicht_netto_g: float | None = None
 
 
 class SpritzgussCalcResponse(BaseModel):
@@ -152,6 +168,9 @@ class SpritzgussKalkulationBase(BaseModel):
     project_id: int | None = None
     calculation_year: int | None = None
     project_volume: float | None = None
+
+    werk_id: int | None = None
+    losgroesse: int | None = Field(default=None, ge=1)
 
     material_id: int | None = None
     schussgewicht_g: float = Field(ge=0, default=0)
@@ -201,6 +220,11 @@ class SpritzgussKalkulationBase(BaseModel):
 
 
 class SpritzgussKalkulationCreate(SpritzgussKalkulationBase):
+    setup_zeit_min: float = Field(ge=0, default=0)
+    setup_maschinenstundensatz: float = Field(ge=0, default=0)
+    setup_lohnstundensatz: float = Field(ge=0, default=0)
+    setup_mitarbeiter: float = Field(ge=0, default=0)
+    setup_aktiv: bool = False
     veredelung_zuordnungen: list[VeredelungZuordnungInput] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -235,6 +259,9 @@ class SpritzgussKalkulationUpdate(BaseModel):
     calculation_year: int | None = None
     project_volume: float | None = None
 
+    werk_id: int | None = None
+    losgroesse: int | None = Field(default=None, ge=1)
+
     material_id: int | None = None
     schussgewicht_g: float | None = Field(default=None, ge=0)
     teilegewicht_netto_g: float | None = Field(default=None, ge=0)
@@ -249,6 +276,12 @@ class SpritzgussKalkulationUpdate(BaseModel):
 
     lohnkosten_id: int | None = None
     lohnstundensatz: float | None = Field(default=None, ge=0)
+
+    setup_zeit_min: float | None = Field(default=None, ge=0)
+    setup_maschinenstundensatz: float | None = Field(default=None, ge=0)
+    setup_lohnstundensatz: float | None = Field(default=None, ge=0)
+    setup_mitarbeiter: float | None = Field(default=None, ge=0)
+    setup_aktiv: bool | None = None
 
     werkzeug_abrechnungsart: WerkzeugAbrechnungsart | None = None
     werkzeugkosten_eur: float | None = Field(default=None, ge=0)
@@ -276,6 +309,11 @@ class SpritzgussKalkulationRead(SpritzgussKalkulationBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    setup_zeit_min: float = 0
+    setup_maschinenstundensatz: float = 0
+    setup_lohnstundensatz: float = 0
+    setup_mitarbeiter: float = 0
+    setup_aktiv: bool = False
     ergebnis: dict[str, Any] | None = None
     ergebnis_bloecke: dict[str, Any] | None = None
     veredelung_zuordnungen: list[VeredelungZuordnungRead] = Field(default_factory=list)

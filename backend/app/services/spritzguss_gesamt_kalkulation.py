@@ -205,12 +205,13 @@ def berechne_gesamt(
     material = _d(spritzguss_ergebnis.get("materialkosten_gesamt", 0))
     maschinenkosten = _d(spritzguss_ergebnis.get("maschinenkosten", 0))
     fertigungslohn = _d(spritzguss_ergebnis.get("fertigungslohn", 0))
+    setup_je_teil = _d(spritzguss_ergebnis.get("setup_kosten_je_teil", 0) or 0)
 
     sorted_steps = sorted(veredelung_schritte, key=lambda s: s.reihenfolge)
     ergebnis_schritte: list[VeredelungSchrittErgebnis] = []
     process_direct_sum = Decimal("0")
-    # Laufende Fertigungskosten vor FGK (Material inkl. Materialausschuss + Maschine + Lohn)
-    running = _money(material + maschinenkosten + fertigungslohn)
+    # Laufende Fertigungskosten vor FGK (Material + Maschine + Lohn + Setup)
+    running = _money(material + maschinenkosten + fertigungslohn + setup_je_teil)
 
     seen_ids: set[int] = set()
     for schritt in sorted_steps:
@@ -280,18 +281,26 @@ def berechne_gesamt(
                 )
             )
 
-    veredelung_gesamt = _money(running - material - maschinenkosten - fertigungslohn)
+    veredelung_gesamt = _money(
+        running - material - maschinenkosten - fertigungslohn - setup_je_teil
+    )
 
-    # FGK-Basis: Maschine + Lohn + direkte Veredelung *vor* Ausschuss
-    fgk_basis = _money(maschinenkosten + fertigungslohn + process_direct_sum)
+    # FGK-Basis: Maschine + Lohn + Setup + direkte Veredelung *vor* Ausschuss
+    fgk_basis = _money(
+        maschinenkosten + fertigungslohn + setup_je_teil + process_direct_sum
+    )
     fertigungsgemeinkosten = _money(fgk_basis * _pct_to_rate(fgk_pct))
 
     gesamte_hk = _money(running + fertigungsgemeinkosten)
+    # Spritzguss-HK: Material + Maschine + Lohn + Setup + FGK nur auf Fertigung inkl. Setup
+    # (ohne Veredelung). Ohne Veredelung gilt spritzguss_hk == gesamte_hk (eine FGK).
+    spritzguss_fgk_basis = _money(maschinenkosten + fertigungslohn + setup_je_teil)
     spritzguss_hk = _money(
         material
         + maschinenkosten
         + fertigungslohn
-        + _money((maschinenkosten + fertigungslohn) * _pct_to_rate(fgk_pct))
+        + setup_je_teil
+        + spritzguss_fgk_basis * _pct_to_rate(fgk_pct)
     )
 
     vvgk = _money(gesamte_hk * _pct_to_rate(vvgk_pct))

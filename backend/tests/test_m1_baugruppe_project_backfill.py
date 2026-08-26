@@ -118,7 +118,7 @@ def test_m1_revision_is_in_chain_before_m5():
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0007_veredelung_snapshot_yield"]
+    assert scripts.get_heads() == ["e1a0008_plant_costing"]
     rev = scripts.get_revision(REVISION)
     assert rev is not None
     assert rev.down_revision == PREV_HEAD

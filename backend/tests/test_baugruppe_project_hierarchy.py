@@ -94,6 +94,7 @@ def _create_schema(engine) -> None:
             aktiv BOOLEAN NOT NULL DEFAULT 1,
             linked_project_id INTEGER,
             project_id INTEGER REFERENCES projects(id),
+            werk_id INTEGER,
             assembly_type VARCHAR(16) NOT NULL DEFAULT 'TOP_LEVEL',
             structure_version INTEGER NOT NULL DEFAULT 1,
             legacy_mode BOOLEAN NOT NULL DEFAULT 1,

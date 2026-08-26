@@ -158,6 +158,7 @@ class BaugruppeErgebnisSchema(BaseModel):
 class BaugruppeCalcRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     jahresstueckzahl: int = Field(ge=0, default=0)
+    werk_id: int | None = None
     spritzguss_zuordnungen: list[SpritzgussZuordnungInput] = Field(default_factory=list)
     kaufteil_zuordnungen: list[KaufteilZuordnungInput] = Field(default_factory=list)
     veredelung_zuordnungen: list[VeredelungZuordnungInput] = Field(default_factory=list)
@@ -174,6 +175,7 @@ class BaugruppeBase(BaseModel):
     kunde: str = ""
     projekt: str = ""
     project_id: int | None = None
+    werk_id: int | None = None
     jahresstueckzahl: int = Field(ge=0, default=0)
     beschreibung: str = ""
     status: str = "entwurf"
@@ -193,6 +195,7 @@ class BaugruppeUpdate(BaseModel):
     projekt: str | None = None
     project_id: int | None = None
     clear_project_link: bool | None = None
+    werk_id: int | None = None
     jahresstueckzahl: int | None = Field(default=None, ge=0)
     beschreibung: str | None = None
     status: str | None = None

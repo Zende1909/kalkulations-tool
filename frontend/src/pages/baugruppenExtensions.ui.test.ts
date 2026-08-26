@@ -32,11 +32,14 @@ describe("Baugruppen reactivation / hierarchy / Jahresstückzahl UI", () => {
     expect(selectorSrc).toMatch(/value\.program_id == null/);
   });
 
-  it("Jahresstückzahl ist schreibgeschützt und kommt aus dem Projekt-API", () => {
-    expect(pageSrc).toMatch(/getAverageJahresstueckzahl/);
-    expect(pageSrc).toMatch(/data-testid="baugruppe-jahresstueckzahl"/);
-    expect(pageSrc).toMatch(/readOnly/);
-    expect(pageSrc).not.toMatch(/setField\("jahresstueckzahl"/);
-    expect(pageSrc).toMatch(/keine Jahresstückzahlen hinterlegt/);
+  it("zeigt Land → Werk Kaskade neben Kundenhierarchie", () => {
+    expect(pageSrc).toMatch(/Land \/ Region/);
+    expect(pageSrc).toMatch(/Werk \/ Standort/);
+    expect(pageSrc).toMatch(/filteredWerke/);
+    expect(pageSrc).toMatch(/selectedLandId/);
+    expect(pageSrc).toMatch(/werk_id: null/);
+    expect(pageSrc).toMatch(/\(inaktiv\)/);
+    expect(pageSrc).toMatch(/api\.get<Land\[\]>\("\/laender"\)/);
+    expect(pageSrc).toMatch(/api\.get<Werk\[\]>\("\/werke"\)/);
   });
 });

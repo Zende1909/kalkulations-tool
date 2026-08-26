@@ -23,6 +23,8 @@ interface StammdatenGridProps<T extends { id: number }> {
   listQuery?: string;
   /** Optional toolbar content above the grid (Filter etc.) */
   toolbarExtra?: ReactNode;
+  /** Called when the selected row id changes */
+  onSelectedIdChange?: (id: number | null) => void;
   columnDefs: ColDef<T>[];
   formFields: FormField[];
   emptyFormValues: Omit<T, "id" | "created_at" | "updated_at">;
@@ -72,6 +74,7 @@ export function StammdatenGrid<T extends { id: number }>({
   endpoint,
   listQuery = "",
   toolbarExtra,
+  onSelectedIdChange,
   columnDefs,
   formFields,
   emptyFormValues,
@@ -325,7 +328,9 @@ export function StammdatenGrid<T extends { id: number }>({
             rowSelection="single"
             onRowSelected={(event: RowSelectedEvent<T>) => {
               if (event.node.isSelected()) {
-                setSelectedId(event.data?.id ?? null);
+                const id = event.data?.id ?? null;
+                setSelectedId(id);
+                onSelectedIdChange?.(id);
               }
             }}
             onRowDoubleClicked={(event: RowDoubleClickedEvent<T>) => {

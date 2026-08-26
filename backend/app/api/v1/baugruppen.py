@@ -63,16 +63,23 @@ def _money(value: float) -> float:
     return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
-def _kaufteil_preis_inkl_mgk(db: Session, kt: Kaufteil) -> float:
-    """Einkaufspreis + MGK laut Nominierung (zentrale Sätze)."""
+def _kaufteil_preis_inkl_mgk(
+    db: Session, kt: Kaufteil, *, werk_id: int | None = None
+) -> float:
+    """Einkaufspreis + MGK laut Nominierung (+ optionales OEM-Handling werkbezogen)."""
     try:
-        rates = load_central_markup_rates(db)
+        rates = load_central_markup_rates(db, werk_id=werk_id)
         mgk_pct = rates.mgk_pct_for_nominierung(kt.nominierung)
     except CentralMarkupRatesError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
-    return _money(float(kt.preis) * (1 + mgk_pct / 100.0))
+    einkauf = float(kt.preis)
+    mgk_amount = einkauf * (mgk_pct / 100.0)
+    handling = 0.0
+    if kt.nominierung == "oem_nominiert":
+        handling = einkauf * (float(rates.handling_oem_kaufteil_pct or 0) / 100.0)
+    return _money(einkauf + mgk_amount + handling)
 
 
 def _endpreis_aus_spritzguss(kalk: SpritzgussKalkulation) -> float:
@@ -226,6 +233,7 @@ def _resolve_eingaben(
     *,
     use_snapshots: bool,
     baugruppe_id: int | None = None,
+    werk_id: int | None = None,
 ) -> tuple[list[EinzelteilEingabe], list[KaufteilEingabe], list[VeredelungEingabe]]:
     sg_snap: dict[int, BaugruppeSpritzgussZuordnung] = {}
     kt_snap: dict[int, BaugruppeKaufteilZuordnung] = {}
@@ -298,7 +306,7 @@ def _resolve_eingaben(
         elif use_snapshots and snap is not None:
             preis = snap.snapshot_preis
         else:
-            preis = _kaufteil_preis_inkl_mgk(db, kt)
+            preis = _kaufteil_preis_inkl_mgk(db, kt, werk_id=werk_id)
         bezeichnung = snap.snapshot_bezeichnung if snap else kt.bezeichnung
         lieferant = snap.snapshot_lieferant if snap else kt.lieferant
         kaufteile.append(
@@ -350,6 +358,7 @@ def _build_calc_response(
     veredelung_zuordnungen: list[VeredelungZuordnungInput | dict[str, Any]],
     use_snapshots: bool = False,
     baugruppe_id: int | None = None,
+    werk_id: int | None = None,
 ) -> BaugruppeCalcResponse:
     if not name.strip():
         raise HTTPException(
@@ -362,7 +371,13 @@ def _build_calc_response(
 
     try:
         einzelteile, kaufteile, veredelungen = _resolve_eingaben(
-            db, sg, kt, vd, use_snapshots=use_snapshots, baugruppe_id=baugruppe_id
+            db,
+            sg,
+            kt,
+            vd,
+            use_snapshots=use_snapshots,
+            baugruppe_id=baugruppe_id,
+            werk_id=werk_id,
         )
         investitionen = _load_investitionen(
             db,
@@ -452,7 +467,7 @@ def _sync_kaufteil_zuordnungen(
         preis = (
             z.snapshot_preis
             if z.snapshot_preis is not None
-            else _kaufteil_preis_inkl_mgk(db, kt)
+            else _kaufteil_preis_inkl_mgk(db, kt, werk_id=getattr(obj, "werk_id", None))
         )
         db.add(
             BaugruppeKaufteilZuordnung(
@@ -554,6 +569,7 @@ def _apply_calculation(db: Session, obj: Baugruppe) -> BaugruppeCalcResponse:
         ],
         use_snapshots=True,
         baugruppe_id=obj.id,
+        werk_id=getattr(obj, "werk_id", None),
     )
     obj.ergebnis = response.ergebnis.model_dump()
     obj.ergebnis_bloecke = response.bloecke
@@ -798,6 +814,7 @@ def berechnen(
         kaufteil_zuordnungen=body.kaufteil_zuordnungen,
         veredelung_zuordnungen=body.veredelung_zuordnungen,
         use_snapshots=False,
+        werk_id=body.werk_id,
     )
 
 

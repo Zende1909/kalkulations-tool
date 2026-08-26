@@ -91,6 +91,8 @@ class BaugruppeExportData:
     program: str = ""
     selbstkosten: float | None = None
     detail: object | None = None
+    land: str = ""
+    werk: str = ""
 
 
 @dataclass

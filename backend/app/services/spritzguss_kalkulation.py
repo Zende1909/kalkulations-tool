@@ -69,6 +69,13 @@ class SpritzgussInput:
     # Material-MGK-Satz in % (zentral gesetzt laut material_nominierung)
     mgk_pct: float = 0
     material_nominierung: MaterialNominierung | None = None
+    # Setup (optional; aktiv wenn setup_zeit_min > 0)
+    setup_zeit_min: float = 0
+    setup_maschinenstundensatz: float = 0
+    setup_lohnstundensatz: float = 0
+    setup_mitarbeiter: float = 0
+    losgroesse: int | None = None
+    setup_aktiv: bool = False
 
 
 @dataclass(frozen=True)
@@ -100,6 +107,13 @@ class SpritzgussErgebnis:
     material_nominierung: str | None
     schussgewicht_g: float
     teilegewicht_netto_g: float
+    setup_maschinenkosten_gesamt: float = 0.0
+    setup_lohnkosten_gesamt: float = 0.0
+    setup_kosten_je_teil: float = 0.0
+    setup_maschinenkosten_je_teil: float = 0.0
+    setup_lohnkosten_je_teil: float = 0.0
+    losgroesse: int | None = None
+    setup_aktiv: bool = False
 
     def to_dict(self) -> dict[str, float | str | None]:
         return asdict(self)
@@ -121,6 +135,11 @@ class SpritzgussErgebnis:
             "fertigung": {
                 "maschinenkosten": self.maschinenkosten,
                 "fertigungslohn": self.fertigungslohn,
+                "setup_maschinenkosten_je_teil": self.setup_maschinenkosten_je_teil,
+                "setup_lohnkosten_je_teil": self.setup_lohnkosten_je_teil,
+                "setup_kosten_je_teil": self.setup_kosten_je_teil,
+                "losgroesse": self.losgroesse,
+                "setup_aktiv": self.setup_aktiv,
                 "fertigungsgemeinkosten": self.fertigungsgemeinkosten,
                 "fgk_basis": self.fgk_basis,
                 "fgk_pct": self.applied_fgk_pct,
@@ -189,9 +208,18 @@ def validate_spritzguss_input(data: SpritzgussInput) -> None:
             "material_nominierung muss 'selbstnominiert' oder 'oem_nominiert' sein"
         )
 
+    setup_aktiv = bool(data.setup_aktiv) or float(data.setup_zeit_min or 0) > 0
+    if setup_aktiv:
+        if data.losgroesse is None or int(data.losgroesse) < 1:
+            raise SpritzgussValidationError(
+                "losgroesse muss >= 1 sein, wenn Setup aktiv ist"
+            )
+        if data.setup_zeit_min < 0 or data.setup_mitarbeiter < 0:
+            raise SpritzgussValidationError("Setup-Parameter dürfen nicht negativ sein")
+
 
 def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
-    """Führt die Zuschlagskalkulation durch (Material-MGK + FGK auf Maschine+Lohn)."""
+    """Führt die Zuschlagskalkulation durch (Material-MGK + FGK auf Maschine+Lohn+Setup)."""
     validate_spritzguss_input(data)
 
     schussgewicht_g = _d(data.schussgewicht_g)
@@ -207,45 +235,49 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
     gewinn_rate = _pct_to_rate(_d(data.gewinn_pct))
     skonto_rate = _pct_to_rate(_d(data.skonto_pct))
 
-    # 1 Materialgewicht je Gutteil (kg) – Basis: Schussgewicht (Brutto)
     materialgewicht_kg = _qty(schussgewicht_g / Decimal("1000"))
-
-    # 2 Materialkosten (direkt aus Schussgewicht, ohne Prozessausschuss)
     materialkosten = _money(materialgewicht_kg * materialpreis)
-
-    # 3 Materialkosten inkl. Prozessausschuss (= MGK-Basis), genau einmal
     materialkosten_inkl_ausschuss = _money(materialkosten / (Decimal("1") - ausschuss))
     mgk_basis = materialkosten_inkl_ausschuss
-
-    # 4 Materialgemeinkosten auf Basis inkl. Ausschuss
     materialgemeinkosten = _money(mgk_basis * mgk)
-
-    # 5 Materialkosten gesamt
     materialkosten_gesamt = _money(materialkosten_inkl_ausschuss + materialgemeinkosten)
 
-    # 6 Maschinenkosten je Teil
     maschinenkosten = _money(
         zykluszeit / Decimal("3600") * maschinenstundensatz / kavitaeten
     )
-
-    # 7 Fertigungslohn je Teil
     fertigungslohn = _money(
         zykluszeit / Decimal("3600") * lohnstundensatz / kavitaeten
     )
 
-    # 8 Fertigungsgemeinkosten – Basis: Maschinenkosten + Fertigungslohn
-    fgk_basis = _money(maschinenkosten + fertigungslohn)
+    setup_aktiv = bool(data.setup_aktiv) or float(data.setup_zeit_min or 0) > 0
+    setup_maschinen_gesamt = Decimal("0")
+    setup_lohn_gesamt = Decimal("0")
+    setup_maschine_teil = Decimal("0")
+    setup_lohn_teil = Decimal("0")
+    setup_je_teil = Decimal("0")
+    if setup_aktiv:
+        stunden = _d(data.setup_zeit_min) / Decimal("60")
+        setup_maschinen_gesamt = _money(stunden * _d(data.setup_maschinenstundensatz))
+        setup_lohn_gesamt = _money(
+            stunden * _d(data.setup_lohnstundensatz) * _d(data.setup_mitarbeiter)
+        )
+        los = _d(int(data.losgroesse or 1))
+        setup_maschine_teil = _money(setup_maschinen_gesamt / los)
+        setup_lohn_teil = _money(setup_lohn_gesamt / los)
+        setup_je_teil = _money(setup_maschine_teil + setup_lohn_teil)
+
+    # FGK-Basis: Maschine + Lohn + Setup (je Teil), ohne Material
+    fgk_basis = _money(maschinenkosten + fertigungslohn + setup_je_teil)
     fertigungsgemeinkosten = _money(fgk_basis * fgk)
 
-    # 9 Werkzeug – nicht im Teilepreis
     werkzeugkostenanteil = _money(Decimal("0"))
     werkzeug_einmalzahlung = _money(Decimal("0"))
 
-    # 10 Herstellkosten
     herstellkosten = _money(
         materialkosten_gesamt
         + maschinenkosten
         + fertigungslohn
+        + setup_je_teil
         + fertigungsgemeinkosten
         + werkzeugkostenanteil
     )
@@ -285,4 +317,11 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
         material_nominierung=data.material_nominierung,
         schussgewicht_g=float(data.schussgewicht_g),
         teilegewicht_netto_g=float(data.teilegewicht_netto_g),
+        setup_maschinenkosten_gesamt=float(setup_maschinen_gesamt),
+        setup_lohnkosten_gesamt=float(setup_lohn_gesamt),
+        setup_kosten_je_teil=float(setup_je_teil),
+        setup_maschinenkosten_je_teil=float(setup_maschine_teil),
+        setup_lohnkosten_je_teil=float(setup_lohn_teil),
+        losgroesse=int(data.losgroesse) if data.losgroesse is not None else None,
+        setup_aktiv=setup_aktiv,
     )

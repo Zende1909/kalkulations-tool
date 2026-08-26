@@ -52,6 +52,10 @@ def _run_dev_schema_bootstrap() -> None:
     ensure_spritzguss_hierarchy_schema(engine)
     ensure_investition_schema(engine)
     ensure_assembly_structure_schema(engine)
+    # Bootstrap ergänzt Spalten, stamp/upgrade aber nicht – Drift klar loggen.
+    from app.startup import warn_if_database_behind_alembic_head
+
+    warn_if_database_behind_alembic_head(engine)
 
 
 def _run_production_startup_checks() -> None:

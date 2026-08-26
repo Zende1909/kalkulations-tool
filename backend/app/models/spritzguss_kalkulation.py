@@ -30,6 +30,13 @@ class SpritzgussKalkulation(Base, TimestampMixin):
     calculation_year: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     project_volume: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Standort (optional – Legacy ohne Werk bleibt gültig)
+    werk_id: Mapped[int | None] = mapped_column(
+        ForeignKey("werke.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # Losgröße für Setup-Umlage (Pflicht wenn Setup aktiv)
+    losgroesse: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Material
     material_id: Mapped[int | None] = mapped_column(ForeignKey("materialien.id"), nullable=True)
     schussgewicht_g: Mapped[float] = mapped_column(Float, nullable=False, default=0)

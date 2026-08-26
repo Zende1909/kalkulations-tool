@@ -1,0 +1,34 @@
+"""Werke / Produktionsstandorte."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, Float, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database import Base
+from app.models.user import TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.land import Land
+    from app.models.werk_zuschlag import WerkZuschlag
+
+
+class Werk(Base, TimestampMixin):
+    __tablename__ = "werke"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    land_id: Mapped[int] = mapped_column(
+        ForeignKey("laender.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="EUR")
+    fx_to_eur: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    aktiv: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    land: Mapped[Land] = relationship("Land", back_populates="werke")
+    zuschlaege: Mapped[list[WerkZuschlag]] = relationship(
+        "WerkZuschlag", back_populates="werk", cascade="all, delete-orphan"
+    )

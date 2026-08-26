@@ -190,6 +190,8 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
         ("Kunde", data.kunde),
         ("Programm", data.program or "–"),
         ("Projekt", data.projekt),
+        ("Land / Region", data.land or "–"),
+        ("Werk / Standort", data.werk or "–"),
         ("Status", data.status or "–"),
         ("Strukturversion", data.structure_version),
         ("Exportdatum", export_date),

@@ -120,8 +120,10 @@ class PurchasedDetail:
     nominierung: str | None
     mgk_pct: float | None
     kaufteil_mgk: float
-    preis_inkl_mgk: float
-    zwischensumme: float
+    handling_oem_pct: float | None = None
+    handling_oem: float = 0.0
+    preis_inkl_mgk: float = 0.0
+    zwischensumme: float = 0.0
     hinweise: list[str] = field(default_factory=list)
     legacy: bool = False
 
@@ -161,11 +163,16 @@ class BaugruppeDetailKalkulation:
     program_name: str | None
     customer_name: str | None
     project_name: str | None
-    assumptions: list[AssumptionRow]
-    parts: list[PartDetail]
-    purchased: list[PurchasedDetail]
-    processes: list[AssyProcessDetail]
-    ueberleitung: list[UeberleitungLine]
+    land_code: str | None = None
+    land_name: str | None = None
+    werk_code: str | None = None
+    werk_name: str | None = None
+    werk_id: int | None = None
+    assumptions: list[AssumptionRow] = field(default_factory=list)
+    parts: list[PartDetail] = field(default_factory=list)
+    purchased: list[PurchasedDetail] = field(default_factory=list)
+    processes: list[AssyProcessDetail] = field(default_factory=list)
+    ueberleitung: list[UeberleitungLine] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     live_endpreis: float | None = None
     live_herstellkosten: float | None = None
@@ -226,9 +233,11 @@ def _resolve_hierarchy(db: Session, obj: Baugruppe) -> tuple[str | None, str | N
     )
 
 
-def _load_rates(db: Session) -> tuple[CentralMarkupRates | None, list[str]]:
+def _load_rates(
+    db: Session, *, werk_id: int | None = None
+) -> tuple[CentralMarkupRates | None, list[str]]:
     try:
-        return load_central_markup_rates(db), []
+        return load_central_markup_rates(db, werk_id=werk_id), []
     except CentralMarkupRatesError as exc:
         return None, [str(exc)]
 
@@ -606,6 +615,8 @@ def _purchased_detail(
             nominierung=None,
             mgk_pct=None,
             kaufteil_mgk=_money(preis - float(pos.cost_snapshot or 0)),
+            handling_oem_pct=None,
+            handling_oem=0.0,
             preis_inkl_mgk=preis,
             zwischensumme=_money(preis * menge),
             hinweise=["Kaufteil-Stammdatensatz fehlt – Snapshot verwendet."],
@@ -625,14 +636,20 @@ def _purchased_detail(
         except CentralMarkupRatesError as exc:
             hints.append(str(exc))
 
+    handling_pct = 0.0
+    if nominierung == "oem_nominiert" and rates is not None:
+        handling_pct = float(getattr(rates, "handling_oem_kaufteil_pct", 0) or 0)
+    handling_betrag = _money(einkauf * (handling_pct / 100.0))
+
     if mgk_pct is None:
         inkl = float(pos.price_snapshot or einkauf)
-        mgk_betrag = _money(inkl - einkauf)
+        # Snapshot enthält bereits MGK+Handling; für Anzeige Handling separat ausweisen
+        mgk_betrag = _money(max(0.0, inkl - einkauf - handling_betrag))
         if not nominierung:
             hints.append("Kaufteil-Nominierung fehlt – kein zentraler MGK-Satz anwendbar.")
     else:
-        inkl = _money(einkauf * (1 + mgk_pct / 100.0))
-        mgk_betrag = _money(inkl - einkauf)
+        inkl = _money(einkauf * (1 + mgk_pct / 100.0) + handling_betrag)
+        mgk_betrag = _money(einkauf * (mgk_pct / 100.0))
 
     if ergebnis_line and ergebnis_line.get("zwischensumme") is not None:
         zw = float(ergebnis_line["zwischensumme"])
@@ -650,6 +667,8 @@ def _purchased_detail(
         nominierung=nominierung,
         mgk_pct=mgk_pct,
         kaufteil_mgk=mgk_betrag,
+        handling_oem_pct=handling_pct if handling_pct else None,
+        handling_oem=handling_betrag,
         preis_inkl_mgk=inkl,
         zwischensumme=zw,
         hinweise=hints,
@@ -954,6 +973,32 @@ def _build_applied_assumptions(
     return rows
 
 
+def _resolve_werk(
+    db: Session, obj: Baugruppe
+) -> tuple[str | None, str | None, str | None, str | None, int | None]:
+    """land_code, land_name, werk_code, werk_name, werk_id."""
+    werk_id = getattr(obj, "werk_id", None)
+    if not werk_id:
+        return None, None, None, None, None
+    try:
+        row = db.execute(
+            text(
+                """
+                SELECT w.code, w.name, l.code, l.name
+                FROM werke w
+                LEFT JOIN laender l ON l.id = w.land_id
+                WHERE w.id = :wid
+                """
+            ),
+            {"wid": werk_id},
+        ).first()
+    except Exception:
+        return None, None, None, None, werk_id
+    if not row:
+        return None, None, None, None, werk_id
+    return row[2], row[3], row[0], row[1], werk_id
+
+
 def build_baugruppe_detail_kalkulation(db: Session, assembly_id: int) -> BaugruppeDetailKalkulation:
     obj = db.get(Baugruppe, assembly_id)
     if not obj:
@@ -961,7 +1006,8 @@ def build_baugruppe_detail_kalkulation(db: Session, assembly_id: int) -> Baugrup
 
     ergebnis = parse_json_dict(obj.ergebnis) or {}
     customer_name, program_name, project_name = _resolve_hierarchy(db, obj)
-    rates, rate_warnings = _load_rates(db)
+    land_code, land_name, werk_code, werk_name, werk_id = _resolve_werk(db, obj)
+    rates, rate_warnings = _load_rates(db, werk_id=werk_id)
     assumptions = _build_applied_assumptions(rates, ergebnis, rate_warnings)
 
     positions, positions_source = _positions_for_export(db, obj)
@@ -1065,6 +1111,11 @@ def build_baugruppe_detail_kalkulation(db: Session, assembly_id: int) -> Baugrup
         program_name=program_name,
         customer_name=customer_name,
         project_name=project_name,
+        land_code=land_code,
+        land_name=land_name,
+        werk_code=werk_code,
+        werk_name=werk_name,
+        werk_id=werk_id,
         assumptions=assumptions,
         parts=parts,
         purchased=purchased,
@@ -1157,6 +1208,15 @@ def _build_ueberleitung(
                 f"({k.nominierung or 'ohne Nominierung'})",
             )
         )
+        if getattr(k, "handling_oem", 0):
+            lines.append(
+                UeberleitungLine(
+                    f"  └ OEM-Handling {k.bezeichnung}",
+                    _money(float(k.handling_oem) * k.menge),
+                    f"{k.handling_oem_pct if k.handling_oem_pct is not None else '–'} % "
+                    "(separat von Kaufteil-MGK)",
+                )
+            )
         kauf_einkauf += k.einkaufspreis * k.menge
         kauf_mgk += k.kaufteil_mgk * k.menge
     if purchased:

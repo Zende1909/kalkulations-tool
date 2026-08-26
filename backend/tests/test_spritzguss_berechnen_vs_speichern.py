@@ -226,6 +226,8 @@ def _session_with_schema() -> Session:
                     project_id INTEGER,
                     calculation_year INTEGER,
                     project_volume FLOAT,
+                    werk_id INTEGER,
+                    losgroesse INTEGER,
                     material_id INTEGER,
                     schussgewicht_g FLOAT NOT NULL DEFAULT 0,
                     teilegewicht_netto_g FLOAT NOT NULL DEFAULT 0,

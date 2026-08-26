@@ -33,6 +33,7 @@ def _create_sqlite_phase_a_schema(engine) -> None:
             aktiv BOOLEAN NOT NULL DEFAULT 1,
             linked_project_id INTEGER,
             project_id INTEGER REFERENCES projects(id),
+            werk_id INTEGER,
             assembly_type VARCHAR(16) NOT NULL DEFAULT 'TOP_LEVEL',
             structure_version INTEGER NOT NULL DEFAULT 1,
             legacy_mode BOOLEAN NOT NULL DEFAULT 1,
@@ -56,7 +57,9 @@ def _create_sqlite_phase_a_schema(engine) -> None:
             kavitaeten INTEGER NOT NULL DEFAULT 1,
             maschinenstundensatz FLOAT NOT NULL DEFAULT 0,
             lohnstundensatz FLOAT NOT NULL DEFAULT 0,
-            werkzeugkosten_eur FLOAT NOT NULL DEFAULT 0
+            werkzeugkosten_eur FLOAT NOT NULL DEFAULT 0,
+            werk_id INTEGER,
+            losgroesse INTEGER
         )
         """,
         """

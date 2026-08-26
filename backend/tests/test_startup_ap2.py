@@ -215,9 +215,26 @@ def test_ensure_investition_schema_contains_no_dml():
     assert "except Exception:\n                    pass" not in module_source
 
 
-def test_alembic_head_revision_is_veredelung_snapshot_yield():
+def test_alembic_head_revision_is_plant_costing():
     heads = get_alembic_head_revisions()
-    assert heads == ("e1a0007_veredelung_snapshot_yield",)
+    assert heads == ("e1a0008_plant_costing",)
+
+
+def test_warn_if_database_behind_alembic_head_logs(caplog, tmp_path: Path):
+    from app.startup import warn_if_database_behind_alembic_head
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'behind.db'}")
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(64) NOT NULL)"))
+        conn.execute(
+            text(
+                "INSERT INTO alembic_version (version_num) "
+                "VALUES ('e1a0006_spritzguss_material_nominierung')"
+            )
+        )
+    with caplog.at_level("WARNING"):
+        warn_if_database_behind_alembic_head(engine)
+    assert any("hinter dem Code-Head" in r.message for r in caplog.records)
 
 
 def test_verify_alembic_head_fails_when_unversioned(monkeypatch: pytest.MonkeyPatch):

@@ -37,6 +37,8 @@ def _create_schema(engine) -> None:
                 project_id INTEGER,
                 calculation_year INTEGER,
                 project_volume FLOAT,
+                werk_id INTEGER,
+                losgroesse INTEGER,
                 material_id INTEGER,
                 schussgewicht_g FLOAT NOT NULL DEFAULT 0,
                 teilegewicht_netto_g FLOAT NOT NULL DEFAULT 100,
@@ -87,7 +89,8 @@ def _create_schema(engine) -> None:
             CREATE TABLE baugruppen (
                 id INTEGER PRIMARY KEY,
                 name VARCHAR(255) NOT NULL DEFAULT '',
-                aktiv BOOLEAN NOT NULL DEFAULT 1
+                aktiv BOOLEAN NOT NULL DEFAULT 1,
+                werk_id INTEGER
             )
             """,
             """

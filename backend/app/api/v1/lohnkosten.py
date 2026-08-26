@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.permissions import require_kalkulator, require_viewer
 from app.crud import lohnkosten as lohnkosten_crud
 from app.database import get_db
+from app.models.lohnkosten import Lohnkosten
 from app.models.user import User
 from app.schemas.lohnkosten import LohnkostenCreate, LohnkostenRead, LohnkostenUpdate
 
@@ -13,11 +15,18 @@ router = APIRouter(prefix="/lohnkosten", tags=["Lohnkosten"])
 @router.get("", response_model=list[LohnkostenRead])
 def list_lohnkosten(
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 200,
+    werk_id: int | None = Query(default=None),
+    rolle: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
-    return lohnkosten_crud.lohnkosten.get_multi(db, skip=skip, limit=limit)
+    stmt = select(Lohnkosten).order_by(Lohnkosten.bezeichnung.asc()).offset(skip).limit(limit)
+    if werk_id is not None:
+        stmt = stmt.where(Lohnkosten.werk_id == werk_id)
+    if rolle is not None:
+        stmt = stmt.where(Lohnkosten.rolle == rolle)
+    return list(db.scalars(stmt).all())
 
 
 @router.get("/{item_id}", response_model=LohnkostenRead)

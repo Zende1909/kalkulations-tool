@@ -123,6 +123,37 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
         ExportRow("Kavitäten", str(obj.kavitaeten)),
         ExportRow("Jahresstückzahl", str(obj.jahresstueckzahl)),
         ExportRow(
+            "Werk / Standort",
+            (
+                f"{(ergebnis.get('werk_snapshot') or {}).get('code', '–')} "
+                f"({(ergebnis.get('werk_snapshot') or {}).get('currency', '')}, "
+                f"FX {(ergebnis.get('werk_snapshot') or {}).get('fx_to_eur', '–')})"
+                if isinstance(ergebnis.get("werk_snapshot"), dict)
+                else "–"
+            ),
+        ),
+        ExportRow(
+            "Maschinenrate Quellwährung",
+            (
+                f"{(ergebnis.get('maschinen_rate_snapshot') or {}).get('stundensatz_source', '–')} "
+                f"{(ergebnis.get('maschinen_rate_snapshot') or {}).get('source_currency', '')}/h"
+                if isinstance(ergebnis.get("maschinen_rate_snapshot"), dict)
+                else "–"
+            ),
+        ),
+        ExportRow(
+            "Losgröße",
+            str(getattr(obj, "losgroesse", None) or ergebnis.get("losgroesse") or "–"),
+        ),
+        ExportRow(
+            "Setup aktiv",
+            "ja" if ergebnis.get("setup_aktiv") else "nein",
+        ),
+        ExportRow(
+            "Setup-Zeit",
+            f"{float(ergebnis.get('setup_zeit_min') or 0):.1f} min",
+        ),
+        ExportRow(
             "Material-MGK",
             _pct_applied_or_stored(ergebnis, "applied_mgk_pct", obj.mgk_pct),
         ),
@@ -155,6 +186,18 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
         ExportMoneyRow("Material-MGK", _float_from(ergebnis, "materialgemeinkosten")),
         money("Maschinenkosten", "maschinenkosten"),
         money("Fertigungslohn", "fertigungslohn"),
+        ExportMoneyRow(
+            "Setup Maschinen je Teil",
+            _float_from(ergebnis, "setup_maschinenkosten_je_teil"),
+        ),
+        ExportMoneyRow(
+            "Setup Lohn je Teil",
+            _float_from(ergebnis, "setup_lohnkosten_je_teil"),
+        ),
+        ExportMoneyRow(
+            "Setup gesamt je Teil",
+            _float_from(ergebnis, "setup_kosten_je_teil"),
+        ),
         ExportMoneyRow("FGK-Basis", _float_from(ergebnis, "fgk_basis")),
         money("Fertigungsgemeinkosten (FGK)", "fertigungsgemeinkosten"),
         money("Spritzguss-Herstellkosten", "spritzguss_herstellkosten"),
@@ -544,6 +587,12 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
             )
 
     selbstkosten = _float_from(ergebnis, "selbstkosten")
+    land_label = ""
+    if detail.land_code or detail.land_name:
+        land_label = f"{detail.land_code or ''} – {detail.land_name or ''}".strip(" –")
+    werk_label = ""
+    if detail.werk_code or detail.werk_name:
+        werk_label = f"{detail.werk_code or ''} – {detail.werk_name or ''}".strip(" –")
     return BaugruppeExportData(
         company_name=settings.COMPANY_NAME,
         assembly_id=obj.id,
@@ -657,6 +706,8 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
         program=detail.program_name or "",
         selbstkosten=selbstkosten,
         detail=detail,
+        land=land_label,
+        werk=werk_label,
     )
 
 

@@ -21,7 +21,7 @@ import {
   type HierarchySelection,
 } from "../components/hierarchy/HierarchySelector";
 import { useAuth } from "../context/AuthContext";
-import type { Lohnkosten, Maschine, Material } from "../types/stammdaten";
+import type { Lohnkosten, Land, Maschine, Material, Werk } from "../types/stammdaten";
 import type { Veredelungsschritt } from "../types/veredelung";
 import {
   emptySpritzgussForm,
@@ -193,6 +193,9 @@ export function SpritzgussPage() {
   const [materials, setMaterials] = useState<Material[]>([]);
   const [machines, setMachines] = useState<Maschine[]>([]);
   const [lohns, setLohns] = useState<Lohnkosten[]>([]);
+  const [laender, setLaender] = useState<Land[]>([]);
+  const [werke, setWerke] = useState<Werk[]>([]);
+  const [selectedLandId, setSelectedLandId] = useState<number | null>(null);
   const [veredelungPool, setVeredelungPool] = useState<Veredelungsschritt[]>([]);
   const [selectedVeredelung, setSelectedVeredelung] = useState<SelectedVeredelung[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -205,16 +208,20 @@ export function SpritzgussPage() {
   };
 
   const loadStammdaten = useCallback(async () => {
-    const [mats, masch, lohn, veredelung] = await Promise.all([
+    const [mats, masch, lohn, veredelung, lands, plants] = await Promise.all([
       api.get<Material[]>("/materialien"),
       api.get<Maschine[]>("/maschinen"),
       api.get<Lohnkosten[]>("/lohnkosten"),
       listVeredelungsschritte(),
+      api.get<Land[]>("/laender"),
+      api.get<Werk[]>("/werke"),
     ]);
     setMaterials(mats.filter((m) => m.aktiv));
     setMachines(masch.filter((m) => m.aktiv));
     setLohns(lohn.filter((l) => l.aktiv));
     setVeredelungPool(veredelung.filter((v) => v.aktiv));
+    setLaender(lands.filter((l) => l.aktiv));
+    setWerke(plants.filter((w) => w.aktiv));
   }, []);
 
   const loadList = useCallback(async () => {
@@ -259,9 +266,61 @@ export function SpritzgussPage() {
       gewinn_pct: form.gewinn_pct,
       skonto_pct: form.skonto_pct,
       veredelung_zuordnungen: veredelungZuordnungen,
+      werk_id: form.werk_id,
+      losgroesse: form.losgroesse,
+      setup_zeit_min: form.setup_zeit_min,
+      setup_maschinenstundensatz: form.setup_maschinenstundensatz || form.maschinenstundensatz,
+      setup_lohnstundensatz: form.setup_lohnstundensatz,
+      setup_mitarbeiter: form.setup_mitarbeiter,
+      setup_aktiv: form.setup_aktiv || form.setup_zeit_min > 0,
     }),
     [form, veredelungZuordnungen],
   );
+
+  const filteredWerke = useMemo(
+    () =>
+      selectedLandId == null
+        ? werke
+        : werke.filter((w) => w.land_id === selectedLandId),
+    [werke, selectedLandId],
+  );
+
+  const filteredMachines = useMemo(() => {
+    if (form.werk_id == null) return machines.filter((m) => m.werk_id == null || !m.werk_id);
+    return machines.filter((m) => m.werk_id === form.werk_id);
+  }, [machines, form.werk_id]);
+
+  const filteredLohns = useMemo(() => {
+    if (form.werk_id == null) return lohns;
+    return lohns.filter((l) => l.werk_id === form.werk_id || l.werk_id == null);
+  }, [lohns, form.werk_id]);
+
+  const handleWerkChange = (id: string) => {
+    if (!id) {
+      setForm((current) => ({
+        ...current,
+        werk_id: null,
+        maschine_id: null,
+        lohnkosten_id: null,
+      }));
+      return;
+    }
+    const wid = Number(id);
+    const plant = werke.find((w) => w.id === wid);
+    const prod = lohns.find((l) => l.werk_id === wid && l.rolle === "produktion");
+    const setup = lohns.find((l) => l.werk_id === wid && l.rolle === "setup");
+    setForm((current) => ({
+      ...current,
+      werk_id: wid,
+      maschine_id: null,
+      lohnkosten_id: prod?.id ?? null,
+      lohnstundensatz: prod?.kosten_pro_stunde ?? current.lohnstundensatz,
+      setup_lohnstundensatz: setup?.kosten_pro_stunde ?? current.setup_lohnstundensatz,
+    }));
+    if (plant) {
+      setSelectedLandId(plant.land_id);
+    }
+  };
 
   const veredelungGesamtAktiv = useMemo(
     () =>
@@ -367,6 +426,11 @@ export function SpritzgussPage() {
       ...current,
       maschine_id: maschine.id,
       maschinenstundensatz: maschine.stundensatz,
+      setup_maschinenstundensatz: maschine.stundensatz,
+      setup_zeit_min: maschine.setup_zeit_min ?? current.setup_zeit_min,
+      setup_mitarbeiter: maschine.setup_mitarbeiter ?? current.setup_mitarbeiter,
+      setup_aktiv: (maschine.setup_zeit_min ?? 0) > 0,
+      werk_id: maschine.werk_id ?? current.werk_id,
     }));
   };
 
@@ -493,6 +557,13 @@ export function SpritzgussPage() {
         ausschussquote_pct: item.ausschussquote_pct,
         materialpreis_pro_kg: item.materialpreis_pro_kg,
         material_nominierung: item.material_nominierung ?? null,
+        werk_id: item.werk_id ?? null,
+        losgroesse: item.losgroesse ?? null,
+        setup_zeit_min: item.setup_zeit_min ?? 0,
+        setup_maschinenstundensatz: item.setup_maschinenstundensatz ?? 0,
+        setup_lohnstundensatz: item.setup_lohnstundensatz ?? 0,
+        setup_mitarbeiter: item.setup_mitarbeiter ?? 0,
+        setup_aktiv: item.setup_aktiv ?? false,
         maschine_id: item.maschine_id,
         zykluszeit_s: item.zykluszeit_s,
         kavitaeten: item.kavitaeten,
@@ -516,7 +587,12 @@ export function SpritzgussPage() {
         notizen: item.notizen,
         aktiv: item.aktiv,
       });
-      setBloecke((item.ergebnis_bloecke as SpritzgussBloecke) ?? null);
+      if (item.werk_id != null) {
+        const plant = werke.find((w) => w.id === item.werk_id);
+        if (plant) setSelectedLandId(plant.land_id);
+      } else {
+        setSelectedLandId(null);
+      }      setBloecke((item.ergebnis_bloecke as SpritzgussBloecke) ?? null);
       loadVeredelungFromSaved(item.veredelung_zuordnungen);
       setSuccess(`Kalkulation #${item.id} geladen.`);
     } catch (err) {
@@ -760,6 +836,40 @@ export function SpritzgussPage() {
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 font-semibold text-gray-900">Maschine & Lohn</h3>
             <div className="grid gap-3 md:grid-cols-2">
+              <label className="block text-sm">
+                <span className="font-medium text-gray-700">Land / Region</span>
+                <select
+                  value={selectedLandId ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value ? Number(e.target.value) : null;
+                    setSelectedLandId(v);
+                    setForm((c) => ({ ...c, werk_id: null, maschine_id: null }));
+                  }}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                >
+                  <option value="">– optional / Legacy –</option>
+                  {laender.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.code} – {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="font-medium text-gray-700">Werk / Standort</span>
+                <select
+                  value={form.werk_id ?? ""}
+                  onChange={(e) => handleWerkChange(e.target.value)}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                >
+                  <option value="">– optional / Legacy –</option>
+                  {filteredWerke.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.code} – {w.name} ({w.currency}, FX {w.fx_to_eur})
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="block text-sm md:col-span-2">
                 <span className="font-medium text-gray-700">Maschine (Stammdaten)</span>
                 <select
@@ -768,7 +878,7 @@ export function SpritzgussPage() {
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
                   <option value="">– auswählen –</option>
-                  {machines.map((m) => (
+                  {filteredMachines.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.maschinen_nr} – {m.bezeichnung} ({euro(m.stundensatz)} €/h)
                     </option>
@@ -795,25 +905,57 @@ export function SpritzgussPage() {
                 onChange={(v) => setField("maschinenstundensatz", v)}
               />
               <label className="block text-sm md:col-span-2">
-                <span className="font-medium text-gray-700">Lohnkosten (Stammdaten)</span>
+                <span className="font-medium text-gray-700">Lohnkosten Produktion</span>
                 <select
                   value={form.lohnkosten_id ?? ""}
                   onChange={(e) => handleLohnChange(e.target.value)}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
                   <option value="">– auswählen –</option>
-                  {lohns.map((l) => (
+                  {filteredLohns.map((l) => (
                     <option key={l.id} value={l.id}>
-                      {l.bezeichnung} ({euro(l.kosten_pro_stunde)} €/h)
+                      {l.bezeichnung}
+                      {l.rolle ? ` [${l.rolle}]` : ""} ({euro(l.kosten_pro_stunde)} €/h)
                     </option>
                   ))}
                 </select>
               </label>
               <NumberInput
-                label="Lohnstundensatz (€/h, überschreibbar)"
+                label="Lohnstundensatz Produktion (€/h)"
                 value={form.lohnstundensatz}
                 min={0}
                 onChange={(v) => setField("lohnstundensatz", v)}
+              />
+              <NumberInput
+                label="Setup-Lohnsatz (€/h)"
+                value={form.setup_lohnstundensatz}
+                min={0}
+                onChange={(v) => setField("setup_lohnstundensatz", v)}
+              />
+              <NumberInput
+                label="Setup-Zeit (min)"
+                value={form.setup_zeit_min}
+                min={0}
+                onChange={(v) => setField("setup_zeit_min", v)}
+              />
+              <NumberInput
+                label="Setup-Mitarbeiter"
+                value={form.setup_mitarbeiter}
+                min={0}
+                onChange={(v) => setField("setup_mitarbeiter", v)}
+              />
+              <NumberInput
+                label="Losgröße (für Setup-Umlage)"
+                value={form.losgroesse ?? 0}
+                min={0}
+                step="1"
+                onChange={(v) => setField("losgroesse", v > 0 ? Math.round(v) : null)}
+              />
+              <NumberInput
+                label="Setup-Maschinenstundensatz (€/h)"
+                value={form.setup_maschinenstundensatz}
+                min={0}
+                onChange={(v) => setField("setup_maschinenstundensatz", v)}
               />
             </div>
           </section>

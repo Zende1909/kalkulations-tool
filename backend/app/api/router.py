@@ -17,6 +17,7 @@ from app.api.v1 import (
     projects,
     reports,
     spritzguss,
+    standorte,
     users,
     veredelung,
     zuschlagssaetze,
@@ -29,6 +30,7 @@ api_router.include_router(materialien.router)
 api_router.include_router(maschinen.router)
 api_router.include_router(lohnkosten.router)
 api_router.include_router(zuschlagssaetze.router)
+api_router.include_router(standorte.router)
 api_router.include_router(spritzguss.router)
 api_router.include_router(veredelung.router)
 api_router.include_router(kaufteile.router)

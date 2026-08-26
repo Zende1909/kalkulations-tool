@@ -29,8 +29,10 @@ import {
   type LegacyFreitext,
 } from "../components/hierarchy/customerProjectSelection";
 import { getAverageJahresstueckzahl } from "../api/hierarchy";
+import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type { SpritzgussListItem } from "../types/spritzguss";
+import type { Land, Werk } from "../types/stammdaten";
 import type { Veredelungsschritt } from "../types/veredelung";
 import {
   emptyBaugruppeForm,
@@ -93,6 +95,9 @@ export function BaugruppenPage() {
   const [listFilter, setListFilter] = useState<"aktiv" | "archiviert">("aktiv");
   const [jahresstueckzahlHint, setJahresstueckzahlHint] = useState<string | null>(null);
   const [jahresstueckzahlLoading, setJahresstueckzahlLoading] = useState(false);
+  const [laender, setLaender] = useState<Land[]>([]);
+  const [werke, setWerke] = useState<Werk[]>([]);
+  const [selectedLandId, setSelectedLandId] = useState<number | null>(null);
 
   const formHierarchy = useMemo(
     (): CustomerProjectSelection => ({
@@ -102,6 +107,19 @@ export function BaugruppenPage() {
     }),
     [form.customer_id, form.program_id, form.project_id],
   );
+
+  const filteredWerke = useMemo(() => {
+    const forLand =
+      selectedLandId == null
+        ? werke
+        : werke.filter((w) => w.land_id === selectedLandId);
+    const current = form.werk_id != null ? werke.find((w) => w.id === form.werk_id) : null;
+    const active = forLand.filter((w) => w.aktiv);
+    if (current && !current.aktiv && !active.some((w) => w.id === current.id)) {
+      return [...active, current];
+    }
+    return active;
+  }, [werke, selectedLandId, form.werk_id]);
 
   const setField = <K extends keyof BaugruppeFormData>(key: K, value: BaugruppeFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -166,14 +184,18 @@ export function BaugruppenPage() {
   }, [listFilter]);
 
   const loadReferences = useCallback(async () => {
-    const [sg, kt, vd] = await Promise.all([
+    const [sg, kt, vd, lands, plants] = await Promise.all([
       listKalkulationen(),
       listKaufteile({ nurAktiv: true }),
       listVeredelungsschritte(),
+      api.get<Land[]>("/laender"),
+      api.get<Werk[]>("/werke"),
     ]);
     setSpritzgussList(sg.filter((s) => s.aktiv));
     setKaufteileList(kt.filter((k) => k.aktiv));
     setVeredelungList(vd.filter((v) => v.aktiv));
+    setLaender(lands);
+    setWerke(plants);
   }, []);
 
   useEffect(() => {
@@ -236,6 +258,7 @@ export function BaugruppenPage() {
   const handleNew = () => {
     setEditId(null);
     setForm(emptyBaugruppeForm());
+    setSelectedLandId(null);
     setLegacyFreitext(null);
     setLoadedHierarchy({ customer_id: null, program_id: null, project_id: null });
     setUnlinkConfirmed(false);
@@ -394,11 +417,16 @@ export function BaugruppenPage() {
         project_id: nextHierarchy.project_id,
         customer_id: nextHierarchy.customer_id,
         program_id: nextHierarchy.program_id,
+        werk_id: saved.werk_id ?? null,
         jahresstueckzahl: saved.jahresstueckzahl,
         beschreibung: saved.beschreibung,
         status: saved.status,
         aktiv: saved.aktiv,
       });
+      if (saved.werk_id != null) {
+        const plant = werke.find((w) => w.id === saved.werk_id);
+        if (plant) setSelectedLandId(plant.land_id);
+      }
       setLoadedHierarchy(nextHierarchy);
       setUnlinkConfirmed(false);
       if (saved.project_id == null && (saved.kunde || saved.projekt)) {
@@ -485,11 +513,18 @@ export function BaugruppenPage() {
         project_id: nextHierarchy.project_id,
         customer_id: nextHierarchy.customer_id,
         program_id: nextHierarchy.program_id,
+        werk_id: item.werk_id ?? null,
         jahresstueckzahl: item.jahresstueckzahl,
         beschreibung: item.beschreibung,
         status: item.status,
         aktiv: item.aktiv,
       });
+      if (item.werk_id != null) {
+        const plant = werke.find((w) => w.id === item.werk_id);
+        setSelectedLandId(plant?.land_id ?? null);
+      } else {
+        setSelectedLandId(null);
+      }
       setLoadedHierarchy(nextHierarchy);
       setUnlinkConfirmed(false);
       if (item.project_id == null && (item.kunde || item.projekt)) {
@@ -675,6 +710,53 @@ export function BaugruppenPage() {
                   setForm((current) => applyHierarchyToFormFields(current, next, legacyFreitext));
                 }}
               />
+              <label className="block text-sm">
+                <span className="text-gray-600">Land / Region</span>
+                <select
+                  className="mt-1 w-full rounded border px-2 py-1.5"
+                  value={selectedLandId ?? ""}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const v = e.target.value ? Number(e.target.value) : null;
+                    setSelectedLandId(v);
+                    setForm((c) => ({ ...c, werk_id: null }));
+                  }}
+                >
+                  <option value="">– optional / Legacy –</option>
+                  {laender
+                    .filter((l) => l.aktiv || (form.werk_id != null && werke.some((w) => w.id === form.werk_id && w.land_id === l.id)))
+                    .map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.code} – {l.name}
+                        {!l.aktiv ? " (inaktiv)" : ""}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="text-gray-600">Werk / Standort</span>
+                <select
+                  className="mt-1 w-full rounded border px-2 py-1.5"
+                  value={form.werk_id ?? ""}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const wid = e.target.value ? Number(e.target.value) : null;
+                    setForm((c) => ({ ...c, werk_id: wid }));
+                    if (wid != null) {
+                      const plant = werke.find((w) => w.id === wid);
+                      if (plant) setSelectedLandId(plant.land_id);
+                    }
+                  }}
+                >
+                  <option value="">– optional / Legacy –</option>
+                  {filteredWerke.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.code} – {w.name}
+                      {!w.aktiv ? " (inaktiv)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {hierarchyClearedPendingUnlink && (
                 <div className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                   <p>

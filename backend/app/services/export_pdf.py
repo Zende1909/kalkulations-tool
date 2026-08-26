@@ -234,6 +234,8 @@ def render_baugruppe_pdf(data: BaugruppeExportData) -> bytes:
             ("Kunde", data.kunde or "–"),
             ("Programm", data.program or "–"),
             ("Projekt", data.projekt or "–"),
+            ("Land / Region", data.land or "–"),
+            ("Werk / Standort", data.werk or "–"),
             ("Status", data.status or "–"),
             ("Jahresstückzahl", str(data.jahresstueckzahl)),
             ("Baugruppen-ID", str(data.assembly_id)),

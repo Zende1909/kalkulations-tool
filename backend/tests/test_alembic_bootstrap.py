@@ -37,6 +37,15 @@ EXPECTED_BASELINE_TABLES = {
     "investitionen",
 }
 
+# Tabellen aus späteren Revisionen (ab e1a0008_plant_costing)
+EXPECTED_POST_BASELINE_TABLES = {
+    "laender",
+    "werke",
+    "werk_zuschlaege",
+}
+
+EXPECTED_CURRENT_ORM_TABLES = EXPECTED_BASELINE_TABLES | EXPECTED_POST_BASELINE_TABLES
+
 
 def _alembic_config() -> Config:
     assert ALEMBIC_INI.is_file(), f"alembic.ini fehlt: {ALEMBIC_INI}"
@@ -100,16 +109,16 @@ def test_baseline_revision_is_discoverable():
     assert BASELINE_REVISION in {r.revision for r in scripts.walk_revisions()}
 
 
-def test_alembic_head_is_veredelung_snapshot_yield_revision():
+def test_alembic_head_is_plant_costing_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0007_veredelung_snapshot_yield"]
-    rev = scripts.get_revision("e1a0007_veredelung_snapshot_yield")
+    assert scripts.get_heads() == ["e1a0008_plant_costing"]
+    rev = scripts.get_revision("e1a0008_plant_costing")
     assert rev is not None
-    assert rev.down_revision == "e1a0006_spritzguss_material_nominierung"
-    e6 = scripts.get_revision("e1a0006_spritzguss_material_nominierung")
-    assert e6 is not None
-    assert e6.down_revision == "e1a0005_central_markups_kaufteil"
+    assert rev.down_revision == "e1a0007_veredelung_snapshot_yield"
+    e7 = scripts.get_revision("e1a0007_veredelung_snapshot_yield")
+    assert e7 is not None
+    assert e7.down_revision == "e1a0006_spritzguss_material_nominierung"
     e5 = scripts.get_revision("e1a0005_central_markups_kaufteil")
     assert e5 is not None
     assert e5.down_revision == "e1a0004_m5_assembly_positions"
@@ -137,7 +146,7 @@ def test_baseline_table_list_matches_orm_metadata():
     from app.database import Base
     from app import models as _models  # noqa: F401
 
-    assert set(Base.metadata.tables.keys()) == EXPECTED_BASELINE_TABLES
+    assert set(Base.metadata.tables.keys()) == EXPECTED_CURRENT_ORM_TABLES
     module = _load_baseline_module()
     assert set(module.BASELINE_TABLES) == EXPECTED_BASELINE_TABLES
 

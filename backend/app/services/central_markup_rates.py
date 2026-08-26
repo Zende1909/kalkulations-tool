@@ -67,6 +67,7 @@ class CentralMarkupRates:
     vvgk_pct: float  # SG&A / Overhead
     gewinn_pct: float
     skonto_pct: float
+    handling_oem_kaufteil_pct: float = 0.0
 
     @property
     def mgk_selbst_pct(self) -> float:
@@ -101,9 +102,13 @@ _REQUIRED: tuple[tuple[str, str], ...] = (
     (TYP_SKONTO, "skonto_pct"),
 )
 
+TYP_HANDLING_OEM = "handling_oem_kaufteil"
 
-def load_central_markup_rates(db: Session) -> CentralMarkupRates:
-    """Lädt aktive zentrale Sätze; wirft bei fehlendem Typ."""
+
+def load_central_markup_rates(
+    db: Session, *, werk_id: int | None = None
+) -> CentralMarkupRates:
+    """Lädt aktive zentrale Sätze; optionale Werk-Overrides für FGK/SG&A/Profit/Skonto/Handling."""
     if set(typ for typ, _ in _REQUIRED) != set(CENTRAL_MARKUP_TYPEN):
         raise RuntimeError("CENTRAL_MARKUP_TYPEN und Loader sind inkonsistent.")
 
@@ -123,6 +128,27 @@ def load_central_markup_rates(db: Session) -> CentralMarkupRates:
             + ". Bitte unter Stammdaten → Zuschlagssätze anlegen und aktivieren."
         )
 
+    handling = 0.0
+    if werk_id is not None:
+        from app.models.werk_zuschlag import WerkZuschlag
+
+        for row in db.scalars(
+            select(WerkZuschlag).where(
+                WerkZuschlag.werk_id == werk_id,
+                WerkZuschlag.aktiv.is_(True),
+            )
+        ).all():
+            key = (row.typ or "").strip()
+            if key in found and key in {
+                TYP_FGK,
+                TYP_VVGK,
+                TYP_GEWINN,
+                TYP_SKONTO,
+            }:
+                found[key] = float(row.satz_prozent)
+            if key == TYP_HANDLING_OEM:
+                handling = float(row.satz_prozent)
+
     return CentralMarkupRates(
         mgk_kaufteil_selbst_pct=found[TYP_MGK_SELBST],
         mgk_kaufteil_oem_pct=found[TYP_MGK_OEM],
@@ -130,4 +156,5 @@ def load_central_markup_rates(db: Session) -> CentralMarkupRates:
         vvgk_pct=found[TYP_VVGK],
         gewinn_pct=found[TYP_GEWINN],
         skonto_pct=found[TYP_SKONTO],
+        handling_oem_kaufteil_pct=handling,
     )

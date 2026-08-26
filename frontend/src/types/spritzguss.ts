@@ -86,6 +86,14 @@ export interface SpritzgussFormData {
   /** Nominierung am Materialeinsatz dieser Kalkulation */
   material_nominierung: "selbstnominiert" | "oem_nominiert" | null;
 
+  werk_id: number | null;
+  losgroesse: number | null;
+  setup_zeit_min: number;
+  setup_maschinenstundensatz: number;
+  setup_lohnstundensatz: number;
+  setup_mitarbeiter: number;
+  setup_aktiv: boolean;
+
   maschine_id: number | null;
   zykluszeit_s: number;
   kavitaeten: number;
@@ -146,6 +154,13 @@ export const emptySpritzgussForm = (): SpritzgussFormData => ({
   ausschussquote_pct: 0,
   materialpreis_pro_kg: 0,
   material_nominierung: null,
+  werk_id: null,
+  losgroesse: null,
+  setup_zeit_min: 0,
+  setup_maschinenstundensatz: 0,
+  setup_lohnstundensatz: 0,
+  setup_mitarbeiter: 0,
+  setup_aktiv: false,
   maschine_id: null,
   zykluszeit_s: 0,
   kavitaeten: 1,

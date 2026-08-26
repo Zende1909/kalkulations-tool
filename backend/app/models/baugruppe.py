@@ -47,6 +47,9 @@ class Baugruppe(Base, TimestampMixin):
         nullable=True,
         index=True,
     )
+    werk_id: Mapped[int | None] = mapped_column(
+        ForeignKey("werke.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     assembly_type: Mapped[str] = mapped_column(
         String(16), nullable=False, default="TOP_LEVEL", index=True
     )

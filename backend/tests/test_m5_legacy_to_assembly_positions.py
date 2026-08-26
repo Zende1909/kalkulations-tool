@@ -106,13 +106,13 @@ def test_m5_is_in_alembic_chain_before_head():
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0007_veredelung_snapshot_yield"]
+    assert scripts.get_heads() == ["e1a0008_plant_costing"]
     rev = scripts.get_revision(REVISION)
     assert rev is not None
     assert rev.down_revision == PREV
-    head = scripts.get_revision("e1a0007_veredelung_snapshot_yield")
+    head = scripts.get_revision("e1a0008_plant_costing")
     assert head is not None
-    assert head.down_revision == "e1a0006_spritzguss_material_nominierung"
+    assert head.down_revision == "e1a0007_veredelung_snapshot_yield"
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="PostgreSQL not available for smoke DB")

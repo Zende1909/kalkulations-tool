@@ -13,10 +13,13 @@ import {
   VeredelungPage,
 } from "./pages/ModulePages";
 import { KundenProgrammeProjektePage } from "./pages/stammdaten/KundenProgrammeProjektePage";
+import { LaenderPage } from "./pages/stammdaten/LaenderPage";
 import { LohnkostenPage } from "./pages/stammdaten/LohnkostenPage";
 import { KaufteilePage } from "./pages/stammdaten/KaufteilePage";
 import { MaschinenPage } from "./pages/stammdaten/MaschinenPage";
 import { MaterialienPage } from "./pages/stammdaten/MaterialienPage";
+import { WerkePage } from "./pages/stammdaten/WerkePage";
+import { WerkZuschlaegePage } from "./pages/stammdaten/WerkZuschlaegePage";
 import { ZuschlagssaetzePage } from "./pages/stammdaten/ZuschlagssaetzePage";
 
 export default function App() {
@@ -29,6 +32,9 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route index element={<DashboardPage />} />
               <Route path="stammdaten/materialien" element={<MaterialienPage />} />
+              <Route path="stammdaten/laender" element={<LaenderPage />} />
+              <Route path="stammdaten/werke" element={<WerkePage />} />
+              <Route path="stammdaten/werk-zuschlaege" element={<WerkZuschlaegePage />} />
               <Route path="stammdaten/maschinen" element={<MaschinenPage />} />
               <Route path="stammdaten/lohnkosten" element={<LohnkostenPage />} />
               <Route path="stammdaten/kaufteile" element={<KaufteilePage />} />

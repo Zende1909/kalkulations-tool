@@ -7,6 +7,9 @@ const navItems = [
     label: "Stammdaten",
     children: [
       { to: "/stammdaten/materialien", label: "Materialien" },
+      { to: "/stammdaten/laender", label: "Länder" },
+      { to: "/stammdaten/werke", label: "Werke" },
+      { to: "/stammdaten/werk-zuschlaege", label: "Werk-Zuschläge" },
       { to: "/stammdaten/maschinen", label: "Maschinen" },
       { to: "/stammdaten/lohnkosten", label: "Lohnkosten" },
       { to: "/stammdaten/kaufteile", label: "Kaufteile" },

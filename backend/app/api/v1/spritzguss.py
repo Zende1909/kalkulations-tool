@@ -3,7 +3,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.core.permissions import require_kalkulator, require_viewer
@@ -11,10 +11,12 @@ from app.database import get_db
 from app.models.assembly_position import AssemblyPosition
 from app.models.baugruppe import BaugruppeSpritzgussZuordnung
 from app.models.investition import Investition
+from app.models.maschine import Maschine
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.spritzguss_veredelung_zuordnung import SpritzgussVeredelungZuordnung
 from app.models.user import User
 from app.models.veredelungsschritt import Veredelungsschritt
+from app.models.werk import Werk
 from app.schemas.spritzguss_kalkulation import (
     SpritzgussCalcRequest,
     SpritzgussCalcResponse,
@@ -51,10 +53,12 @@ from app.services.veredelung_kalkulation import VeredelungInput as VeredelungCal
 router = APIRouter(prefix="/spritzguss", tags=["Spritzguss-Kalkulation"])
 
 
-def _apply_central_rates(db: Session, calc_input: SpritzgussInput) -> SpritzgussInput:
+def _apply_central_rates(
+    db: Session, calc_input: SpritzgussInput, *, werk_id: int | None = None
+) -> SpritzgussInput:
     """Überschreibt Zuschlagssätze mit zentral gepflegten Stammdatenwerten."""
     try:
-        rates = load_central_markup_rates(db)
+        rates = load_central_markup_rates(db, werk_id=werk_id)
         mgk_pct = rates.mgk_pct_for_nominierung(
             calc_input.material_nominierung,
             kontext="Spritzguss-Materialeinsatz",
@@ -81,6 +85,12 @@ def _apply_central_rates(db: Session, calc_input: SpritzgussInput) -> Spritzguss
         vvgk_pct=rates.vvgk_pct,
         gewinn_pct=rates.gewinn_pct,
         skonto_pct=rates.skonto_pct,
+        setup_zeit_min=calc_input.setup_zeit_min,
+        setup_maschinenstundensatz=calc_input.setup_maschinenstundensatz,
+        setup_lohnstundensatz=calc_input.setup_lohnstundensatz,
+        setup_mitarbeiter=calc_input.setup_mitarbeiter,
+        losgroesse=calc_input.losgroesse,
+        setup_aktiv=calc_input.setup_aktiv,
     )
 
 
@@ -168,7 +178,9 @@ def _normalize_veredelung_zuordnungen(
 
 
 def _to_calc_input_from_request(body: SpritzgussCalcRequest) -> SpritzgussInput:
-    data = body.model_dump(exclude={"veredelung_zuordnungen"})
+    data = body.model_dump(
+        exclude={"veredelung_zuordnungen", "werk_id"},
+    )
     return SpritzgussInput(**data)
 
 
@@ -198,6 +210,26 @@ def _to_calc_input_from_model(obj: SpritzgussKalkulation) -> SpritzgussInput:
         vvgk_pct=obj.vvgk_pct,
         gewinn_pct=obj.gewinn_pct,
         skonto_pct=obj.skonto_pct,
+        losgroesse=getattr(obj, "losgroesse", None),
+        setup_zeit_min=float((obj.ergebnis or {}).get("setup_zeit_min", 0) or 0)
+        if isinstance(obj.ergebnis, dict)
+        else 0.0,
+        setup_maschinenstundensatz=float(
+            (obj.ergebnis or {}).get("setup_maschinenstundensatz", 0) or 0
+        )
+        if isinstance(obj.ergebnis, dict)
+        else 0.0,
+        setup_lohnstundensatz=float(
+            (obj.ergebnis or {}).get("setup_lohnstundensatz", 0) or 0
+        )
+        if isinstance(obj.ergebnis, dict)
+        else 0.0,
+        setup_mitarbeiter=float((obj.ergebnis or {}).get("setup_mitarbeiter", 0) or 0)
+        if isinstance(obj.ergebnis, dict)
+        else 0.0,
+        setup_aktiv=bool((obj.ergebnis or {}).get("setup_aktiv", False))
+        if isinstance(obj.ergebnis, dict)
+        else False,
     )
 
 
@@ -328,17 +360,39 @@ def _zuordnung_read(
     )
 
 
-def _load_zuordnungen(db: Session, kalkulation_id: int) -> list[SpritzgussVeredelungZuordnung]:
-    return list(
-        db.scalars(
-            select(SpritzgussVeredelungZuordnung)
-            .where(SpritzgussVeredelungZuordnung.kalkulation_id == kalkulation_id)
-            .order_by(
-                SpritzgussVeredelungZuordnung.reihenfolge.asc(),
-                SpritzgussVeredelungZuordnung.id.asc(),
-            )
-        ).all()
+def _schema_mismatch_http(exc: ProgrammingError) -> HTTPException:
+    """Übersetzt fehlende Snapshot-Spalten in eine handlungsfähige API-Antwort."""
+    detail = (
+        "Datenbankschema ist veraltet (fehlende Veredelungs-Snapshot-Spalten). "
+        "Bitte `alembic upgrade head` ausführen "
+        "(Revision e1a0007_veredelung_snapshot_yield)."
     )
+    msg = str(getattr(exc, "orig", None) or exc)
+    if "snapshot_kosten_vor_ausschuss" in msg or "snapshot_ausschussquote_pct" in msg:
+        return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=detail)
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=(
+            "Datenbankschema passt nicht zum API-Code (UndefinedColumn). "
+            "Bitte `alembic upgrade head` ausführen."
+        ),
+    )
+
+
+def _load_zuordnungen(db: Session, kalkulation_id: int) -> list[SpritzgussVeredelungZuordnung]:
+    try:
+        return list(
+            db.scalars(
+                select(SpritzgussVeredelungZuordnung)
+                .where(SpritzgussVeredelungZuordnung.kalkulation_id == kalkulation_id)
+                .order_by(
+                    SpritzgussVeredelungZuordnung.reihenfolge.asc(),
+                    SpritzgussVeredelungZuordnung.id.asc(),
+                )
+            ).all()
+        )
+    except ProgrammingError as exc:
+        raise _schema_mismatch_http(exc) from exc
 
 
 def _sync_veredelung_zuordnungen(
@@ -387,9 +441,10 @@ def _build_calc_response(
     use_snapshots: bool = False,
     kalkulation_id: int | None = None,
     saved_rows: list[SpritzgussVeredelungZuordnung] | None = None,
+    werk_id: int | None = None,
 ) -> SpritzgussCalcResponse:
     zuordnungen = _normalize_veredelung_zuordnungen(zuordnungen)
-    calc_input = _apply_central_rates(db, calc_input)
+    calc_input = _apply_central_rates(db, calc_input, werk_id=werk_id)
     try:
         spritzguss = berechne_spritzguss(calc_input)
     except SpritzgussValidationError as exc:
@@ -524,6 +579,7 @@ def _apply_calculation(
         use_snapshots=use_snapshots,
         kalkulation_id=obj.id,
         saved_rows=_load_zuordnungen(db, obj.id) if obj.id else None,
+        werk_id=getattr(obj, "werk_id", None),
     )
     # Angewandte zentrale Sätze am Datensatz spiegeln (Export/Transparenz)
     ergebnis = response.ergebnis
@@ -539,7 +595,60 @@ def _apply_calculation(
         obj.skonto_pct = float(ergebnis.applied_skonto_pct)
     if ergebnis.material_nominierung is not None:
         obj.material_nominierung = ergebnis.material_nominierung
-    obj.ergebnis = ergebnis.model_dump()
+    previous = obj.ergebnis if isinstance(obj.ergebnis, dict) else {}
+    dumped = ergebnis.model_dump()
+    # Setup-Eingabeparameter beibehalten / aus calc_input spiegeln
+    calc_in = _to_calc_input_from_model(obj)
+    for key in (
+        "setup_zeit_min",
+        "setup_maschinenstundensatz",
+        "setup_lohnstundensatz",
+        "setup_mitarbeiter",
+        "setup_aktiv",
+    ):
+        dumped[key] = getattr(calc_in, key, previous.get(key, 0 if key != "setup_aktiv" else False))
+    # Maschinenrate-Snapshot (falls Maschine verknüpft)
+    rate_snap = previous.get("maschinen_rate_snapshot")
+    if obj.maschine_id:
+        maschine = db.get(Maschine, obj.maschine_id)
+        if maschine is not None:
+            rate_snap = {
+                "maschine_id": maschine.id,
+                "maschinen_nr": maschine.maschinen_nr,
+                "source_currency": maschine.source_currency,
+                "stundensatz_source": maschine.stundensatz_source,
+                "stundensatz_eur": maschine.stundensatz,
+                "jahresstunden": maschine.jahresstunden,
+                "komponenten_usd": {
+                    "space": maschine.space_costs_pro_stunde,
+                    "abschreibung": maschine.abschreibung_pro_stunde,
+                    "zinsen": maschine.zinsen_pro_stunde,
+                    "versicherung": maschine.versicherung_pro_stunde,
+                    "instandhaltung": maschine.instandhaltung_pro_stunde,
+                    "energie": maschine.energie_pro_stunde,
+                },
+                "fx_to_eur": None,
+                "werk_id": maschine.werk_id,
+            }
+            if maschine.werk_id:
+                werk = db.get(Werk, maschine.werk_id)
+                if werk:
+                    rate_snap["fx_to_eur"] = float(werk.fx_to_eur)
+                    rate_snap["currency"] = werk.currency
+                    rate_snap["werk_code"] = werk.code
+    if rate_snap:
+        dumped["maschinen_rate_snapshot"] = rate_snap
+    if getattr(obj, "werk_id", None):
+        werk = db.get(Werk, obj.werk_id)
+        if werk:
+            dumped["werk_snapshot"] = {
+                "werk_id": werk.id,
+                "code": werk.code,
+                "name": werk.name,
+                "currency": werk.currency,
+                "fx_to_eur": float(werk.fx_to_eur),
+            }
+    obj.ergebnis = dumped
     obj.ergebnis_bloecke = response.bloecke
     return response
 
@@ -558,15 +667,31 @@ def _kalkulation_to_read(db: Session, obj: SpritzgussKalkulation) -> SpritzgussK
         for row in rows
     ]
     base = SpritzgussKalkulationRead.model_validate(obj)
-    return base.model_copy(update={"veredelung_zuordnungen": zuordnungen})
+    erg = obj.ergebnis if isinstance(obj.ergebnis, dict) else {}
+    return base.model_copy(
+        update={
+            "veredelung_zuordnungen": zuordnungen,
+            "setup_zeit_min": float(erg.get("setup_zeit_min", 0) or 0),
+            "setup_maschinenstundensatz": float(
+                erg.get("setup_maschinenstundensatz", 0) or 0
+            ),
+            "setup_lohnstundensatz": float(erg.get("setup_lohnstundensatz", 0) or 0),
+            "setup_mitarbeiter": float(erg.get("setup_mitarbeiter", 0) or 0),
+            "setup_aktiv": bool(erg.get("setup_aktiv", False)),
+        }
+    )
 
 
 def _run_calculation(
     db: Session,
     calc_input: SpritzgussInput,
     zuordnungen: list[VeredelungZuordnungInput],
+    *,
+    werk_id: int | None = None,
 ) -> SpritzgussCalcResponse:
-    return _build_calc_response(db, calc_input, zuordnungen, use_snapshots=False)
+    return _build_calc_response(
+        db, calc_input, zuordnungen, use_snapshots=False, werk_id=werk_id
+    )
 
 
 def _sync_werkzeug_investition(db: Session, obj: SpritzgussKalkulation) -> None:
@@ -630,6 +755,7 @@ def berechnen(
         db,
         _to_calc_input_from_request(body),
         body.veredelung_zuordnungen,
+        werk_id=body.werk_id,
     )
 
 
@@ -827,6 +953,23 @@ def delete_veredelung_zuordnung(
     db.commit()
 
 
+SETUP_ERGEBNIS_KEYS = (
+    "setup_zeit_min",
+    "setup_maschinenstundensatz",
+    "setup_lohnstundensatz",
+    "setup_mitarbeiter",
+    "setup_aktiv",
+)
+
+
+def _merge_setup_into_ergebnis(obj: SpritzgussKalkulation, setup: dict[str, Any]) -> None:
+    current = dict(obj.ergebnis) if isinstance(obj.ergebnis, dict) else {}
+    for key in SETUP_ERGEBNIS_KEYS:
+        if key in setup and setup[key] is not None:
+            current[key] = setup[key]
+    obj.ergebnis = current
+
+
 @router.post("", response_model=SpritzgussKalkulationRead, status_code=status.HTTP_201_CREATED)
 def create_kalkulation(
     body: SpritzgussKalkulationCreate,
@@ -834,13 +977,17 @@ def create_kalkulation(
     _: User = Depends(require_kalkulator),
 ):
     zuordnungen = body.veredelung_zuordnungen
-    payload = body.model_dump(exclude={"veredelung_zuordnungen"})
+    payload = body.model_dump(exclude={"veredelung_zuordnungen", *SETUP_ERGEBNIS_KEYS})
     payload = _apply_hierarchy_payload(db, payload)
     if payload.get("werkzeug_abrechnungsart") == "einmalzahlung":
         payload["amortisationsvolumen"] = None
     obj = SpritzgussKalkulation(**payload)
     db.add(obj)
     db.flush()
+    _merge_setup_into_ergebnis(
+        obj,
+        {k: getattr(body, k) for k in SETUP_ERGEBNIS_KEYS},
+    )
     _sync_veredelung_zuordnungen(db, obj, zuordnungen)
     _apply_calculation(db, obj, zuordnungen, use_snapshots=True)
     db.commit()
@@ -867,6 +1014,9 @@ def update_kalkulation(
 
     updates = body.model_dump(exclude_unset=True)
     zuordnungen = updates.pop("veredelung_zuordnungen", None)
+    setup_updates = {k: updates.pop(k) for k in list(SETUP_ERGEBNIS_KEYS) if k in updates}
+    if setup_updates:
+        _merge_setup_into_ergebnis(obj, setup_updates)
     hierarchy_keys = {"customer_id", "program_id", "project_id", "calculation_year"}
     if hierarchy_keys.intersection(updates):
         merged = {

@@ -262,9 +262,11 @@ def _compute_part_live_values(
     )
 
 
-def load_global_markup_rates(db: Session) -> MarkupRates:
+def load_global_markup_rates(
+    db: Session, *, werk_id: int | None = None
+) -> MarkupRates:
     try:
-        rates = load_central_markup_rates(db)
+        rates = load_central_markup_rates(db, werk_id=werk_id)
     except CentralMarkupRatesError as exc:
         raise AssemblyRecalculationError(str(exc)) from exc
     return MarkupRates(
@@ -323,6 +325,7 @@ def _refresh_position_snapshot(
     pos: AssemblyPosition,
     *,
     position_index: int,
+    werk_id: int | None = None,
 ) -> None:
     now = datetime.now(UTC)
     prefix = f"Position #{position_index}"
@@ -346,15 +349,20 @@ def _refresh_position_snapshot(
         if not row:
             raise AssemblyRecalculationError(f"{prefix}: Kaufteil nicht gefunden", status_code=404)
         try:
-            rates = load_central_markup_rates(db)
+            rates = load_central_markup_rates(db, werk_id=werk_id)
             mgk_pct = rates.mgk_pct_for_nominierung(row[3])
         except CentralMarkupRatesError as exc:
             raise AssemblyRecalculationError(
                 f"{prefix}: {exc}",
             ) from exc
         einkauf = float(row[2])
-        pos.price_snapshot = _money(einkauf * (1 + mgk_pct / 100.0))
-        pos.cost_snapshot = einkauf  # Roh-Einkaufspreis zur Transparenz
+        mgk_amount = einkauf * (mgk_pct / 100.0)
+        handling_pct = 0.0
+        if row[3] == "oem_nominiert":
+            handling_pct = float(getattr(rates, "handling_oem_kaufteil_pct", 0) or 0)
+        handling_amount = einkauf * (handling_pct / 100.0)
+        pos.price_snapshot = _money(einkauf + mgk_amount + handling_amount)
+        pos.cost_snapshot = einkauf
         pos.name_snapshot = row[0]
         pos.supplier_snapshot = row[1]
 
@@ -598,7 +606,9 @@ def _recalculate_single(
     baugruppe = get_baugruppe_or_raise(db, baugruppe_id)
     positions = positions_preloaded or _validate_recalc_prerequisites(db, baugruppe)
     if markup_rates is None:
-        markup_rates = load_global_markup_rates(db)
+        markup_rates = load_global_markup_rates(
+            db, werk_id=getattr(baugruppe, "werk_id", None)
+        )
 
     for index, pos in enumerate(sorted(positions, key=lambda p: p.sequence), start=1):
         _validate_price_basis_for_calc(pos, index)
@@ -607,7 +617,12 @@ def _recalculate_single(
 
     if request.refresh_snapshots:
         for index, pos in enumerate(sorted(positions, key=lambda p: p.sequence), start=1):
-            _refresh_position_snapshot(db, pos, position_index=index)
+            _refresh_position_snapshot(
+                db,
+                pos,
+                position_index=index,
+                werk_id=getattr(baugruppe, "werk_id", None),
+            )
     else:
         for index, pos in enumerate(sorted(positions, key=lambda p: p.sequence), start=1):
             _ensure_snapshots_present(db, pos, position_index=index)
@@ -650,8 +665,7 @@ def recalculate_assembly_tree(
     request: AssemblyRecalculateRequest,
 ) -> AssemblyRecalculateResponse:
     root = get_baugruppe_or_raise(db, root_id)
-    # Zuschlagssätze erst nach Struktur-/Basis-Validierung laden (klarere Fehlerreihenfolge)
-    markup_rates: MarkupRates | None = None
+    # Zuschlagssätze je Baugruppe (werkbezogen) erst in _recalculate_single laden
     child_herstellkosten: dict[int, float] = {}
     recalculated_ids: list[int] = []
 
@@ -659,14 +673,12 @@ def recalculate_assembly_tree(
         for child_id in _child_recalc_order(db, root_id):
             if not load_positions(db, child_id):
                 continue
-            if markup_rates is None:
-                markup_rates = load_global_markup_rates(db)
             _, _, _, hk = _recalculate_single(
                 db,
                 child_id,
                 request,
                 child_herstellkosten=child_herstellkosten,
-                markup_rates=markup_rates,
+                markup_rates=None,
                 recalculated_ids=recalculated_ids,
             )
             child_herstellkosten[child_id] = hk
@@ -675,15 +687,13 @@ def recalculate_assembly_tree(
     positions = _validate_recalc_prerequisites(db, root)
     for index, pos in enumerate(sorted(positions, key=lambda p: p.sequence), start=1):
         _validate_price_basis_for_calc(pos, index)
-    if markup_rates is None:
-        markup_rates = load_global_markup_rates(db)
 
     calc_read, positions_read, warnings, _ = _recalculate_single(
         db,
         root_id,
         request,
         child_herstellkosten=child_herstellkosten,
-        markup_rates=markup_rates,
+        markup_rates=None,
         recalculated_ids=recalculated_ids,
         positions_preloaded=positions,
     )

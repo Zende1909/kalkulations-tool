@@ -37,6 +37,39 @@ def get_database_alembic_revisions(engine: Engine) -> tuple[str, ...]:
         return tuple(sorted(context.get_current_heads()))
 
 
+def warn_if_database_behind_alembic_head(engine: Engine) -> None:
+    """Dev-Bootstrap: warnen bei Alembic-Drift, ohne den Start zu blockieren."""
+    try:
+        expected = set(get_alembic_head_revisions())
+        current = set(get_database_alembic_revisions(engine))
+    except Exception:
+        logger.warning(
+            "Alembic-Stand konnte nicht geprüft werden (Dev-Bootstrap).",
+            exc_info=True,
+        )
+        return
+
+    if not current:
+        logger.warning(
+            "Datenbank ohne alembic_version – bitte `alembic upgrade head` "
+            "bzw. kontrolliert `alembic stamp` ausführen. Erwarteter Head: %s",
+            ", ".join(sorted(expected)),
+        )
+        return
+
+    if current != expected:
+        logger.warning(
+            "Alembic-Migrationsstand hinter dem Code-Head. "
+            "Aktuell: %s; erwartet: %s. Bitte `alembic upgrade head` ausführen, "
+            "sonst drohen UndefinedColumn-/Schemafehler (z. B. Veredelungs-Snapshots).",
+            ", ".join(sorted(current)),
+            ", ".join(sorted(expected)),
+        )
+        return
+
+    logger.info("Alembic-Stand OK (Dev): revision(s)=%s", ", ".join(sorted(current)))
+
+
 def verify_database_at_alembic_head(engine: Engine) -> None:
     """Fail fast if DB is missing alembic_version or is not at script head(s).
 
