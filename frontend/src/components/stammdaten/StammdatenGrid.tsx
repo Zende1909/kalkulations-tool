@@ -39,6 +39,11 @@ interface StammdatenGridProps<T extends { id: number }> {
     values: Record<string, string | number | boolean>,
     mode: FormMode,
   ) => Record<string, unknown>;
+  /** Mappt API-/Zeilenwerte auf Formularwerte (z. B. Anteil → UI-%). */
+  transformLoadValues?: (
+    values: Record<string, string | number | boolean>,
+    mode: FormMode,
+  ) => Record<string, string | number | boolean>;
   /** Wird bei jeder Formularänderung aufgerufen (z. B. Werk-Banner). */
   onFormValuesChange?: (values: Record<string, string | number | boolean>) => void;
 }
@@ -93,6 +98,7 @@ export function StammdatenGrid<T extends { id: number }>({
   formMaxWidthClassName,
   formFooterExtra,
   transformSubmitValues,
+  transformLoadValues,
   onFormValuesChange,
 }: StammdatenGridProps<T>) {
   const { canWrite } = useAuth();
@@ -155,8 +161,9 @@ export function StammdatenGrid<T extends { id: number }>({
     setFormMode("create");
     setEditingId(null);
     const initial = { ...(emptyFormValues as Record<string, string | number | boolean>) };
-    setFormValues(initial);
-    onFormValuesChange?.(initial);
+    const mapped = transformLoadValues ? transformLoadValues(initial, "create") : initial;
+    setFormValues(mapped);
+    onFormValuesChange?.(mapped);
     setFormError(null);
     setSuccess(null);
     setShowForm(true);
@@ -169,13 +176,14 @@ export function StammdatenGrid<T extends { id: number }>({
       setEditingId(row.id);
       setSelectedId(row.id);
       const values = rowToFormValues(row, formFields);
-      setFormValues(values);
-      onFormValuesChange?.(values);
+      const mapped = transformLoadValues ? transformLoadValues(values, "edit") : values;
+      setFormValues(mapped);
+      onFormValuesChange?.(mapped);
       setFormError(null);
       setSuccess(null);
       setShowForm(true);
     },
-    [canWrite, formFields, onFormValuesChange],
+    [canWrite, formFields, onFormValuesChange, transformLoadValues],
   );
 
   const closeForm = () => {

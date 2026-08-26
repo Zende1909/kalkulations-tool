@@ -22,6 +22,14 @@ _OPT_FLOAT_LABELS = {
 
 _OPT_FLOAT_FIELDS = tuple(_OPT_FLOAT_LABELS.keys())
 
+# Kapitalkostensätze am Werk: intern Anteil 0–1 (UI sendet nach /100, z. B. 8 % → 0,08).
+_RATE_FRACTION_FIELDS = ("zinssatz", "versicherungssatz", "instandhaltungssatz")
+_RATE_FRACTION_LABELS = {
+    "zinssatz": "Zinssatz",
+    "versicherungssatz": "Versicherungssatz",
+    "instandhaltungssatz": "Instandhaltungssatz",
+}
+
 
 def _parse_de_float(value: Any, *, field_label: str, allow_none: bool = True) -> float | None:
     """Akzeptiert float/int sowie Strings mit Komma oder Punkt (z. B. „0,92“)."""
@@ -128,18 +136,34 @@ class WerkBase(BaseModel):
         label = _OPT_FLOAT_LABELS.get(info.field_name or "", info.field_name or "Wert")
         return _parse_de_float(value, field_label=label, allow_none=True)
 
+    # Keine strenge Range-Validierung hier: WerkRead erbt WerkBase und muss
+    # auch Altdaten außerhalb 0–1 noch ausliefern können (Warnung nur in der UI).
+
+
+class WerkCreate(WerkBase):
     @field_validator("oee")
     @classmethod
     def validate_oee(cls, value: float | None) -> float | None:
         if value is None:
             return None
-        if value < 0 or value > 1:
-            raise ValueError("OEE muss zwischen 0 und 1 liegen (z. B. 0,9)")
+        if value <= 0 or value > 1:
+            raise ValueError("OEE muss im Intervall (0, 1] liegen (z. B. 0,9 = 90 %)")
         return value
 
-
-class WerkCreate(WerkBase):
-    pass
+    @field_validator(*_RATE_FRACTION_FIELDS)
+    @classmethod
+    def validate_rate_fractions(cls, value: float | None, info: ValidationInfo) -> float | None:
+        if value is None:
+            return None
+        label = _RATE_FRACTION_LABELS.get(info.field_name or "", "Kostensatz")
+        if value < 0 or value > 1:
+            raise ValueError(
+                f"{label} muss als Anteil zwischen 0 und 1 liegen "
+                f"(UI-Prozent / 100, z. B. 8 % → 0,08). "
+                f"Gespeicherte Werte außerhalb dieses Bereichs bitte manuell prüfen "
+                f"und korrigieren – keine Automatikkorrektur."
+            )
+        return value
 
 
 class WerkUpdate(BaseModel):
@@ -195,8 +219,23 @@ class WerkUpdate(BaseModel):
     def validate_oee(cls, value: float | None) -> float | None:
         if value is None:
             return None
+        if value <= 0 or value > 1:
+            raise ValueError("OEE muss im Intervall (0, 1] liegen (z. B. 0,9 = 90 %)")
+        return value
+
+    @field_validator(*_RATE_FRACTION_FIELDS)
+    @classmethod
+    def validate_rate_fractions(cls, value: float | None, info: ValidationInfo) -> float | None:
+        if value is None:
+            return None
+        label = _RATE_FRACTION_LABELS.get(info.field_name or "", "Kostensatz")
         if value < 0 or value > 1:
-            raise ValueError("OEE muss zwischen 0 und 1 liegen (z. B. 0,9)")
+            raise ValueError(
+                f"{label} muss als Anteil zwischen 0 und 1 liegen "
+                f"(UI-Prozent / 100, z. B. 8 % → 0,08). "
+                f"Gespeicherte Werte außerhalb dieses Bereichs bitte manuell prüfen "
+                f"und korrigieren – keine Automatikkorrektur."
+            )
         return value
 
 

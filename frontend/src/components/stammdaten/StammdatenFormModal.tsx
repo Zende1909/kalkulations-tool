@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 
+import { parseDecimalInput } from "../../utils/decimalInput";
+
 export type SelectOption = string | { value: string; label: string };
+export { parseDecimalInput } from "../../utils/decimalInput";
 
 export interface FormField {
   name: string;
@@ -20,20 +23,6 @@ function optionValue(option: SelectOption): string {
 
 function optionLabel(option: SelectOption): string {
   return typeof option === "string" ? option : option.label;
-}
-
-/** Parst Zahlen inkl. deutscher Schreibweise („0,92“ / „1.234,56“). */
-export function parseDecimalInput(raw: string): number | "" {
-  const text = raw.trim().replace(/\s|\u00a0/g, "");
-  if (text === "") return "";
-  let normalized = text;
-  if (normalized.includes(",") && normalized.includes(".")) {
-    normalized = normalized.replace(/\./g, "").replace(",", ".");
-  } else if (normalized.includes(",")) {
-    normalized = normalized.replace(",", ".");
-  }
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : Number.NaN;
 }
 
 export function StammdatenFormModal({
@@ -152,7 +141,8 @@ export function StammdatenFormModal({
                   ) : (
                     <input
                       id={field.name}
-                      type={field.type}
+                      type={field.type === "number" ? "text" : field.type}
+                      inputMode={field.type === "number" ? "decimal" : undefined}
                       required={field.required && !field.readOnly}
                       step={field.step}
                       readOnly={field.readOnly}

@@ -19,8 +19,10 @@ describe("Werk-Formular Dezimal / Payload", () => {
 
   it("WerkePage transformiert Submit-Zahlen und pflegt Standortparameter", () => {
     expect(werkeSrc).toMatch(/transformSubmitValues/);
+    expect(werkeSrc).toMatch(/transformLoadValues/);
     expect(werkeSrc).toMatch(/fx_to_eur/);
     expect(werkeSrc).toMatch(/Arbeitstage\/Jahr/);
     expect(werkeSrc).toMatch(/OEE \(0–1\)/);
+    expect(werkeSrc).toMatch(/Zinssatz \(%\)/);
   });
 });

@@ -149,21 +149,30 @@ def test_create_werk_stores_numeric_fx_and_oee(client: TestClient, db: Session):
     assert werk.oee == pytest.approx(0.9)
 
 
-def test_create_werk_accepts_german_decimals(client: TestClient):
+def test_create_werk_rejects_zinssatz_as_percent_points(client: TestClient):
+    res = client.post(f"{API}/werke", json=_rabigh_payload(code="BAD-ZINS", zinssatz=8))
+    assert res.status_code == 422
+    assert "Zinssatz" in str(res.json())
+
+
+def test_create_werk_accepts_german_fraction_strings(client: TestClient):
     res = client.post(
         f"{API}/werke",
         json=_rabigh_payload(
-            code="RABIGH-DE",
+            code="RABIGH-DE-FRAC",
             fx_to_eur="0,92",
             oee="0,9",
             zinssatz="0,08",
+            versicherungssatz="0,0045",
+            instandhaltungssatz="0,02",
         ),
     )
     assert res.status_code == 201, res.text
     body = res.json()
-    assert body["fx_to_eur"] == pytest.approx(0.92)
-    assert body["oee"] == pytest.approx(0.9)
     assert body["zinssatz"] == pytest.approx(0.08)
+    assert body["versicherungssatz"] == pytest.approx(0.0045)
+    assert body["instandhaltungssatz"] == pytest.approx(0.02)
+    assert body["oee"] == pytest.approx(0.9)
 
 
 def test_schema_rejects_invalid_fx_and_oee():

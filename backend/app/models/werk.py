@@ -44,6 +44,8 @@ class Werk(Base, TimestampMixin):
     # Standort-Kostensätze (Quellwährung)
     space_cost_satz_pro_sqm_jahr: Mapped[float | None] = mapped_column(Float, nullable=True)
     abschreibungsdauer_jahre: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Standort-/Kapitalkostensätze: intern Anteile 0–1 (UI zeigt % und wandelt /100).
+    # OEE bleibt Anteil (0–1), keine Prozentpunkt-Umwandlung.
     zinssatz: Mapped[float | None] = mapped_column(Float, nullable=True)
     versicherungssatz: Mapped[float | None] = mapped_column(Float, nullable=True)
     instandhaltungssatz: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -26,8 +26,15 @@ import {
   type Veredelungsschritt,
   type VeredelungsschrittPayload,
 } from "../types/veredelung";
+import { parseDecimalInput } from "../utils/decimalInput";
 
 type FormMode = "create" | "edit";
+
+function parseFormNumber(raw: string, fallback = 0): number {
+  const parsed = parseDecimalInput(raw);
+  if (parsed === "") return fallback;
+  return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : fallback;
+}
 
 function euro(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "–";
@@ -501,13 +508,12 @@ export function VeredelungPage() {
               <label className="block text-sm">
                 <span className="font-medium text-gray-700">Taktzeit (s / Stück)</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   required
-                  min={0}
-                  step="0.01"
                   value={form.taktzeit_s}
                   onChange={(e) =>
-                    setForm((c) => ({ ...c, taktzeit_s: Number(e.target.value) }))
+                    setForm((c) => ({ ...c, taktzeit_s: parseFormNumber(e.target.value, 0) }))
                   }
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                 />
@@ -552,15 +558,14 @@ export function VeredelungPage() {
               <label className="block text-sm">
                 <span className="font-medium text-gray-700">Lohnstundensatz (€/h)</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   required
-                  min={0}
-                  step="0.01"
                   value={form.lohnstundensatz}
                   onChange={(e) =>
                     setForm((c) => ({
                       ...c,
-                      lohnstundensatz: Number(e.target.value),
+                      lohnstundensatz: parseFormNumber(e.target.value, 0),
                     }))
                   }
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -572,15 +577,15 @@ export function VeredelungPage() {
                   Maschinenstundensatz (€/h, optional)
                 </span>
                 <input
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={form.maschinenstundensatz ?? ""}
                   onChange={(e) => {
                     const raw = e.target.value;
                     setForm((c) => ({
                       ...c,
-                      maschinenstundensatz: raw === "" ? null : Number(raw),
+                      maschinenstundensatz:
+                        raw.trim() === "" ? null : parseFormNumber(raw, 0),
                     }));
                   }}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -592,15 +597,14 @@ export function VeredelungPage() {
                   Verbrauchskosten je Stück (€)
                 </span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   required
-                  min={0}
-                  step="0.01"
                   value={form.verbrauchskosten_je_stueck}
                   onChange={(e) =>
                     setForm((c) => ({
                       ...c,
-                      verbrauchskosten_je_stueck: Number(e.target.value),
+                      verbrauchskosten_je_stueck: parseFormNumber(e.target.value, 0),
                     }))
                   }
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
@@ -610,16 +614,14 @@ export function VeredelungPage() {
               <label className="block text-sm">
                 <span className="font-medium text-gray-700">Ausschussquote (%)</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   required
-                  min={0}
-                  max={99.99}
-                  step="0.01"
                   value={form.ausschussquote_pct}
                   onChange={(e) =>
                     setForm((c) => ({
                       ...c,
-                      ausschussquote_pct: Number(e.target.value),
+                      ausschussquote_pct: parseFormNumber(e.target.value, 0),
                     }))
                   }
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"

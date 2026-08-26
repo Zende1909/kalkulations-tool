@@ -32,6 +32,7 @@ import {
   type VeredelungZuordnungInput,
   type WerkzeugAbrechnungsart,
 } from "../types/spritzguss";
+import { formatPercentPoints, parseDecimalInput } from "../utils/decimalInput";
 
 interface SelectedVeredelung extends VeredelungZuordnungInput {
   bezeichnung: string;
@@ -46,6 +47,30 @@ function euro(value: number | undefined | null): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+const PCT_DETAIL_FIELDS = new Set([
+  "mgk_pct",
+  "fgk_pct",
+  "vvgk_pct",
+  "gewinn_pct",
+  "skonto_pct",
+  "ausschussquote_pct",
+  "applied_mgk_pct",
+  "applied_fgk_pct",
+  "applied_vvgk_pct",
+  "applied_gewinn_pct",
+  "applied_skonto_pct",
+]);
+
+function formatDetailValue(field: string, value: unknown): string {
+  if (typeof value === "string") return value || "–";
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num)) return "–";
+  if (PCT_DETAIL_FIELDS.has(field) || field.endsWith("_pct")) {
+    return formatPercentPoints(num, 4);
+  }
+  return euro(num);
 }
 
 const BLOCK_LABELS: Record<string, string> = {
@@ -140,11 +165,21 @@ function NumberInput({
     <label className="block text-sm">
       <span className="font-medium text-gray-700">{label}</span>
       <input
-        type="number"
+        type="text"
+        inputMode="decimal"
         step={step}
         min={min}
-        value={Number.isFinite(value) ? value : 0}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={Number.isFinite(value) ? String(value) : ""}
+        onChange={(e) => {
+          const parsed = parseDecimalInput(e.target.value);
+          if (parsed === "") {
+            onChange(0);
+            return;
+          }
+          if (typeof parsed === "number" && Number.isFinite(parsed)) {
+            onChange(parsed);
+          }
+        }}
         className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
       />
     </label>
@@ -1158,9 +1193,7 @@ export function SpritzgussPage() {
                               >
                                 <dt className="text-gray-600">{label}</dt>
                                 <dd className="font-medium tabular-nums text-gray-900">
-                                  {typeof value === "string"
-                                    ? value || "–"
-                                    : euro(typeof value === "number" ? value : Number(value))}
+                                  {formatDetailValue(field, value)}
                                 </dd>
                               </div>
                             );
