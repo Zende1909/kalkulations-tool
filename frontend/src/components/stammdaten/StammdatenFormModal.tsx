@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
 
-import { parseDecimalInput } from "../../utils/decimalInput";
-
 export type SelectOption = string | { value: string; label: string };
 export { parseDecimalInput } from "../../utils/decimalInput";
 
@@ -143,18 +141,26 @@ export function StammdatenFormModal({
                       id={field.name}
                       type={field.type === "number" ? "text" : field.type}
                       inputMode={field.type === "number" ? "decimal" : undefined}
+                      autoComplete="off"
                       required={field.required && !field.readOnly}
-                      step={field.step}
                       readOnly={field.readOnly}
-                      value={String(values[field.name] ?? "")}
-                      onChange={(event) =>
-                        onChange(
-                          field.name,
-                          field.type === "number"
-                            ? parseDecimalInput(event.target.value)
-                            : event.target.value,
-                        )
+                      // Rohstring behalten: sofortiges Number()-Parsing verschluckt „0,“ / „0.“
+                      value={
+                        field.type === "number"
+                          ? values[field.name] === "" || values[field.name] == null
+                            ? ""
+                            : String(values[field.name])
+                          : String(values[field.name] ?? "")
                       }
+                      onChange={(event) => {
+                        const raw = event.target.value;
+                        if (field.type === "number") {
+                          // Kein Live-Parse zu number – Submit/Transform übernimmt parseDecimalInput
+                          onChange(field.name, raw);
+                          return;
+                        }
+                        onChange(field.name, raw);
+                      }}
                       className={`mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm ${
                         field.readOnly ? "bg-slate-50 text-slate-700" : ""
                       }`}

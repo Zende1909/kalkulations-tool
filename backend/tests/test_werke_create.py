@@ -155,24 +155,43 @@ def test_create_werk_rejects_zinssatz_as_percent_points(client: TestClient):
     assert "Zinssatz" in str(res.json())
 
 
-def test_create_werk_accepts_german_fraction_strings(client: TestClient):
+def test_create_werk_accepts_decimal_energy_prices(client: TestClient):
+    """Strom-/Druckluft-/Kühlwasserpreis als absolute Dezimalwerte (nicht %)."""
     res = client.post(
         f"{API}/werke",
         json=_rabigh_payload(
-            code="RABIGH-DE-FRAC",
-            fx_to_eur="0,92",
-            oee="0,9",
-            zinssatz="0,08",
-            versicherungssatz="0,0045",
-            instandhaltungssatz="0,02",
+            code="RABIGH-ENERGY",
+            zinssatz=0.08,
+            versicherungssatz=0.0045,
+            instandhaltungssatz=0.02,
+            strompreis="0,06",
+            druckluftpreis="0.06",
+            kuehlwasserpreis="0,03",
+            space_cost_satz_pro_sqm_jahr="30,5",
         ),
     )
     assert res.status_code == 201, res.text
     body = res.json()
+    assert body["strompreis"] == pytest.approx(0.06)
+    assert body["druckluftpreis"] == pytest.approx(0.06)
+    assert body["kuehlwasserpreis"] == pytest.approx(0.03)
+    assert body["space_cost_satz_pro_sqm_jahr"] == pytest.approx(30.5)
+    # Kapitalkostensätze / OEE unverändert Anteile
     assert body["zinssatz"] == pytest.approx(0.08)
-    assert body["versicherungssatz"] == pytest.approx(0.0045)
-    assert body["instandhaltungssatz"] == pytest.approx(0.02)
     assert body["oee"] == pytest.approx(0.9)
+
+    wid = body["id"]
+    listed = client.get(f"{API}/werke").json()
+    match = next(w for w in listed if w["id"] == wid)
+    assert match["strompreis"] == pytest.approx(0.06)
+
+    updated = client.put(
+        f"{API}/werke/{wid}",
+        json={"strompreis": "0,07", "kuehlwasserpreis": 0.035},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["strompreis"] == pytest.approx(0.07)
+    assert updated.json()["kuehlwasserpreis"] == pytest.approx(0.035)
 
 
 def test_schema_rejects_invalid_fx_and_oee():

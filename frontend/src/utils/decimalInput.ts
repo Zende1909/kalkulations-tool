@@ -1,4 +1,8 @@
-/** Parst Zahlen inkl. deutscher Schreibweise („0,92“ / „1.234,56“). */
+/**
+ * Parst Zahlen inkl. deutscher Schreibweise („0,06“ / „1.234,56“).
+ * Für Live-Eingabe in Formularen die Rohzeichenkette belassen und erst
+ * beim Submit parsen – sonst gehen Zwischenstände wie „0,“ / „0.“ verloren.
+ */
 export function parseDecimalInput(raw: string): number | "" {
   const text = raw.trim().replace(/\s|\u00a0/g, "");
   if (text === "") return "";
@@ -8,8 +12,38 @@ export function parseDecimalInput(raw: string): number | "" {
   } else if (normalized.includes(",")) {
     normalized = normalized.replace(",", ".");
   }
+  // Trailing Dezimaltrenner: „0.“ / „0,“ → noch tippend, als unvollständig
+  if (/[.+-]$/.test(normalized) || normalized === "." || normalized === "-" || normalized === "+") {
+    return Number.NaN;
+  }
   const n = Number(normalized);
   return Number.isFinite(n) ? n : Number.NaN;
+}
+
+/** True, wenn die Eingabe noch kein vollständiger Zahlenwert ist (z. B. „0,“). */
+export function isIncompleteDecimalInput(raw: string): boolean {
+  const text = raw.trim().replace(/\s|\u00a0/g, "");
+  if (text === "" || text === "-" || text === "+" || text === "." || text === ",") {
+    return true;
+  }
+  return /^[+-]?\d*[.,]$/.test(text);
+}
+
+/**
+ * Formatiert einen gespeicherten Zahlenwert für die Anzeige im Eingabefeld
+ * (Punkt als Dezimaltrenner; vermeidet wissenschaftliche Notation).
+ */
+export function formatDecimalForInput(
+  value: number | string | null | undefined,
+): string {
+  if (value == null || value === "") return "";
+  if (typeof value === "string") return value;
+  if (!Number.isFinite(value)) return "";
+  const asStr = String(value);
+  if (/e/i.test(asStr)) {
+    return value.toFixed(10).replace(/\.?0+$/, "");
+  }
+  return asStr;
 }
 
 /**

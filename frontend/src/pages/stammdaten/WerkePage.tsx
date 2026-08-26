@@ -5,12 +5,8 @@ import { api } from "../../api/client";
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import type { Land, Werk } from "../../types/stammdaten";
-import {
-  WERK_RATE_FRACTION_FIELDS,
-  fractionToUiPercent,
-  parseDecimalInput,
-  uiPercentToFraction,
-} from "../../utils/decimalInput";
+import { WERK_RATE_FRACTION_FIELDS } from "../../utils/decimalInput";
+import { loadWerkFormValues, submitWerkFormValues } from "../../utils/werkFormDecimals";
 
 const RATE_HINT = "Eingabe als Prozentwert, z. B. 8 = 8 %";
 
@@ -25,80 +21,6 @@ const columnDefs: ColDef<Werk>[] = [
   { field: "aktiv", headerName: "Aktiv" },
 ];
 
-/**
- * Werk-Kapitalkostensätze: API speichert Anteile (0.08), Formular zeigt % (8).
- * OEE bleibt Anteil 0–1. Altdaten mit Anteil > 1 werden nicht auto-korrigiert.
- */
-function loadWerkFormValues(
-  values: Record<string, string | number | boolean>,
-): Record<string, string | number | boolean> {
-  const next = { ...values };
-  for (const key of WERK_RATE_FRACTION_FIELDS) {
-    const raw = next[key];
-    if (raw === "" || raw == null) {
-      next[key] = "";
-      continue;
-    }
-    const num = typeof raw === "number" ? raw : Number(raw);
-    if (!Number.isFinite(num)) continue;
-    const ui = fractionToUiPercent(num);
-    next[key] = ui == null ? "" : ui;
-  }
-  return next;
-}
-
-function submitWerkFormValues(
-  values: Record<string, string | number | boolean>,
-): Record<string, unknown> {
-  const numericKeys = [
-    "fx_to_eur",
-    "arbeitstage_pro_jahr",
-    "schichten_pro_tag",
-    "stunden_pro_schicht",
-    "oee",
-    "space_cost_satz_pro_sqm_jahr",
-    "abschreibungsdauer_jahre",
-    "strompreis",
-    "druckluftpreis",
-    "kuehlwasserpreis",
-    ...WERK_RATE_FRACTION_FIELDS,
-  ] as const;
-
-  const payload: Record<string, unknown> = { ...values };
-  const landRaw = values.land_id;
-  payload.land_id = landRaw === "" || landRaw == null ? null : Number(landRaw);
-
-  for (const key of numericKeys) {
-    const raw = values[key];
-    if (raw === "" || raw == null) {
-      payload[key] = null;
-      continue;
-    }
-    let num: number;
-    if (typeof raw === "number" && Number.isFinite(raw)) {
-      num = raw;
-    } else {
-      const parsed = parseDecimalInput(String(raw));
-      num = typeof parsed === "number" ? parsed : Number.NaN;
-    }
-    if (!Number.isFinite(num)) {
-      payload[key] = raw;
-      continue;
-    }
-    if ((WERK_RATE_FRACTION_FIELDS as readonly string[]).includes(key)) {
-      // UI-Prozent → interner Anteil; Altdaten >100 % nicht zusätzlich /100
-      if (num < 0 || num > 100) {
-        payload[key] = num; // Backend lehnt ab
-      } else {
-        payload[key] = uiPercentToFraction(num);
-      }
-    } else {
-      payload[key] = num;
-    }
-  }
-  return payload;
-}
-
 function rateFractionWarnings(
   values: Record<string, string | number | boolean>,
 ): string[] {
@@ -112,10 +34,6 @@ function rateFractionWarnings(
     const raw = values[key];
     if (raw === "" || raw == null) continue;
     const num = typeof raw === "number" ? raw : Number(raw);
-    // Nach Load: Altdaten bleiben unskaliert (>100 wenn intern >1 und falsch ×100,
-    // oder intern >1 und roh angezeigt → Wert > 1 und ≤ 100 könnte UI-% sein).
-    // Warnung wenn interner Anteil beim Load erkannt wurde: fractionToUiPercent
-    // lässt Werte >1 unverändert → UI zeigt z. B. 8 statt 800.
     if (Number.isFinite(num) && num > 100) {
       warnings.push(
         `${labels[key]}: Anzeigewert ${num} liegt außerhalb 0–100 %. Bitte Stammdaten manuell prüfen (keine Automatikkorrektur).`,
@@ -195,9 +113,10 @@ export function WerkePage() {
       },
       {
         name: "space_cost_satz_pro_sqm_jahr",
-        label: "Space-Satz /m²/a",
+        label: "Space-Satz (€/m²/a)",
         type: "number",
-        step: "0.01",
+        step: "0.0001",
+        hint: "Absoluter Kostensatz in Quellwährung, z. B. 30 oder 30,5 – keine Prozentangabe.",
       },
       {
         name: "abschreibungsdauer_jahre",
@@ -226,9 +145,27 @@ export function WerkePage() {
         step: "0.0001",
         hint: RATE_HINT,
       },
-      { name: "strompreis", label: "Strompreis", type: "number", step: "0.01" },
-      { name: "druckluftpreis", label: "Druckluftpreis", type: "number", step: "0.01" },
-      { name: "kuehlwasserpreis", label: "Kühlwasserpreis", type: "number", step: "0.01" },
+      {
+        name: "strompreis",
+        label: "Strompreis (€/kWh)",
+        type: "number",
+        step: "0.0001",
+        hint: "Dezimalwert, z. B. 0,06 oder 0.06 – keine Prozentumrechnung.",
+      },
+      {
+        name: "druckluftpreis",
+        label: "Druckluftpreis (€/m³)",
+        type: "number",
+        step: "0.0001",
+        hint: "Dezimalwert, z. B. 0,06 oder 0.06 – keine Prozentumrechnung.",
+      },
+      {
+        name: "kuehlwasserpreis",
+        label: "Kühlwasserpreis (€/m³)",
+        type: "number",
+        step: "0.0001",
+        hint: "Dezimalwert, z. B. 0,03 oder 0.03 – keine Prozentumrechnung.",
+      },
       { name: "aktiv", label: "Aktiv", type: "checkbox" },
     ],
     [lands],
@@ -267,7 +204,6 @@ export function WerkePage() {
         oee: 0.9,
         space_cost_satz_pro_sqm_jahr: 30,
         abschreibungsdauer_jahre: 10,
-        // Intern Anteile – transformLoadValues mappt auf UI-% (8 / 0,45 / 2)
         zinssatz: 0.08,
         versicherungssatz: 0.0045,
         instandhaltungssatz: 0.02,
@@ -278,9 +214,7 @@ export function WerkePage() {
       transformLoadValues={(values, mode) => {
         if (mode === "edit") {
           setFormBannerExtra(
-            warningsForStoredRateFractions(
-              values as unknown as Partial<Werk>,
-            ),
+            warningsForStoredRateFractions(values as unknown as Partial<Werk>),
           );
         } else {
           setFormBannerExtra([]);

@@ -11,6 +11,7 @@ import type {
 import { api, getApiBaseUrl, NetworkError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { FormField, StammdatenFormModal } from "./StammdatenFormModal";
+import { formatDecimalForInput } from "../../utils/decimalInput";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
@@ -74,7 +75,12 @@ function rowToFormValues<T extends { id: number }>(
     if (field.type === "checkbox") {
       values[field.name] = Boolean(raw);
     } else if (field.type === "number") {
-      values[field.name] = typeof raw === "number" ? raw : Number(raw ?? 0);
+      if (raw == null || raw === "") {
+        values[field.name] = "";
+      } else {
+        const num = typeof raw === "number" ? raw : Number(raw);
+        values[field.name] = Number.isFinite(num) ? formatDecimalForInput(num) : "";
+      }
     } else if (field.type === "date" && typeof raw === "string") {
       values[field.name] = raw.slice(0, 10);
     } else {
