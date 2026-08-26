@@ -27,6 +27,18 @@ export interface Werk {
   currency: string;
   fx_to_eur: number;
   aktiv: boolean;
+  arbeitstage_pro_jahr?: number | null;
+  schichten_pro_tag?: number | null;
+  stunden_pro_schicht?: number | null;
+  oee?: number | null;
+  space_cost_satz_pro_sqm_jahr?: number | null;
+  abschreibungsdauer_jahre?: number | null;
+  zinssatz?: number | null;
+  versicherungssatz?: number | null;
+  instandhaltungssatz?: number | null;
+  strompreis?: number | null;
+  druckluftpreis?: number | null;
+  kuehlwasserpreis?: number | null;
   created_at: string;
   updated_at: string;
 }

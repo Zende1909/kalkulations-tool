@@ -71,11 +71,11 @@ def test_ci_workflow_yaml_parses():
     assert mig_idx < test_idx
 
 
-def test_alembic_head_is_e1a0008_for_ci_expectation():
+def test_alembic_head_is_e1a0009_for_ci_expectation():
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     heads = ScriptDirectory.from_config(cfg).get_heads()
-    assert heads == ["e1a0008_plant_costing"]
+    assert heads == ["e1a0009_werk_operating_params"]

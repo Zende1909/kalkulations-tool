@@ -301,13 +301,17 @@ def test_e1a0008_source_has_no_seeds_or_dml():
     assert "seed" not in source.lower() or "keine" in source.lower()
 
 
-def test_alembic_head_is_e1a0008():
+def test_alembic_head_is_e1a0009_after_werk_params():
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    assert ScriptDirectory.from_config(cfg).get_heads() == [REVISION]
+    heads = ScriptDirectory.from_config(cfg).get_heads()
+    assert heads == ["e1a0009_werk_operating_params"]
+    rev = ScriptDirectory.from_config(cfg).get_revision(REVISION)
+    assert rev is not None
+    assert rev.down_revision == PREV
 
 
 @pytest.mark.skipif(not _postgres_available(), reason="PostgreSQL not available")
@@ -315,7 +319,7 @@ def test_e1a0008_fresh_database_full_chain():
     _create_db(SMOKE_FRESH)
     engine = create_engine(f"{BASE_URL}/{SMOKE_FRESH}")
     try:
-        up = _alembic_upgrade(SMOKE_FRESH, "head")
+        up = _alembic_upgrade(SMOKE_FRESH, REVISION)
         assert up.returncode == 0, up.stdout + up.stderr
         with engine.connect() as conn:
             ver = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()

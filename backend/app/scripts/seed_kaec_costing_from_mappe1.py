@@ -130,7 +130,7 @@ def seed_kaec_from_mappe1(db: Session, xlsx_path: Path | None = None) -> list[st
     else:
         actions.append(f"skip:werk:{WERK_CODE}")
 
-    # Globals Zeile 3
+    # Globals Zeile 3 → am Werk (nicht an der Maschine)
     days = _num(_cell(ws_d, 3, 7), 254)
     shifts = _num(_cell(ws_d, 3, 8), 2)
     hours = _num(_cell(ws_d, 3, 9), 8)
@@ -143,6 +143,20 @@ def seed_kaec_from_mappe1(db: Session, xlsx_path: Path | None = None) -> list[st
     power_price = _num(_cell(ws_d, 3, 31), 0.06)
     air_price = _num(_cell(ws_d, 3, 34), 0.06)
     water_price = _num(_cell(ws_d, 3, 37), 0.03)
+
+    werk.arbeitstage_pro_jahr = days
+    werk.schichten_pro_tag = shifts
+    werk.stunden_pro_schicht = hours
+    werk.oee = oee
+    werk.space_cost_satz_pro_sqm_jahr = space_satz
+    werk.abschreibungsdauer_jahre = depr_years
+    werk.zinssatz = interest
+    werk.versicherungssatz = insurance
+    werk.instandhaltungssatz = maint
+    werk.strompreis = power_price
+    werk.druckluftpreis = air_price
+    werk.kuehlwasserpreis = water_price
+    actions.append(f"update:werk-params:{WERK_CODE}")
 
     # Maschinenzeilen 6–37
     for row in range(6, 38):
@@ -204,23 +218,11 @@ def seed_kaec_from_mappe1(db: Session, xlsx_path: Path | None = None) -> list[st
             maschinentyp=typ_s,
             variante=var_s,
             source_currency="USD",
-            arbeitstage_pro_jahr=days,
-            schichten_pro_tag=shifts,
-            stunden_pro_schicht=hours,
-            oee=oee,
             investment=investment,
             flaeche_sqm=flaeche,
-            space_cost_satz_pro_sqm_jahr=space_satz,
-            abschreibungsdauer_jahre=depr_years,
-            zinssatz=interest,
-            versicherungssatz=insurance,
-            instandhaltungssatz=maint,
             stromverbrauch_kwh_h=strom_v,
-            strompreis=power_price,
             druckluftverbrauch_m3_h=druck_v,
-            druckluftpreis=air_price,
             kuehlwasserverbrauch_m3_h=kuehl_v,
-            kuehlwasserpreis=water_price,
             setup_zeit_min=setup_min,
             setup_mitarbeiter=setup_workers,
             rate_updated_at=utcnow(),

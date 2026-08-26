@@ -17,13 +17,36 @@ from app.schemas.maschine import (
     MaschineUpdate,
 )
 from app.services.machine_hourly_rate import (
-    MachineRateInput,
     MachineRateValidationError,
     apply_rate_to_maschine,
     berechne_maschinenstundensatz,
+    build_rate_input_from_maschine_and_werk,
 )
 
 router = APIRouter(prefix="/maschinen", tags=["Maschinen"])
+
+# Standortparameter gehören ans Werk – Clients dürfen sie nicht mehr setzen.
+_WERK_OWNED_MACHINE_FIELDS = (
+    "arbeitstage_pro_jahr",
+    "schichten_pro_tag",
+    "stunden_pro_schicht",
+    "oee",
+    "space_cost_satz_pro_sqm_jahr",
+    "abschreibungsdauer_jahre",
+    "zinssatz",
+    "versicherungssatz",
+    "instandhaltungssatz",
+    "strompreis",
+    "druckluftpreis",
+    "kuehlwasserpreis",
+)
+
+
+def _require_werk(db: Session, werk_id: int) -> Werk:
+    werk = db.get(Werk, werk_id)
+    if not werk:
+        raise HTTPException(status_code=422, detail="Werk nicht gefunden")
+    return werk
 
 
 @router.get("", response_model=list[MaschineRead])
@@ -58,7 +81,24 @@ def create_maschine(
     db: Session = Depends(get_db),
     _: User = Depends(require_kalkulator),
 ):
-    return maschine_crud.maschine.create(db, item_in)
+    werk = _require_werk(db, item_in.werk_id)
+    data = item_in.model_dump()
+    for key in _WERK_OWNED_MACHINE_FIELDS:
+        data[key] = None
+    data["stundensatz"] = 0.0
+    data["source_currency"] = data.get("source_currency") or werk.currency
+    created = maschine_crud.maschine.create(db, MaschineCreate.model_validate(data))
+    try:
+        rate_input = build_rate_input_from_maschine_and_werk(created, werk)
+        result = berechne_maschinenstundensatz(rate_input)
+        apply_rate_to_maschine(created, result)
+        created.rate_updated_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(created)
+    except MachineRateValidationError:
+        # Unvollständige Parameter: Stundensatz bleibt 0 bis Neu berechnen
+        pass
+    return created
 
 
 @router.put("/{item_id}", response_model=MaschineRead)
@@ -71,7 +111,19 @@ def update_maschine(
     item = maschine_crud.maschine.get(db, item_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Maschine nicht gefunden")
-    return maschine_crud.maschine.update(db, item, item_in)
+    updates = item_in.model_dump(exclude_unset=True)
+    for key in _WERK_OWNED_MACHINE_FIELDS:
+        updates.pop(key, None)
+    updates.pop("stundensatz", None)
+    if "werk_id" in updates:
+        if updates["werk_id"] is None:
+            raise HTTPException(status_code=422, detail="werk_id ist Pflicht")
+        werk = _require_werk(db, int(updates["werk_id"]))
+        if not updates.get("source_currency"):
+            updates["source_currency"] = werk.currency
+    return maschine_crud.maschine.update(
+        db, item, MaschineUpdate.model_validate(updates)
+    )
 
 
 @router.post("/{item_id}/recalculate-rate", response_model=MaschineRead)
@@ -84,54 +136,16 @@ def recalculate_maschine_rate(
     item = db.get(Maschine, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Maschine nicht gefunden")
-    fx = body.fx_to_eur if body and body.fx_to_eur else None
-    if fx is None and item.werk_id:
-        werk = db.get(Werk, item.werk_id)
-        if werk:
-            fx = float(werk.fx_to_eur)
-    fx = fx or 1.0
-    required = [
-        item.arbeitstage_pro_jahr,
-        item.schichten_pro_tag,
-        item.stunden_pro_schicht,
-        item.oee,
-        item.investment,
-        item.flaeche_sqm,
-        item.space_cost_satz_pro_sqm_jahr,
-        item.abschreibungsdauer_jahre,
-        item.zinssatz,
-        item.versicherungssatz,
-        item.instandhaltungssatz,
-    ]
-    if any(v is None for v in required):
+    if not item.werk_id:
         raise HTTPException(
             status_code=422,
-            detail="Maschine hat unvollständige Costing-Parameter für die Neuberechnung",
+            detail="Maschine ohne Werk – bitte Werk zuordnen und Betriebsparameter am Werk pflegen",
         )
+    werk = _require_werk(db, item.werk_id)
+    fx = body.fx_to_eur if body and body.fx_to_eur else None
     try:
-        result = berechne_maschinenstundensatz(
-            MachineRateInput(
-                arbeitstage_pro_jahr=float(item.arbeitstage_pro_jahr),
-                schichten_pro_tag=float(item.schichten_pro_tag),
-                stunden_pro_schicht=float(item.stunden_pro_schicht),
-                oee=float(item.oee),
-                investment=float(item.investment),
-                flaeche_sqm=float(item.flaeche_sqm),
-                space_cost_satz_pro_sqm_jahr=float(item.space_cost_satz_pro_sqm_jahr),
-                abschreibungsdauer_jahre=float(item.abschreibungsdauer_jahre),
-                zinssatz=float(item.zinssatz or 0),
-                versicherungssatz=float(item.versicherungssatz or 0),
-                instandhaltungssatz=float(item.instandhaltungssatz or 0),
-                stromverbrauch_kwh_h=float(item.stromverbrauch_kwh_h or 0),
-                strompreis=float(item.strompreis or 0),
-                druckluftverbrauch_m3_h=float(item.druckluftverbrauch_m3_h or 0),
-                druckluftpreis=float(item.druckluftpreis or 0),
-                kuehlwasserverbrauch_m3_h=float(item.kuehlwasserverbrauch_m3_h or 0),
-                kuehlwasserpreis=float(item.kuehlwasserpreis or 0),
-                fx_to_eur=float(fx),
-                source_currency=item.source_currency or "USD",
-            )
-        )
+        rate_input = build_rate_input_from_maschine_and_werk(item, werk, fx_to_eur=fx)
+        result = berechne_maschinenstundensatz(rate_input)
     except MachineRateValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     apply_rate_to_maschine(item, result)

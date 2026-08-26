@@ -14,6 +14,8 @@ import { FormField, StammdatenFormModal } from "./StammdatenFormModal";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-quartz.css";
 
+type FormMode = "create" | "edit";
+
 interface StammdatenGridProps<T extends { id: number }> {
   title: string;
   /** Singular for form titles, e.g. "Material" → "Material anlegen/bearbeiten" */
@@ -28,9 +30,18 @@ interface StammdatenGridProps<T extends { id: number }> {
   columnDefs: ColDef<T>[];
   formFields: FormField[];
   emptyFormValues: Omit<T, "id" | "created_at" | "updated_at">;
+  /** Hinweisbanner im Formular (z. B. Werkparameter). */
+  formBanner?: ReactNode;
+  formMaxWidthClassName?: string;
+  formFooterExtra?: ReactNode;
+  /** Transformiert Payload vor POST/PUT (z. B. Typ-Coercion). */
+  transformSubmitValues?: (
+    values: Record<string, string | number | boolean>,
+    mode: FormMode,
+  ) => Record<string, unknown>;
+  /** Wird bei jeder Formularänderung aufgerufen (z. B. Werk-Banner). */
+  onFormValuesChange?: (values: Record<string, string | number | boolean>) => void;
 }
-
-type FormMode = "create" | "edit";
 
 function formatFetchError(err: unknown, method: string, url: string): string {
   if (err instanceof NetworkError) {
@@ -78,6 +89,11 @@ export function StammdatenGrid<T extends { id: number }>({
   columnDefs,
   formFields,
   emptyFormValues,
+  formBanner,
+  formMaxWidthClassName,
+  formFooterExtra,
+  transformSubmitValues,
+  onFormValuesChange,
 }: StammdatenGridProps<T>) {
   const { canWrite } = useAuth();
   const [rows, setRows] = useState<T[]>([]);
@@ -138,7 +154,9 @@ export function StammdatenGrid<T extends { id: number }>({
   const openCreateForm = () => {
     setFormMode("create");
     setEditingId(null);
-    setFormValues({ ...(emptyFormValues as Record<string, string | number | boolean>) });
+    const initial = { ...(emptyFormValues as Record<string, string | number | boolean>) };
+    setFormValues(initial);
+    onFormValuesChange?.(initial);
     setFormError(null);
     setSuccess(null);
     setShowForm(true);
@@ -150,12 +168,14 @@ export function StammdatenGrid<T extends { id: number }>({
       setFormMode("edit");
       setEditingId(row.id);
       setSelectedId(row.id);
-      setFormValues(rowToFormValues(row, formFields));
+      const values = rowToFormValues(row, formFields);
+      setFormValues(values);
+      onFormValuesChange?.(values);
       setFormError(null);
       setSuccess(null);
       setShowForm(true);
     },
-    [canWrite, formFields],
+    [canWrite, formFields, onFormValuesChange],
   );
 
   const closeForm = () => {
@@ -164,10 +184,15 @@ export function StammdatenGrid<T extends { id: number }>({
     setSubmitting(false);
     setEditingId(null);
     setFormMode("create");
+    onFormValuesChange?.({});
   };
 
   const handleFormChange = (name: string, value: string | number | boolean) => {
-    setFormValues((current) => ({ ...current, [name]: value }));
+    setFormValues((current) => {
+      const next = { ...current, [name]: value };
+      onFormValuesChange?.(next);
+      return next;
+    });
   };
 
   const handleSubmit = async () => {
@@ -176,14 +201,17 @@ export function StammdatenGrid<T extends { id: number }>({
     setError(null);
     setSuccess(null);
     try {
+      const payload = transformSubmitValues
+        ? transformSubmitValues(formValues, formMode)
+        : formValues;
       if (formMode === "edit" && editingId != null) {
-        await api.put<T>(`${endpoint}/${editingId}`, formValues);
+        await api.put<T>(`${endpoint}/${editingId}`, payload);
         setShowForm(false);
         setEditingId(null);
         setFormMode("create");
         setSuccess(`${entityLabel} erfolgreich aktualisiert.`);
       } else {
-        await api.post<T>(endpoint, formValues);
+        await api.post<T>(endpoint, payload);
         setShowForm(false);
         setSuccess(`${entityLabel} erfolgreich angelegt.`);
       }
@@ -351,6 +379,9 @@ export function StammdatenGrid<T extends { id: number }>({
           values={formValues}
           submitting={submitting}
           error={formError}
+          banner={formBanner}
+          maxWidthClassName={formMaxWidthClassName}
+          footerExtra={formFooterExtra}
           onChange={handleFormChange}
           onClose={closeForm}
           onSubmit={handleSubmit}

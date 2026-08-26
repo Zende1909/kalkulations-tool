@@ -52,6 +52,18 @@ def _create_schema(engine) -> None:
                 currency VARCHAR(8) NOT NULL DEFAULT 'USD',
                 fx_to_eur FLOAT NOT NULL DEFAULT 0.92,
                 aktiv BOOLEAN NOT NULL DEFAULT 1,
+                arbeitstage_pro_jahr FLOAT,
+                schichten_pro_tag FLOAT,
+                stunden_pro_schicht FLOAT,
+                oee FLOAT,
+                space_cost_satz_pro_sqm_jahr FLOAT,
+                abschreibungsdauer_jahre FLOAT,
+                zinssatz FLOAT,
+                versicherungssatz FLOAT,
+                instandhaltungssatz FLOAT,
+                strompreis FLOAT,
+                druckluftpreis FLOAT,
+                kuehlwasserpreis FLOAT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )

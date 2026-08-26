@@ -112,10 +112,13 @@ def test_baseline_revision_is_discoverable():
 def test_alembic_head_is_plant_costing_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0008_plant_costing"]
-    rev = scripts.get_revision("e1a0008_plant_costing")
+    assert scripts.get_heads() == ["e1a0009_werk_operating_params"]
+    rev = scripts.get_revision("e1a0009_werk_operating_params")
     assert rev is not None
-    assert rev.down_revision == "e1a0007_veredelung_snapshot_yield"
+    assert rev.down_revision == "e1a0008_plant_costing"
+    e8 = scripts.get_revision("e1a0008_plant_costing")
+    assert e8 is not None
+    assert e8.down_revision == "e1a0007_veredelung_snapshot_yield"
     e7 = scripts.get_revision("e1a0007_veredelung_snapshot_yield")
     assert e7 is not None
     assert e7.down_revision == "e1a0006_spritzguss_material_nominierung"

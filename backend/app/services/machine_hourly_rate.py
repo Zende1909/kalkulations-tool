@@ -188,3 +188,104 @@ def apply_rate_to_maschine(maschine: Any, result: MachineRateResult) -> None:
     maschine.stundensatz_source = result.stundensatz_source
     maschine.stundensatz = result.stundensatz_eur
     maschine.source_currency = result.source_currency
+
+
+# Standortbezogene Eingaben (am Werk pflegen). Maschinenfelder gleichen Namens
+# dienen nur noch als Legacy-Fallback, bis alle Werke befüllt sind.
+_WERK_RATE_ATTRS = (
+    "arbeitstage_pro_jahr",
+    "schichten_pro_tag",
+    "stunden_pro_schicht",
+    "oee",
+    "space_cost_satz_pro_sqm_jahr",
+    "abschreibungsdauer_jahre",
+    "zinssatz",
+    "versicherungssatz",
+    "instandhaltungssatz",
+    "strompreis",
+    "druckluftpreis",
+    "kuehlwasserpreis",
+)
+
+
+def _pick(werk: Any | None, maschine: Any, attr: str) -> float | None:
+    if werk is not None:
+        value = getattr(werk, attr, None)
+        if value is not None:
+            return float(value)
+    value = getattr(maschine, attr, None)
+    return float(value) if value is not None else None
+
+
+def build_rate_input_from_maschine_and_werk(
+    maschine: Any, werk: Any | None, *, fx_to_eur: float | None = None
+) -> MachineRateInput:
+    """Kombiniert Maschinen- und Werkparameter für die Stundensatzformel.
+
+    Pflicht vom Werk (bzw. Legacy-Fallback an der Maschine): Kapazität, Sätze, Preise.
+    Pflicht von der Maschine: Investment, Fläche, Verbräuche (0 erlaubt).
+    """
+    if werk is None and getattr(maschine, "werk_id", None):
+        raise MachineRateValidationError("Werk für Maschine nicht gefunden")
+    if werk is None and any(_pick(None, maschine, a) is None for a in _WERK_RATE_ATTRS[:4]):
+        raise MachineRateValidationError(
+            "Maschine benötigt ein Werk mit Betriebsparametern (oder Legacy-Parameter)"
+        )
+
+    missing: list[str] = []
+    values: dict[str, float] = {}
+    for attr in _WERK_RATE_ATTRS:
+        picked = _pick(werk, maschine, attr)
+        if picked is None and attr in (
+            "arbeitstage_pro_jahr",
+            "schichten_pro_tag",
+            "stunden_pro_schicht",
+            "oee",
+            "space_cost_satz_pro_sqm_jahr",
+            "abschreibungsdauer_jahre",
+        ):
+            missing.append(attr)
+        values[attr] = float(picked or 0)
+
+    inv = getattr(maschine, "investment", None)
+    flaeche = getattr(maschine, "flaeche_sqm", None)
+    if inv is None or flaeche is None:
+        missing.extend([a for a in ("investment", "flaeche_sqm") if getattr(maschine, a, None) is None])
+    if missing:
+        raise MachineRateValidationError(
+            "Unvollständige Costing-Parameter: " + ", ".join(missing)
+        )
+
+    fx = fx_to_eur
+    if fx is None and werk is not None:
+        fx = float(werk.fx_to_eur)
+    fx = float(fx or 1.0)
+    currency = (
+        (werk.currency if werk is not None and getattr(werk, "currency", None) else None)
+        or getattr(maschine, "source_currency", None)
+        or "USD"
+    )
+
+    return MachineRateInput(
+        arbeitstage_pro_jahr=values["arbeitstage_pro_jahr"],
+        schichten_pro_tag=values["schichten_pro_tag"],
+        stunden_pro_schicht=values["stunden_pro_schicht"],
+        oee=values["oee"],
+        investment=float(inv),
+        flaeche_sqm=float(flaeche),
+        space_cost_satz_pro_sqm_jahr=values["space_cost_satz_pro_sqm_jahr"],
+        abschreibungsdauer_jahre=values["abschreibungsdauer_jahre"],
+        zinssatz=values["zinssatz"],
+        versicherungssatz=values["versicherungssatz"],
+        instandhaltungssatz=values["instandhaltungssatz"],
+        stromverbrauch_kwh_h=float(getattr(maschine, "stromverbrauch_kwh_h", None) or 0),
+        strompreis=values["strompreis"],
+        druckluftverbrauch_m3_h=float(getattr(maschine, "druckluftverbrauch_m3_h", None) or 0),
+        druckluftpreis=values["druckluftpreis"],
+        kuehlwasserverbrauch_m3_h=float(
+            getattr(maschine, "kuehlwasserverbrauch_m3_h", None) or 0
+        ),
+        kuehlwasserpreis=values["kuehlwasserpreis"],
+        fx_to_eur=fx,
+        source_currency=str(currency),
+    )

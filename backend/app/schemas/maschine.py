@@ -6,13 +6,16 @@ from pydantic import BaseModel, ConfigDict, Field
 class MaschineBase(BaseModel):
     bezeichnung: str
     maschinen_nr: str
-    stundensatz: float
+    stundensatz: float = 0
     schliesskraft_t: float = 0
     aktiv: bool = True
     werk_id: int | None = None
     maschinentyp: str | None = None
     variante: str | None = None
     source_currency: str | None = None
+    # Legacy: früher am Maschine-Datensatz; neue Pflege am Werk.
+    # Bleiben im Schema für Lesekompatibilität, werden bei Neuberechnung
+    # nur noch als Fallback genutzt, wenn Werkwerte fehlen.
     arbeitstage_pro_jahr: float | None = None
     schichten_pro_tag: float | None = None
     stunden_pro_schicht: float | None = None
@@ -35,7 +38,7 @@ class MaschineBase(BaseModel):
 
 
 class MaschineCreate(MaschineBase):
-    pass
+    werk_id: int = Field(ge=1)
 
 
 class MaschineUpdate(BaseModel):
@@ -44,7 +47,7 @@ class MaschineUpdate(BaseModel):
     stundensatz: float | None = None
     schliesskraft_t: float | None = None
     aktiv: bool | None = None
-    werk_id: int | None = None
+    werk_id: int | None = Field(default=None, ge=1)
     maschinentyp: str | None = None
     variante: str | None = None
     source_currency: str | None = None
