@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.core.permissions import require_kalkulator, require_viewer
@@ -21,6 +22,25 @@ from app.schemas.hierarchy_plant import (
 )
 
 router = APIRouter(tags=["Standort"])
+
+
+def _raise_werk_db_error(exc: Exception) -> None:
+    """Mappt DB-Fehler auf verständliche API-Antworten (kein undurchsichtiger 500)."""
+    if isinstance(exc, IntegrityError):
+        raise HTTPException(
+            status_code=409, detail="Werk-Code bereits vergeben"
+        ) from exc
+    if isinstance(exc, ProgrammingError):
+        msg = str(getattr(exc, "orig", exc))
+        if "arbeitstage_pro_jahr" in msg or "does not exist" in msg or "existiert nicht" in msg:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Datenbankschema veraltet: bitte Migration "
+                    "`alembic upgrade head` (e1a0009_werk_operating_params) ausführen."
+                ),
+            ) from exc
+    raise exc
 
 
 @router.get("/laender", response_model=list[LandRead])
@@ -87,8 +107,12 @@ def create_werk(
         raise HTTPException(status_code=409, detail="Werk-Code bereits vergeben")
     obj = Werk(**body.model_dump())
     db.add(obj)
-    db.commit()
-    db.refresh(obj)
+    try:
+        db.commit()
+        db.refresh(obj)
+    except (IntegrityError, ProgrammingError) as exc:
+        db.rollback()
+        _raise_werk_db_error(exc)
     return obj
 
 
@@ -102,10 +126,24 @@ def update_werk(
     obj = db.get(Werk, item_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Werk nicht gefunden")
-    for k, v in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    if "code" in updates:
+        duplicate = db.scalars(
+            select(Werk).where(Werk.code == updates["code"], Werk.id != item_id)
+        ).first()
+        if duplicate:
+            raise HTTPException(status_code=409, detail="Werk-Code bereits vergeben")
+    if "land_id" in updates and updates["land_id"] is not None:
+        if not db.get(Land, updates["land_id"]):
+            raise HTTPException(status_code=422, detail="Land nicht gefunden")
+    for k, v in updates.items():
         setattr(obj, k, v)
-    db.commit()
-    db.refresh(obj)
+    try:
+        db.commit()
+        db.refresh(obj)
+    except (IntegrityError, ProgrammingError) as exc:
+        db.rollback()
+        _raise_werk_db_error(exc)
     return obj
 
 

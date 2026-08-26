@@ -22,6 +22,20 @@ function optionLabel(option: SelectOption): string {
   return typeof option === "string" ? option : option.label;
 }
 
+/** Parst Zahlen inkl. deutscher Schreibweise („0,92“ / „1.234,56“). */
+export function parseDecimalInput(raw: string): number | "" {
+  const text = raw.trim().replace(/\s|\u00a0/g, "");
+  if (text === "") return "";
+  let normalized = text;
+  if (normalized.includes(",") && normalized.includes(".")) {
+    normalized = normalized.replace(/\./g, "").replace(",", ".");
+  } else if (normalized.includes(",")) {
+    normalized = normalized.replace(",", ".");
+  }
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : Number.NaN;
+}
+
 export function StammdatenFormModal({
   title,
   fields,
@@ -147,7 +161,7 @@ export function StammdatenFormModal({
                         onChange(
                           field.name,
                           field.type === "number"
-                            ? Number(event.target.value)
+                            ? parseDecimalInput(event.target.value)
                             : event.target.value,
                         )
                       }

@@ -114,6 +114,41 @@ export function WerkePage() {
         druckluftpreis: 0.06,
         kuehlwasserpreis: 0.03,
       }}
+      transformSubmitValues={(values) => {
+        const numericKeys = [
+          "fx_to_eur",
+          "arbeitstage_pro_jahr",
+          "schichten_pro_tag",
+          "stunden_pro_schicht",
+          "oee",
+          "space_cost_satz_pro_sqm_jahr",
+          "abschreibungsdauer_jahre",
+          "zinssatz",
+          "versicherungssatz",
+          "instandhaltungssatz",
+          "strompreis",
+          "druckluftpreis",
+          "kuehlwasserpreis",
+        ] as const;
+        const payload: Record<string, unknown> = { ...values };
+        const landRaw = values.land_id;
+        payload.land_id =
+          landRaw === "" || landRaw == null ? null : Number(landRaw);
+        for (const key of numericKeys) {
+          const raw = values[key];
+          if (raw === "" || raw == null) {
+            payload[key] = null;
+            continue;
+          }
+          if (typeof raw === "number" && Number.isFinite(raw)) {
+            payload[key] = raw;
+            continue;
+          }
+          const parsed = Number(String(raw).replace(",", "."));
+          payload[key] = Number.isFinite(parsed) ? parsed : raw;
+        }
+        return payload;
+      }}
     />
   );
 }
