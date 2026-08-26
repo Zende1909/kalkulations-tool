@@ -188,6 +188,73 @@ def _seed_werk(db: Session, *, oee: float = 0.9) -> Werk:
     return werk
 
 
+def test_create_maschine_accepts_german_decimal_consumptions(client: TestClient, db: Session):
+    werk = _seed_werk(db)
+    resp = client.post(
+        f"{API}/maschinen",
+        json={
+            "bezeichnung": "IMM Dec",
+            "maschinen_nr": "IMM-DEC",
+            "schliesskraft_t": "150",
+            "aktiv": True,
+            "werk_id": werk.id,
+            "investment": "347300",
+            "flaeche_sqm": "44,1",
+            "stromverbrauch_kwh_h": "50,7",
+            "druckluftverbrauch_m3_h": "9,9",
+            "kuehlwasserverbrauch_m3_h": "4,1",
+            "setup_zeit_min": "30",
+            "setup_mitarbeiter": "1,5",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["flaeche_sqm"] == pytest.approx(44.1)
+    assert body["stromverbrauch_kwh_h"] == pytest.approx(50.7)
+    assert body["druckluftverbrauch_m3_h"] == pytest.approx(9.9)
+    assert body["kuehlwasserverbrauch_m3_h"] == pytest.approx(4.1)
+    assert body["setup_mitarbeiter"] == pytest.approx(1.5)
+    assert body["setup_zeit_min"] == pytest.approx(30)
+    mid = body["id"]
+
+    got = client.get(f"{API}/maschinen/{mid}")
+    assert got.status_code == 200
+    assert got.json()["flaeche_sqm"] == pytest.approx(44.1)
+
+    upd = client.put(
+        f"{API}/maschinen/{mid}",
+        json={
+            "flaeche_sqm": "44.1",
+            "stromverbrauch_kwh_h": "51.2",
+            "setup_mitarbeiter": 1.5,
+        },
+    )
+    assert upd.status_code == 200, upd.text
+    assert upd.json()["stromverbrauch_kwh_h"] == pytest.approx(51.2)
+
+    # Stundensatz nutzt Dezimalverbräuche + Werkpreise
+    rate = client.post(f"{API}/maschinen/{mid}/recalculate-rate", json={})
+    assert rate.status_code == 200, rate.text
+    assert rate.json()["stundensatz"] > 0
+    assert rate.json()["energie_pro_stunde"] is not None
+
+
+def test_create_maschine_rejects_invalid_decimal_string(client: TestClient, db: Session):
+    werk = _seed_werk(db)
+    resp = client.post(
+        f"{API}/maschinen",
+        json={
+            "bezeichnung": "Bad",
+            "maschinen_nr": "BAD-DEC",
+            "schliesskraft_t": 10,
+            "werk_id": werk.id,
+            "flaeche_sqm": "abc",
+        },
+    )
+    assert resp.status_code == 422
+    assert "Fläche" in str(resp.json()) or "flaeche" in str(resp.json()).lower()
+
+
 def test_create_maschine_requires_werk(client: TestClient, db: Session):
     resp = client.post(
         f"{API}/maschinen",

@@ -6,6 +6,10 @@ import { useAuth } from "../../context/AuthContext";
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import type { Maschine, Werk } from "../../types/stammdaten";
+import {
+  loadMaschineFormValues,
+  submitMaschineFormValues,
+} from "../../utils/maschineFormDecimals";
 
 const columnDefs: ColDef<Maschine>[] = [
   { field: "maschinen_nr", headerName: "Maschinen-Nr." },
@@ -100,7 +104,8 @@ function buildMachineFormFields(werke: Werk[], currentWerkId: number | null): Fo
       name: "setup_mitarbeiter",
       label: "Setup-Mitarbeiteranzahl",
       type: "number",
-      step: "1",
+      step: "0.0001",
+      hint: "Dezimalwert möglich, z. B. 1,5",
     },
     { name: "aktiv", label: "Aktiv", type: "checkbox" },
   ];
@@ -210,17 +215,8 @@ export function MaschinenPage() {
           const raw = values.werk_id;
           setFormWerkId(raw === "" || raw == null ? null : Number(raw));
         }}
-        transformSubmitValues={(values) => {
-          const werkRaw = values.werk_id;
-          const werk_id = werkRaw === "" || werkRaw == null ? null : Number(werkRaw);
-          const {
-            stundensatz: _s,
-            stundensatz_source: _ss,
-            source_currency: _sc,
-            ...rest
-          } = values;
-          return { ...rest, werk_id };
-        }}
+        transformLoadValues={(values) => loadMaschineFormValues(values)}
+        transformSubmitValues={(values) => submitMaschineFormValues(values)}
         toolbarExtra={
           canWrite ? (
             <div className="mb-3">

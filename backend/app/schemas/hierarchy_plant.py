@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
+from app.schemas.numbers import parse_de_float as _parse_de_float
+
 _OPT_FLOAT_LABELS = {
     "arbeitstage_pro_jahr": "Arbeitstage/Jahr",
     "schichten_pro_tag": "Schichten/Tag",
@@ -29,36 +31,6 @@ _RATE_FRACTION_LABELS = {
     "versicherungssatz": "Versicherungssatz",
     "instandhaltungssatz": "Instandhaltungssatz",
 }
-
-
-def _parse_de_float(value: Any, *, field_label: str, allow_none: bool = True) -> float | None:
-    """Akzeptiert float/int sowie Strings mit Komma oder Punkt (z. B. „0,92“)."""
-    if value is None:
-        if allow_none:
-            return None
-        raise ValueError(f"{field_label} ist Pflicht")
-    if isinstance(value, bool):
-        raise ValueError(f"{field_label} muss eine Zahl sein")
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        text = value.strip().replace(" ", "").replace("\u00a0", "")
-        if text == "":
-            if allow_none:
-                return None
-            raise ValueError(f"{field_label} ist Pflicht")
-        # Tausenderpunkt + Dezimalkomma: 1.234,56 → 1234.56
-        if "," in text and "." in text:
-            text = text.replace(".", "").replace(",", ".")
-        elif "," in text:
-            text = text.replace(",", ".")
-        try:
-            return float(text)
-        except ValueError as exc:
-            raise ValueError(
-                f"{field_label} muss eine Zahl sein (z. B. 0,92 oder 0.92)"
-            ) from exc
-    raise ValueError(f"{field_label} muss eine Zahl sein")
 
 
 class LandBase(BaseModel):

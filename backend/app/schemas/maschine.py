@@ -1,6 +1,39 @@
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+
+from app.schemas.numbers import parse_de_float
+
+_REQUIRED_FLOAT_LABELS = {
+    "stundensatz": "Stundensatz",
+    "schliesskraft_t": "Schließkraft",
+}
+
+_OPTIONAL_FLOAT_LABELS = {
+    "arbeitstage_pro_jahr": "Arbeitstage/Jahr",
+    "schichten_pro_tag": "Schichten/Tag",
+    "stunden_pro_schicht": "Stunden/Schicht",
+    "oee": "OEE",
+    "investment": "Investment",
+    "flaeche_sqm": "Fläche",
+    "space_cost_satz_pro_sqm_jahr": "Space-Satz",
+    "abschreibungsdauer_jahre": "Abschreibungsdauer",
+    "zinssatz": "Zinssatz",
+    "versicherungssatz": "Versicherungssatz",
+    "instandhaltungssatz": "Instandhaltungssatz",
+    "stromverbrauch_kwh_h": "Stromverbrauch",
+    "strompreis": "Strompreis",
+    "druckluftverbrauch_m3_h": "Druckluftverbrauch",
+    "druckluftpreis": "Druckluftpreis",
+    "kuehlwasserverbrauch_m3_h": "Kühlwasserverbrauch",
+    "kuehlwasserpreis": "Kühlwasserpreis",
+    "setup_zeit_min": "Setup-Zeit",
+    "setup_mitarbeiter": "Setup-Mitarbeiteranzahl",
+}
+
+_REQUIRED_FLOAT_FIELDS = tuple(_REQUIRED_FLOAT_LABELS.keys())
+_OPTIONAL_FLOAT_FIELDS = tuple(_OPTIONAL_FLOAT_LABELS.keys())
 
 
 class MaschineBase(BaseModel):
@@ -35,6 +68,20 @@ class MaschineBase(BaseModel):
     kuehlwasserpreis: float | None = None
     setup_zeit_min: float | None = None
     setup_mitarbeiter: float | None = None
+
+    @field_validator(*_REQUIRED_FLOAT_FIELDS, mode="before")
+    @classmethod
+    def coerce_required_floats(cls, value: Any, info: ValidationInfo) -> float:
+        label = _REQUIRED_FLOAT_LABELS.get(info.field_name or "", info.field_name or "Wert")
+        parsed = parse_de_float(value, field_label=label, allow_none=False)
+        assert parsed is not None
+        return parsed
+
+    @field_validator(*_OPTIONAL_FLOAT_FIELDS, mode="before")
+    @classmethod
+    def coerce_optional_floats(cls, value: Any, info: ValidationInfo) -> float | None:
+        label = _OPTIONAL_FLOAT_LABELS.get(info.field_name or "", info.field_name or "Wert")
+        return parse_de_float(value, field_label=label, allow_none=True)
 
 
 class MaschineCreate(MaschineBase):
@@ -71,6 +118,20 @@ class MaschineUpdate(BaseModel):
     setup_zeit_min: float | None = None
     setup_mitarbeiter: float | None = None
 
+    @field_validator("stundensatz", "schliesskraft_t", mode="before")
+    @classmethod
+    def coerce_optional_required_style(cls, value: Any, info: ValidationInfo) -> float | None:
+        if value is None or value == "":
+            return None
+        label = _REQUIRED_FLOAT_LABELS.get(info.field_name or "", info.field_name or "Wert")
+        return parse_de_float(value, field_label=label, allow_none=True)
+
+    @field_validator(*_OPTIONAL_FLOAT_FIELDS, mode="before")
+    @classmethod
+    def coerce_optional_floats(cls, value: Any, info: ValidationInfo) -> float | None:
+        label = _OPTIONAL_FLOAT_LABELS.get(info.field_name or "", info.field_name or "Wert")
+        return parse_de_float(value, field_label=label, allow_none=True)
+
 
 class MaschineRead(MaschineBase):
     model_config = ConfigDict(from_attributes=True)
@@ -91,3 +152,8 @@ class MaschineRead(MaschineBase):
 
 class MaschineRecalculateRequest(BaseModel):
     fx_to_eur: float | None = Field(default=None, gt=0)
+
+    @field_validator("fx_to_eur", mode="before")
+    @classmethod
+    def coerce_fx(cls, value: Any) -> float | None:
+        return parse_de_float(value, field_label="Wechselkurs → EUR", allow_none=True)
