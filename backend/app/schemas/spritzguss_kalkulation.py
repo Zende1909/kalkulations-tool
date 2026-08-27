@@ -113,6 +113,7 @@ class SpritzgussErgebnisSchema(BaseModel):
     materialgewicht_kg: float
     materialkosten: float
     materialkosten_inkl_ausschuss: float
+    materialausschuss_betrag: float | None = None
     materialgemeinkosten: float
     materialkosten_gesamt: float
     mgk_basis: float | None = None

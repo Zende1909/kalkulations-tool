@@ -56,7 +56,13 @@ router = APIRouter(prefix="/spritzguss", tags=["Spritzguss-Kalkulation"])
 def _apply_central_rates(
     db: Session, calc_input: SpritzgussInput, *, werk_id: int | None = None
 ) -> SpritzgussInput:
-    """Überschreibt Zuschlagssätze mit zentral gepflegten Stammdatenwerten."""
+    """Setzt Zuschlagssätze aus Stammdaten; MGK nur als Satz, Anwendung in der Engine.
+
+    Der zentrale MGK-Satz ersetzt einen etwaigen Client-``mgk_pct``. Die betragsmäßige
+    MGK wird ausschließlich in ``berechne_spritzguss`` einmal auf
+    ``materialkosten_inkl_ausschuss`` berechnet – nicht erneut auf
+    ``materialkosten_gesamt``.
+    """
     try:
         rates = load_central_markup_rates(db, werk_id=werk_id)
         mgk_pct = rates.mgk_pct_for_nominierung(
@@ -482,6 +488,15 @@ def _build_calc_response(
         "herstellkosten": gesamt.gesamte_herstellkosten,
         # Endpreis inkl. Veredelung und zentraler Zuschläge (nicht Spritzguss-VP allein)
         "verkaufspreis": gesamt.endpreis_je_stueck,
+        # Material-Stack nur aus der Engine (MGK genau einmal auf inkl. Ausschuss).
+        # Gesamt übernimmt materialkosten_gesamt unverändert – kein zweiter MGK-Satz.
+        "materialkosten": spritzguss.materialkosten,
+        "materialkosten_inkl_ausschuss": spritzguss.materialkosten_inkl_ausschuss,
+        "materialausschuss_betrag": spritzguss.materialausschuss_betrag,
+        "mgk_basis": spritzguss.mgk_basis,
+        "materialgemeinkosten": spritzguss.materialgemeinkosten,
+        "materialkosten_gesamt": spritzguss.materialkosten_gesamt,
+        "applied_mgk_pct": spritzguss.applied_mgk_pct,
     }
 
     # FGK genau einmal und konsistent anzeigen (Basis inkl. Veredelung)

@@ -18,11 +18,16 @@ export interface SpritzgussErgebnis {
   materialgewicht_kg: number;
   materialkosten: number;
   materialkosten_inkl_ausschuss: number;
+  /** Materialausschuss-Betrag (inkl. Ausschuss − direkt) */
+  materialausschuss_betrag?: number;
   materialgemeinkosten: number;
+  /** Alias fachlich: Materialkosten inkl. MGK (MGK genau einmal) */
   materialkosten_gesamt: number;
+  mgk_basis?: number;
   maschinenkosten: number;
   fertigungslohn: number;
   fertigungsgemeinkosten: number;
+  fgk_basis?: number;
   werkzeugkostenanteil: number;
   werkzeug_einmalzahlung: number;
   herstellkosten: number;
@@ -32,6 +37,14 @@ export interface SpritzgussErgebnis {
   nettoverkaufspreis: number;
   skonto: number;
   verkaufspreis: number;
+  applied_mgk_pct?: number;
+  applied_fgk_pct?: number;
+  applied_vvgk_pct?: number;
+  applied_gewinn_pct?: number;
+  applied_skonto_pct?: number;
+  bruttokapazitaet_exakt?: number;
+  bruttokapazitaet?: number;
+  nettokapazitaet?: number;
   spritzguss_gesamt?: number;
   veredelung_gesamt?: number;
   endpreis_je_stueck?: number;

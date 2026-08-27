@@ -225,9 +225,15 @@ def berechne_gesamt(
     gewinn_pct: float = 0,
     skonto_pct: float = 0,
 ) -> GesamtErgebnis:
-    """Kombiniert Spritzguss-Direktkosten mit Veredelung und wendet Zuschläge einmal an."""
+    """Kombiniert Spritzguss-Direktkosten mit Veredelung und wendet Zuschläge einmal an.
+
+    ``materialkosten_gesamt`` aus dem Spritzguss-Ergebnis ist bereits
+    Material inkl. Ausschuss **und** Material-MGK. Hier wird kein weiterer
+    MGK-Satz auf Material angewendet; FGK-Basis enthält kein Material/MGK.
+    """
     spritzguss_vp = float(spritzguss_ergebnis.get("verkaufspreis", 0))
 
+    # Bereits inkl. Material-MGK (Engine); nicht erneut bezuschlagen
     material = _d(spritzguss_ergebnis.get("materialkosten_gesamt", 0))
     maschinenkosten = _d(spritzguss_ergebnis.get("maschinenkosten", 0))
     fertigungslohn = _d(spritzguss_ergebnis.get("fertigungslohn", 0))

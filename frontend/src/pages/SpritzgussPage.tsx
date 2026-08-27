@@ -137,9 +137,10 @@ const ERGEBNISUEBERSICHT: Array<{
 const FIELD_LABELS: Record<string, string> = {
   materialgewicht_kg: "Materialgewicht aus Schussgewicht (kg)",
   materialkosten: "Materialkosten aus Schussgewicht (€)",
-  materialkosten_inkl_ausschuss: "Materialkosten inkl. Prozessausschuss (€)",
+  materialkosten_inkl_ausschuss: "Materialkosten inkl. Prozessausschuss / MGK-Basis (€)",
+  materialausschuss_betrag: "Materialausschuss (€)",
   materialgemeinkosten: "Materialgemeinkosten MGK (€)",
-  materialkosten_gesamt: "Materialkosten gesamt (€)",
+  materialkosten_gesamt: "Materialkosten inkl. MGK (€)",
   mgk_basis: "MGK-Basis (Material inkl. Ausschuss) (€)",
   mgk_pct: "MGK-Satz (%)",
   material_nominierung: "Material-Nominierung",

@@ -10,7 +10,8 @@ Kostenbasen
   enthält typischerweise bereits Anguss-/Bruttomaterial; der Ausschusszuschlag
   deckt zusätzlich Ausschussteile ab – keine zweite Anguss-Umrechnung aus dem
   Nettogewicht.
-- Material-MGK: auf **Materialkosten inklusive Prozessausschuss**.
+- Material-MGK: auf **Materialkosten inklusive Prozessausschuss**
+  (``mgk_basis``) – genau einmal; nie auf ``materialkosten_gesamt``.
 - Direkte Fertigungskosten (Maschine / Lohn) je Gutteil über **Nettokapazität**
   (Excel ``Beispielkalkulation`` / Costing-Logik)::
 
@@ -99,6 +100,7 @@ class SpritzgussErgebnis:
     materialgewicht_kg: float
     materialkosten: float
     materialkosten_inkl_ausschuss: float
+    materialausschuss_betrag: float
     materialgemeinkosten: float
     materialkosten_gesamt: float
     mgk_basis: float
@@ -146,6 +148,7 @@ class SpritzgussErgebnis:
                 "materialgewicht_kg": self.materialgewicht_kg,
                 "materialkosten": self.materialkosten,
                 "materialkosten_inkl_ausschuss": self.materialkosten_inkl_ausschuss,
+                "materialausschuss_betrag": self.materialausschuss_betrag,
                 "mgk_basis": self.mgk_basis,
                 "materialgemeinkosten": self.materialgemeinkosten,
                 "mgk_pct": self.applied_mgk_pct,
@@ -263,7 +266,10 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
 
     materialgewicht_kg = _qty(schussgewicht_g / Decimal("1000"))
     materialkosten = _money(materialgewicht_kg * materialpreis)
+    # Ausschuss genau einmal auf die direkten Materialkosten (nicht auf MGK).
     materialkosten_inkl_ausschuss = _money(materialkosten / (Decimal("1") - ausschuss))
+    materialausschuss_betrag = _money(materialkosten_inkl_ausschuss - materialkosten)
+    # MGK genau einmal auf Material inkl. Ausschuss – nie auf materialkosten_gesamt.
     mgk_basis = materialkosten_inkl_ausschuss
     materialgemeinkosten = _money(mgk_basis * mgk)
     materialkosten_gesamt = _money(materialkosten_inkl_ausschuss + materialgemeinkosten)
@@ -328,6 +334,7 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
         materialgewicht_kg=float(materialgewicht_kg),
         materialkosten=float(materialkosten),
         materialkosten_inkl_ausschuss=float(materialkosten_inkl_ausschuss),
+        materialausschuss_betrag=float(materialausschuss_betrag),
         materialgemeinkosten=float(materialgemeinkosten),
         materialkosten_gesamt=float(materialkosten_gesamt),
         mgk_basis=float(mgk_basis),
