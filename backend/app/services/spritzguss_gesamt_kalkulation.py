@@ -97,6 +97,9 @@ class GesamtErgebnis:
     material_ausschussquote_pct: float | None = None
     applied_mgk_pct: float | None = None
     material_nominierung: str | None = None
+    setup_kosten_je_teil: float = 0.0
+    setup_maschinenkosten_je_teil: float = 0.0
+    setup_lohnkosten_je_teil: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -123,13 +126,24 @@ class GesamtErgebnis:
             "material_nominierung": self.material_nominierung,
             "maschinenkosten": self.maschinenkosten,
             "fertigungslohn": self.fertigungslohn,
+            "setup_kosten_je_teil": self.setup_kosten_je_teil,
+            "setup_maschinenkosten_je_teil": self.setup_maschinenkosten_je_teil,
+            "setup_lohnkosten_je_teil": self.setup_lohnkosten_je_teil,
             "veredelung_schritte": [s.to_dict() for s in self.veredelung_schritte],
         }
 
     def as_ergebnisuebersicht(self) -> dict[str, float]:
-        """Fachliche Kurzübersicht für die Ergebnisanzeige (ohne Investitionsanteil)."""
-        return {
-            "spritzguss_herstellkosten": self.spritzguss_herstellkosten,
+        """Additive Kurzübersicht: FGK erscheint genau einmal vor den Herstellkosten.
+
+        Spritzguss-Herstellkosten sind kein Summand vor der FGK (sie enthalten
+        bereits die spritzgusseitige FGK) und stehen nur informativ am Ende,
+        wenn Veredelung die Gesamt-HK davon unterscheidet.
+        """
+        overview: dict[str, float] = {
+            "materialkosten_gesamt": self.materialkosten_gesamt,
+            "maschinenkosten": self.maschinenkosten,
+            "fertigungslohn": self.fertigungslohn,
+            "setup_kosten_je_teil": self.setup_kosten_je_teil,
             "veredelung_gesamt": self.veredelung_gesamt,
             "fgk_basis": self.fgk_basis,
             "fertigungsgemeinkosten": self.fertigungsgemeinkosten,
@@ -145,6 +159,9 @@ class GesamtErgebnis:
             "gewinn_pct": self.applied_gewinn_pct,
             "skonto_pct": self.applied_skonto_pct,
         }
+        if abs(self.spritzguss_herstellkosten - self.gesamte_herstellkosten) > 0.005:
+            overview["spritzguss_herstellkosten"] = self.spritzguss_herstellkosten
+        return overview
 
     def as_veredelung_block(self) -> dict[str, float]:
         block: dict[str, float] = {"veredelung_gesamt": self.veredelung_gesamt}
@@ -311,6 +328,8 @@ def berechne_gesamt(
     endpreis = _money(nettoverkaufspreis + skonto)
 
     mat_vor = spritzguss_ergebnis.get("materialkosten")
+    setup_maschine_teil = float(spritzguss_ergebnis.get("setup_maschinenkosten_je_teil", 0) or 0)
+    setup_lohn_teil = float(spritzguss_ergebnis.get("setup_lohnkosten_je_teil", 0) or 0)
     return GesamtErgebnis(
         spritzguss_herstellkosten=float(spritzguss_hk),
         spritzguss_verkaufspreis=spritzguss_vp,
@@ -346,4 +365,7 @@ def berechne_gesamt(
             else None
         ),
         material_nominierung=spritzguss_ergebnis.get("material_nominierung"),
+        setup_kosten_je_teil=float(setup_je_teil),
+        setup_maschinenkosten_je_teil=setup_maschine_teil,
+        setup_lohnkosten_je_teil=setup_lohn_teil,
     )

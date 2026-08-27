@@ -478,6 +478,8 @@ def _build_calc_response(
     ergebnis_dict = {
         **spritzguss_dict,
         **gesamt.to_dict(),
+        # Gleiche Kostenbasis wie Endpreis: Gesamt-HK inkl. einer FGK
+        "herstellkosten": gesamt.gesamte_herstellkosten,
         # Endpreis inkl. Veredelung und zentraler Zuschläge (nicht Spritzguss-VP allein)
         "verkaufspreis": gesamt.endpreis_je_stueck,
     }
@@ -487,16 +489,18 @@ def _build_calc_response(
         **bloecke.get("fertigung", {}),
         "maschinenkosten": gesamt.maschinenkosten,
         "fertigungslohn": gesamt.fertigungslohn,
-        "fertigungsgemeinkosten": gesamt.fertigungsgemeinkosten,
+        "setup_maschinenkosten_je_teil": gesamt.setup_maschinenkosten_je_teil,
+        "setup_lohnkosten_je_teil": gesamt.setup_lohnkosten_je_teil,
+        "setup_kosten_je_teil": gesamt.setup_kosten_je_teil,
         "fgk_basis": gesamt.fgk_basis,
+        "fertigungsgemeinkosten": gesamt.fertigungsgemeinkosten,
         "fgk_pct": gesamt.applied_fgk_pct,
     }
 
+    # FGK nur im Fertigungsblock (nicht nochmals unter Gemeinkosten) –
+    # vermeidet den Eindruck einer zweiten Addition.
     bloecke["gemeinkosten"] = {
         "herstellkosten": gesamt.gesamte_herstellkosten,
-        "fgk_basis": gesamt.fgk_basis,
-        "fertigungsgemeinkosten": gesamt.fertigungsgemeinkosten,
-        "fgk_pct": gesamt.applied_fgk_pct,
         "vvgk": gesamt.vvgk,
         "vvgk_pct": gesamt.applied_vvgk_pct,
         "vvgk_basis": gesamt.gesamte_herstellkosten,

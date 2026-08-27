@@ -93,18 +93,36 @@ const ERGEBNISUEBERSICHT: Array<{
   key: string;
   label: string;
   highlight?: boolean;
+  /** Zeile ausblenden, wenn Wert 0 / fehlend (keine Null-Zeilen für Setup/Veredelung). */
+  hideZero?: boolean;
 }> = [
-  { key: "spritzguss_herstellkosten", label: "Spritzguss-Herstellkosten (€)" },
-  { key: "veredelung_gesamt", label: "Veredelungskosten direkt (€)" },
-  { key: "fgk_basis", label: "FGK-Basis (€)" },
-  { key: "fertigungsgemeinkosten", label: "FGK (€)" },
-  { key: "gesamte_herstellkosten", label: "Herstellkosten gesamt (€)" },
+  // Additive Aufbauzeilen – FGK nur einmal vor den Herstellkosten
+  { key: "materialkosten_gesamt", label: "Material inkl. Ausschuss + MGK (€)" },
+  { key: "maschinenkosten", label: "Maschinenkosten (€)" },
+  { key: "fertigungslohn", label: "Fertigungslohn (€)" },
+  { key: "setup_kosten_je_teil", label: "Setup-Kosten je Teil (€)", hideZero: true },
+  { key: "veredelung_gesamt", label: "Veredelungskosten direkt (€)", hideZero: true },
+  {
+    key: "fgk_basis",
+    label: "FGK-Basis (Maschine + Lohn + Setup + Veredelung) (€)",
+  },
+  { key: "fertigungsgemeinkosten", label: "FGK-Betrag (einmal) (€)" },
+  {
+    key: "gesamte_herstellkosten",
+    label: "Herstellkosten (= Summe inkl. FGK) (€)",
+    highlight: true,
+  },
   { key: "vvgk", label: "SG&A / VVGK (€)" },
   { key: "selbstkosten", label: "Selbstkosten (€)" },
   { key: "gewinn", label: "Profit / Gewinn (€)" },
   { key: "nettoverkaufspreis_gesamt", label: "Nettoverkaufspreis (€)" },
-  { key: "skonto", label: "Skonto (€)" },
+  { key: "skonto", label: "Skonto (€)", hideZero: true },
   { key: "endpreis_je_stueck", label: "Endpreis je Stück (€)", highlight: true },
+  // Nur bei Veredelung: Spritzguss-HK enthält bereits anteilige FGK – kein Summand
+  {
+    key: "spritzguss_herstellkosten",
+    label: "davon Spritzguss-HK inkl. FGK (ohne Veredelung) (€)",
+  },
 ];
 
 const FIELD_LABELS: Record<string, string> = {
@@ -118,9 +136,12 @@ const FIELD_LABELS: Record<string, string> = {
   material_nominierung: "Material-Nominierung",
   maschinenkosten: "Maschinenkosten je Teil (€)",
   fertigungslohn: "Fertigungslohn je Teil (€)",
-  fertigungsgemeinkosten: "Fertigungsgemeinkosten FGK (€)",
-  fgk_basis: "FGK-Basis (€)",
+  fertigungsgemeinkosten: "Fertigungsgemeinkosten FGK (einmal) (€)",
+  fgk_basis: "FGK-Basis (Maschine + Lohn + Setup + Veredelung) (€)",
   fgk_pct: "FGK-Satz (%)",
+  setup_maschinenkosten_je_teil: "Setup-Maschinenkosten je Teil (€)",
+  setup_lohnkosten_je_teil: "Setup-Lohnkosten je Teil (€)",
+  setup_kosten_je_teil: "Setup-Kosten je Teil (€)",
   vvgk_pct: "VVGK-Satz (%)",
   gewinn_pct: "Gewinn-Satz (%)",
   skonto_pct: "Skonto-Satz (%)",
@@ -128,7 +149,7 @@ const FIELD_LABELS: Record<string, string> = {
   gewinn_basis: "Gewinn-Basis / Selbstkosten (€)",
   werkzeugkostenanteil: "Werkzeugkostenanteil je Stück (€)",
   werkzeug_einmalzahlung: "Einmalzahlung / Investition (€)",
-  herstellkosten: "Herstellkosten (€)",
+  herstellkosten: "Herstellkosten inkl. FGK (€)",
   vvgk: "VVGK / SG&A (€)",
   selbstkosten: "Selbstkosten (€)",
   gewinn: "Gewinn (€)",
@@ -657,18 +678,25 @@ export function SpritzgussPage() {
     if (bloecke.zusammenfassung) return bloecke.zusammenfassung;
     const g = bloecke.gemeinkosten;
     const v = bloecke.verkaufspreis;
+    const f = bloecke.fertigung;
+    const m = bloecke.material;
     if (!g || !v) return null;
-    const hk = g.herstellkosten ?? 0;
+    const hk = Number(g.herstellkosten ?? 0);
     return {
-      spritzguss_herstellkosten: hk,
-      veredelung_gesamt: 0,
+      materialkosten_gesamt: Number(m?.materialkosten_gesamt ?? 0),
+      maschinenkosten: Number(f?.maschinenkosten ?? 0),
+      fertigungslohn: Number(f?.fertigungslohn ?? 0),
+      setup_kosten_je_teil: Number(f?.setup_kosten_je_teil ?? 0),
+      veredelung_gesamt: Number(bloecke.veredelung?.veredelung_gesamt ?? 0),
+      fgk_basis: Number(f?.fgk_basis ?? 0),
+      fertigungsgemeinkosten: Number(f?.fertigungsgemeinkosten ?? 0),
       gesamte_herstellkosten: hk,
-      vvgk: g.vvgk ?? 0,
-      selbstkosten: g.selbstkosten ?? 0,
-      gewinn: g.gewinn ?? 0,
-      nettoverkaufspreis_gesamt: v.nettoverkaufspreis ?? 0,
-      skonto: v.skonto ?? 0,
-      endpreis_je_stueck: v.verkaufspreis ?? 0,
+      vvgk: Number(g.vvgk ?? 0),
+      selbstkosten: Number(g.selbstkosten ?? 0),
+      gewinn: Number(g.gewinn ?? 0),
+      nettoverkaufspreis_gesamt: Number(v.nettoverkaufspreis ?? 0),
+      skonto: Number(v.skonto ?? 0),
+      endpreis_je_stueck: Number(v.verkaufspreis ?? 0),
     };
   }, [bloecke]);
 
@@ -1138,10 +1166,16 @@ export function SpritzgussPage() {
                     <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
                       Ergebnisübersicht
                     </h4>
+                    <p className="mb-3 text-xs text-slate-500">
+                      Aufbau additiv: FGK wird genau einmal auf die FGK-Basis berechnet und in
+                      den Herstellkosten mitgezählt – nicht erneut zu den Spritzguss-HK addieren.
+                    </p>
                     <dl className="space-y-1 text-sm">
-                      {ERGEBNISUEBERSICHT.map(({ key, label, highlight }) => {
+                      {ERGEBNISUEBERSICHT.map(({ key, label, highlight, hideZero }) => {
                         const value = ergebnisUebersicht[key];
                         if (value == null) return null;
+                        const num = typeof value === "number" ? value : Number(value);
+                        if (hideZero && (!Number.isFinite(num) || num === 0)) return null;
                         return (
                           <div
                             key={key}
@@ -1159,7 +1193,7 @@ export function SpritzgussPage() {
                                 highlight ? "text-lg text-slate-900" : "font-medium text-gray-900"
                               }`}
                             >
-                              {euro(typeof value === "number" ? value : Number(value))}
+                              {euro(Number.isFinite(num) ? num : Number(value))}
                             </dd>
                           </div>
                         );
