@@ -132,7 +132,8 @@ def test_stammdaten_rate_change_affects_new_calculation(db):
         )
     )
     assert sg2.fertigungsgemeinkosten != first_hk_fgk
-    assert sg2.fertigungsgemeinkosten == pytest.approx(0.75 * 0.30, abs=0.01)
+    # FGK-Basis bei 10 % Ausschuss: Netto 180 → Maschine 0,56 + Lohn 0,28 = 0,84
+    assert sg2.fertigungsgemeinkosten == pytest.approx(0.84 * 0.30, abs=0.01)
 
 
 def test_fgk_basis_and_no_double_on_veredelung():
@@ -239,8 +240,8 @@ def test_material_mgk_selbst_und_oem(db):
     assert selbst.materialgemeinkosten == pytest.approx(0.03, abs=0.01)
     assert oem.materialgemeinkosten == pytest.approx(0.06, abs=0.01)
     assert selbst.fgk_basis == oem.fgk_basis
-    # FGK-Basis ohne Material/MGK
-    assert selbst.fgk_basis == pytest.approx(0.75)
+    # FGK-Basis ohne Material/MGK (Maschine+Lohn über Nettokapazität)
+    assert selbst.fgk_basis == pytest.approx(0.84)
 
 
 def test_missing_material_nominierung(db):

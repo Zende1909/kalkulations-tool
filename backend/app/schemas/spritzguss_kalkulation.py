@@ -148,6 +148,9 @@ class SpritzgussErgebnisSchema(BaseModel):
     setup_aktiv: bool | None = None
     schussgewicht_g: float | None = None
     teilegewicht_netto_g: float | None = None
+    bruttokapazitaet_exakt: float | None = None
+    bruttokapazitaet: float | None = None
+    nettokapazitaet: float | None = None
 
 
 class SpritzgussCalcResponse(BaseModel):

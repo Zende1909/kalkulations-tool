@@ -11,9 +11,20 @@ Kostenbasen
   deckt zusätzlich Ausschussteile ab – keine zweite Anguss-Umrechnung aus dem
   Nettogewicht.
 - Material-MGK: auf **Materialkosten inklusive Prozessausschuss**.
-- FGK: ausschließlich Maschinenkosten + Fertigungslohn
+- Direkte Fertigungskosten (Maschine / Lohn) je Gutteil über **Nettokapazität**
+  (Excel ``Beispielkalkulation`` / Costing-Logik)::
+
+      Bruttokapazität_exakt = 3600 / Zykluszeit_s × Kavitäten
+      Bruttokapazität = ROUND(Bruttokapazität_exakt, 0)   # Excel ROUND
+      Nettokapazität = Bruttokapazität × (1 − Ausschussquote)
+      Maschinenkosten = Maschinenstundensatz / Nettokapazität
+      Fertigungslohn = Lohnstundensatz / Nettokapazität
+
+  Setup-Kosten werden über die Losgröße umgelegt und **nicht** zusätzlich mit
+  dem Spritzguss-Ausschuss belastet.
+- FGK: Maschinenkosten + Fertigungslohn + Setup je Teil
   (nicht Material, nicht Material-MGK, nicht Werkzeug).
-- SG&A (VVGK): auf Herstellkosten (Material inkl. MGK + Maschine + Lohn + FGK;
+- SG&A (VVGK): auf Herstellkosten (Material inkl. MGK + Maschine + Lohn + Setup + FGK;
   Werkzeug-/Investitionsanteil bleibt 0 im Teilepreis).
 - Profit: auf Selbstkosten (HK + SG&A).
 - Skonto: auf Nettoverkaufspreis.
@@ -47,6 +58,11 @@ def _money(value: Decimal, places: str = "0.01") -> Decimal:
 
 def _qty(value: Decimal, places: str = "0.0001") -> Decimal:
     return value.quantize(Decimal(places), rounding=ROUND_HALF_UP)
+
+
+def excel_round_0(value: Decimal) -> Decimal:
+    """Excel ``ROUND(x, 0)`` (kaufmännisch, HALF_UP)."""
+    return value.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
 
 
 @dataclass(frozen=True)
@@ -114,6 +130,10 @@ class SpritzgussErgebnis:
     setup_lohnkosten_je_teil: float = 0.0
     losgroesse: int | None = None
     setup_aktiv: bool = False
+    # Kapazität (Stück/h) – Brutto wie Excel ROUND(...,0), Netto nach Ausschuss
+    bruttokapazitaet_exakt: float = 0.0
+    bruttokapazitaet: float = 0.0
+    nettokapazitaet: float = 0.0
 
     def to_dict(self) -> dict[str, float | str | None]:
         return asdict(self)
@@ -133,6 +153,9 @@ class SpritzgussErgebnis:
                 "materialkosten_gesamt": self.materialkosten_gesamt,
             },
             "fertigung": {
+                "bruttokapazitaet_exakt": self.bruttokapazitaet_exakt,
+                "bruttokapazitaet": self.bruttokapazitaet,
+                "nettokapazitaet": self.nettokapazitaet,
                 "maschinenkosten": self.maschinenkosten,
                 "fertigungslohn": self.fertigungslohn,
                 "setup_maschinenkosten_je_teil": self.setup_maschinenkosten_je_teil,
@@ -197,6 +220,9 @@ def validate_spritzguss_input(data: SpritzgussInput) -> None:
     if data.ausschussquote_pct >= 100:
         raise SpritzgussValidationError("ausschussquote_pct muss kleiner als 100 % sein")
 
+    if data.zykluszeit_s <= 0:
+        raise SpritzgussValidationError("zykluszeit_s muss größer als 0 sein")
+
     if data.kavitaeten < 1:
         raise SpritzgussValidationError("kavitaeten muss mindestens 1 sein")
 
@@ -242,12 +268,20 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
     materialgemeinkosten = _money(mgk_basis * mgk)
     materialkosten_gesamt = _money(materialkosten_inkl_ausschuss + materialgemeinkosten)
 
-    maschinenkosten = _money(
-        zykluszeit / Decimal("3600") * maschinenstundensatz / kavitaeten
-    )
-    fertigungslohn = _money(
-        zykluszeit / Decimal("3600") * lohnstundensatz / kavitaeten
-    )
+    # Kapazität analog Excel: ROUND((3600/Zyklus)*Kavitäten, 0), dann Netto mit Ausschuss
+    brutto_exakt = (Decimal("3600") / zykluszeit) * kavitaeten
+    brutto = excel_round_0(brutto_exakt)
+    if brutto < 1:
+        raise SpritzgussValidationError(
+            "Bruttokapazität ist nach Excel-Rundung < 1 Stück/h – "
+            "Zykluszeit oder Kavitäten prüfen"
+        )
+    netto = brutto * (Decimal("1") - ausschuss)
+    if netto <= 0:
+        raise SpritzgussValidationError("Nettokapazität muss größer als 0 sein")
+
+    maschinenkosten = _money(maschinenstundensatz / netto)
+    fertigungslohn = _money(lohnstundensatz / netto)
 
     setup_aktiv = bool(data.setup_aktiv) or float(data.setup_zeit_min or 0) > 0
     setup_maschinen_gesamt = Decimal("0")
@@ -256,6 +290,7 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
     setup_lohn_teil = Decimal("0")
     setup_je_teil = Decimal("0")
     if setup_aktiv:
+        # Setup über Losgröße – ohne zusätzlichen Spritzguss-Ausschuss (Excel-Logik)
         stunden = _d(data.setup_zeit_min) / Decimal("60")
         setup_maschinen_gesamt = _money(stunden * _d(data.setup_maschinenstundensatz))
         setup_lohn_gesamt = _money(
@@ -324,4 +359,7 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
         setup_lohnkosten_je_teil=float(setup_lohn_teil),
         losgroesse=int(data.losgroesse) if data.losgroesse is not None else None,
         setup_aktiv=setup_aktiv,
+        bruttokapazitaet_exakt=float(brutto_exakt),
+        bruttokapazitaet=float(brutto),
+        nettokapazitaet=float(netto),
     )

@@ -487,6 +487,9 @@ def _build_calc_response(
     # FGK genau einmal und konsistent anzeigen (Basis inkl. Veredelung)
     bloecke["fertigung"] = {
         **bloecke.get("fertigung", {}),
+        "bruttokapazitaet_exakt": gesamt.bruttokapazitaet_exakt,
+        "bruttokapazitaet": gesamt.bruttokapazitaet,
+        "nettokapazitaet": gesamt.nettokapazitaet,
         "maschinenkosten": gesamt.maschinenkosten,
         "fertigungslohn": gesamt.fertigungslohn,
         "setup_maschinenkosten_je_teil": gesamt.setup_maschinenkosten_je_teil,

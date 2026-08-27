@@ -145,21 +145,26 @@ def test_material_mgk_selbst_3_pct():
 
 def test_fgk_nicht_auf_material_oder_mgk():
     result = berechne_spritzguss(_sample(fgk_pct=22, mgk_pct=5))
-    assert result.fgk_basis == 0.75  # nur Maschine + Lohn
-    assert result.fertigungsgemeinkosten == pytest.approx(0.17, abs=0.01)
+    # 36 s, 2 Kav → Brutto ROUND(200)=200; Netto 180 bei 10 % Ausschuss
+    assert result.bruttokapazitaet == 200.0
+    assert result.nettokapazitaet == pytest.approx(180.0)
+    assert result.maschinenkosten == pytest.approx(0.56)  # 100/180
+    assert result.fertigungslohn == pytest.approx(0.28)  # 50/180
+    assert result.fgk_basis == pytest.approx(0.84)  # Maschine + Lohn
+    assert result.fertigungsgemeinkosten == pytest.approx(0.18, abs=0.01)
     assert result.materialkosten_gesamt == 1.17  # inkl. MGK, nicht in FGK-Basis
 
 
 def test_stufe_herstellkosten_mit_mgk_und_fgk():
-    # material 1.17 + machine 0.5 + lohn 0.25 + fgk 0.15 = 2.07
+    # material 1.17 + machine 0.56 + lohn 0.28 + fgk 0.17 = 2.18
     result = berechne_spritzguss(_sample())
-    assert result.herstellkosten == 2.07
-    assert result.vvgk == 0.21
-    assert result.selbstkosten == 2.28
-    assert result.gewinn == 0.23
-    assert result.nettoverkaufspreis == 2.51
+    assert result.herstellkosten == 2.18
+    assert result.vvgk == 0.22
+    assert result.selbstkosten == 2.40
+    assert result.gewinn == 0.24
+    assert result.nettoverkaufspreis == 2.64
     assert result.skonto == 0.05
-    assert result.verkaufspreis == 2.56
+    assert result.verkaufspreis == 2.69
 
 
 def test_as_blocks_contain_weights():

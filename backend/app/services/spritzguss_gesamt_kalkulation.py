@@ -100,6 +100,9 @@ class GesamtErgebnis:
     setup_kosten_je_teil: float = 0.0
     setup_maschinenkosten_je_teil: float = 0.0
     setup_lohnkosten_je_teil: float = 0.0
+    bruttokapazitaet_exakt: float | None = None
+    bruttokapazitaet: float | None = None
+    nettokapazitaet: float | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -129,6 +132,9 @@ class GesamtErgebnis:
             "setup_kosten_je_teil": self.setup_kosten_je_teil,
             "setup_maschinenkosten_je_teil": self.setup_maschinenkosten_je_teil,
             "setup_lohnkosten_je_teil": self.setup_lohnkosten_je_teil,
+            "bruttokapazitaet_exakt": self.bruttokapazitaet_exakt,
+            "bruttokapazitaet": self.bruttokapazitaet,
+            "nettokapazitaet": self.nettokapazitaet,
             "veredelung_schritte": [s.to_dict() for s in self.veredelung_schritte],
         }
 
@@ -140,6 +146,9 @@ class GesamtErgebnis:
         wenn Veredelung die Gesamt-HK davon unterscheidet.
         """
         overview: dict[str, float] = {
+            "bruttokapazitaet_exakt": float(self.bruttokapazitaet_exakt or 0),
+            "bruttokapazitaet": float(self.bruttokapazitaet or 0),
+            "nettokapazitaet": float(self.nettokapazitaet or 0),
             "materialkosten_gesamt": self.materialkosten_gesamt,
             "maschinenkosten": self.maschinenkosten,
             "fertigungslohn": self.fertigungslohn,
@@ -368,4 +377,19 @@ def berechne_gesamt(
         setup_kosten_je_teil=float(setup_je_teil),
         setup_maschinenkosten_je_teil=setup_maschine_teil,
         setup_lohnkosten_je_teil=setup_lohn_teil,
+        bruttokapazitaet_exakt=(
+            float(spritzguss_ergebnis["bruttokapazitaet_exakt"])
+            if spritzguss_ergebnis.get("bruttokapazitaet_exakt") is not None
+            else None
+        ),
+        bruttokapazitaet=(
+            float(spritzguss_ergebnis["bruttokapazitaet"])
+            if spritzguss_ergebnis.get("bruttokapazitaet") is not None
+            else None
+        ),
+        nettokapazitaet=(
+            float(spritzguss_ergebnis["nettokapazitaet"])
+            if spritzguss_ergebnis.get("nettokapazitaet") is not None
+            else None
+        ),
     )

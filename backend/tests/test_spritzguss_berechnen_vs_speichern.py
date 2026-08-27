@@ -119,8 +119,8 @@ def test_armlehne_snapshot_ohne_vor_kosten_weicht_ab():
         ],
         **RATES,
     )
-    assert live.endpreis_je_stueck == pytest.approx(7.37)
-    assert legacy.endpreis_je_stueck == pytest.approx(7.33)
+    assert live.endpreis_je_stueck == pytest.approx(7.44)
+    assert legacy.endpreis_je_stueck == pytest.approx(7.38)
     assert live.endpreis_je_stueck != legacy.endpreis_je_stueck
 
 
@@ -325,7 +325,7 @@ def test_armlehne_berechnen_speichern_reload_identisch():
         berechnet = spritzguss_api._build_calc_response(
             db, calc_input, zuordnungen, use_snapshots=False
         )
-        assert berechnet.ergebnis.endpreis_je_stueck == pytest.approx(7.37)
+        assert berechnet.ergebnis.endpreis_je_stueck == pytest.approx(7.44)
 
         obj = SpritzgussKalkulation(
             teilebezeichnung="Armlehne",

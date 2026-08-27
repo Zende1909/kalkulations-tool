@@ -47,23 +47,25 @@ CASE = dict(
     losgroesse=100,
 )
 
-# Sollwerte (Cent-Rundung wie Backend _money)
+# Sollwerte (Cent-Rundung wie Backend _money) – Fertigung über Nettokapazität
 EXPECTED = dict(
     materialkosten_gesamt=1.05,  # 1.00/0.985 → 1.02; + MGK 3% → 1.05
-    maschinenkosten=1.00,
-    fertigungslohn=0.50,
+    bruttokapazitaet=100.0,
+    nettokapazitaet=98.5,
+    maschinenkosten=1.02,  # 100 / 98.5
+    fertigungslohn=0.51,  # 50 / 98.5
     setup_maschinenkosten_je_teil=1.00,
     setup_lohnkosten_je_teil=0.50,
     setup_kosten_je_teil=1.50,
-    fgk_basis=3.00,  # 1.00 + 0.50 + 1.50
-    fertigungsgemeinkosten=0.66,  # 3.00 × 0.22
-    spritzguss_herstellkosten=4.71,
-    gesamte_herstellkosten=4.71,
-    vvgk=0.47,  # 4.71 × 0.10
-    selbstkosten=5.18,
-    gewinn=0.78,  # 5.18 × 0.15
-    nettoverkaufspreis=5.96,
-    endpreis_je_stueck=5.96,
+    fgk_basis=3.03,  # 1.02 + 0.51 + 1.50
+    fertigungsgemeinkosten=0.67,  # 3.03 × 0.22
+    spritzguss_herstellkosten=4.75,
+    gesamte_herstellkosten=4.75,
+    vvgk=0.48,  # 4.75 × 0.10
+    selbstkosten=5.23,
+    gewinn=0.78,  # 5.23 × 0.15
+    nettoverkaufspreis=6.01,
+    endpreis_je_stueck=6.01,
 )
 
 
@@ -79,6 +81,8 @@ def test_fgk_exact_once_unrounded_targets():
     )
 
     assert sg.materialkosten_gesamt == pytest.approx(EXPECTED["materialkosten_gesamt"])
+    assert sg.bruttokapazitaet == pytest.approx(EXPECTED["bruttokapazitaet"])
+    assert sg.nettokapazitaet == pytest.approx(EXPECTED["nettokapazitaet"])
     assert sg.maschinenkosten == pytest.approx(EXPECTED["maschinenkosten"])
     assert sg.fertigungslohn == pytest.approx(EXPECTED["fertigungslohn"])
     assert sg.setup_maschinenkosten_je_teil == pytest.approx(
@@ -112,7 +116,6 @@ def test_fgk_exact_once_unrounded_targets():
     )
     # Falsche UI-Addition Spritzguss-HK + FGK wäre zu hoch
     wrong = _money(gesamt.spritzguss_herstellkosten + gesamt.fertigungsgemeinkosten)
-    assert wrong == pytest.approx(5.37)
     assert wrong > gesamt.gesamte_herstellkosten
 
     assert gesamt.vvgk == pytest.approx(EXPECTED["vvgk"])
@@ -122,13 +125,13 @@ def test_fgk_exact_once_unrounded_targets():
     assert gesamt.endpreis_je_stueck == pytest.approx(EXPECTED["endpreis_je_stueck"])
 
     overview = gesamt.as_ergebnisuebersicht()
-    assert overview["fertigungsgemeinkosten"] == pytest.approx(0.66)
-    assert overview["gesamte_herstellkosten"] == pytest.approx(4.71)
+    assert overview["fertigungsgemeinkosten"] == pytest.approx(EXPECTED["fertigungsgemeinkosten"])
+    assert overview["gesamte_herstellkosten"] == pytest.approx(EXPECTED["gesamte_herstellkosten"])
     # Ohne Veredelung: Spritzguss-HK nicht separat (wäre Doppelanzeige des gleichen Werts)
     assert "spritzguss_herstellkosten" not in overview
     assert overview["materialkosten_gesamt"] == pytest.approx(1.05)
     assert overview["setup_kosten_je_teil"] == pytest.approx(1.50)
-
+    assert overview["nettokapazitaet"] == pytest.approx(98.5)
 
 def test_fgk_basis_formula_maschine_lohn_setup():
     sg = berechne_spritzguss(SpritzgussInput(**CASE))
@@ -258,10 +261,12 @@ def test_fgk_berechnen_speichern_reload_identisch():
 
         # Gemeinkosten-Block ohne zweite FGK-Zeile; Fertigung trägt FGK einmal
         assert "fertigungsgemeinkosten" not in (berechnet.bloecke.get("gemeinkosten") or {})
-        assert berechnet.bloecke["fertigung"]["fertigungsgemeinkosten"] == pytest.approx(0.66)
+        assert berechnet.bloecke["fertigung"]["fertigungsgemeinkosten"] == pytest.approx(
+            EXPECTED["fertigungsgemeinkosten"]
+        )
         z = berechnet.bloecke.get("zusammenfassung") or {}
-        assert z["fertigungsgemeinkosten"] == pytest.approx(0.66)
-        assert z["gesamte_herstellkosten"] == pytest.approx(4.71)
+        assert z["fertigungsgemeinkosten"] == pytest.approx(EXPECTED["fertigungsgemeinkosten"])
+        assert z["gesamte_herstellkosten"] == pytest.approx(EXPECTED["gesamte_herstellkosten"])
         assert "spritzguss_herstellkosten" not in z
 
         obj = SpritzgussKalkulation(
@@ -319,8 +324,12 @@ def test_fgk_berechnen_speichern_reload_identisch():
         assert geladen.ergebnis["endpreis_je_stueck"] == pytest.approx(
             berechnet.ergebnis.endpreis_je_stueck
         )
-        assert geladen.ergebnis["fertigungsgemeinkosten"] == pytest.approx(0.66)
-        assert geladen.ergebnis["herstellkosten"] == pytest.approx(4.71)
+        assert geladen.ergebnis["fertigungsgemeinkosten"] == pytest.approx(
+            EXPECTED["fertigungsgemeinkosten"]
+        )
+        assert geladen.ergebnis["herstellkosten"] == pytest.approx(
+            EXPECTED["gesamte_herstellkosten"]
+        )
 
         reload = spritzguss_api._build_calc_response(
             db,

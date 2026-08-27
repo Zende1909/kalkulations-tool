@@ -96,10 +96,19 @@ const ERGEBNISUEBERSICHT: Array<{
   /** Zeile ausblenden, wenn Wert 0 / fehlend (keine Null-Zeilen für Setup/Veredelung). */
   hideZero?: boolean;
 }> = [
+  {
+    key: "bruttokapazitaet_exakt",
+    label: "Bruttokapazität exakt (Stück/h)",
+  },
+  {
+    key: "bruttokapazitaet",
+    label: "Bruttokapazität kalkulatorisch ROUND (Stück/h)",
+  },
+  { key: "nettokapazitaet", label: "Nettokapazität nach Ausschuss (Stück/h)" },
   // Additive Aufbauzeilen – FGK nur einmal vor den Herstellkosten
   { key: "materialkosten_gesamt", label: "Material inkl. Ausschuss + MGK (€)" },
-  { key: "maschinenkosten", label: "Maschinenkosten (€)" },
-  { key: "fertigungslohn", label: "Fertigungslohn (€)" },
+  { key: "maschinenkosten", label: "Maschinenkosten je Gutteil (€)" },
+  { key: "fertigungslohn", label: "Fertigungslohn je Gutteil (€)" },
   { key: "setup_kosten_je_teil", label: "Setup-Kosten je Teil (€)", hideZero: true },
   { key: "veredelung_gesamt", label: "Veredelungskosten direkt (€)", hideZero: true },
   {
@@ -134,11 +143,14 @@ const FIELD_LABELS: Record<string, string> = {
   mgk_basis: "MGK-Basis (Material inkl. Ausschuss) (€)",
   mgk_pct: "MGK-Satz (%)",
   material_nominierung: "Material-Nominierung",
-  maschinenkosten: "Maschinenkosten je Teil (€)",
-  fertigungslohn: "Fertigungslohn je Teil (€)",
+  maschinenkosten: "Maschinenkosten je Gutteil (€)",
+  fertigungslohn: "Fertigungslohn je Gutteil (€)",
   fertigungsgemeinkosten: "Fertigungsgemeinkosten FGK (einmal) (€)",
   fgk_basis: "FGK-Basis (Maschine + Lohn + Setup + Veredelung) (€)",
   fgk_pct: "FGK-Satz (%)",
+  bruttokapazitaet_exakt: "Bruttokapazität exakt (Stück/h)",
+  bruttokapazitaet: "Bruttokapazität kalkulatorisch ROUND (Stück/h)",
+  nettokapazitaet: "Nettokapazität nach Ausschuss (Stück/h)",
   setup_maschinenkosten_je_teil: "Setup-Maschinenkosten je Teil (€)",
   setup_lohnkosten_je_teil: "Setup-Lohnkosten je Teil (€)",
   setup_kosten_je_teil: "Setup-Kosten je Teil (€)",

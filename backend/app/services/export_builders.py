@@ -184,6 +184,18 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
             or _float_from(ergebnis, "materialkosten"),
         ),
         ExportMoneyRow("Material-MGK", _float_from(ergebnis, "materialgemeinkosten")),
+        ExportMoneyRow(
+            "Bruttokapazität exakt (Stück/h)",
+            _float_from(ergebnis, "bruttokapazitaet_exakt"),
+        ),
+        ExportMoneyRow(
+            "Bruttokapazität ROUND (Stück/h)",
+            _float_from(ergebnis, "bruttokapazitaet"),
+        ),
+        ExportMoneyRow(
+            "Nettokapazität (Stück/h)",
+            _float_from(ergebnis, "nettokapazitaet"),
+        ),
         money("Maschinenkosten", "maschinenkosten"),
         money("Fertigungslohn", "fertigungslohn"),
         ExportMoneyRow(
