@@ -709,7 +709,7 @@ export function SpritzgussPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Spritzguss-Kalkulation</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Einzelteilkalkulation</h2>
           <p className="mt-1 text-sm text-gray-600">
             Zuschlagskalkulation für Kunststoff-Einzelteile. Preise und Sätze aus den Stammdaten
             werden vorausgefüllt und können je Kalkulation überschrieben werden.

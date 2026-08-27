@@ -866,7 +866,7 @@ export function BaugruppenPage() {
 
           <PositionSection
             title="Einzelteile"
-            addLabel="Spritzguss-Kalkulation hinzufügen"
+            addLabel="Einzelteilkalkulation hinzufügen"
             options={spritzgussList.map((s) => ({
               id: s.id,
               label: `${s.teilebezeichnung} (${s.teilenummer}) – ${euro(s.verkaufspreis)} €`,

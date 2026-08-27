@@ -1,28 +1,9 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-const navItems = [
-  { to: "/", label: "Dashboard", end: true },
-  {
-    label: "Stammdaten",
-    children: [
-      { to: "/stammdaten/materialien", label: "Materialien" },
-      { to: "/stammdaten/laender", label: "Länder" },
-      { to: "/stammdaten/werke", label: "Werke" },
-      { to: "/stammdaten/werk-zuschlaege", label: "Werk-Zuschläge" },
-      { to: "/stammdaten/maschinen", label: "Maschinen" },
-      { to: "/stammdaten/lohnkosten", label: "Lohnkosten" },
-      { to: "/stammdaten/kaufteile", label: "Kaufteile" },
-      { to: "/stammdaten/zuschlagssaetze", label: "Zuschlagssätze" },
-      { to: "/stammdaten/hierarchie", label: "Kunden, Programme & Projekte" },
-    ],
-  },
-  { to: "/spritzguss", label: "Spritzguss-Kalkulation" },
-  { to: "/veredelung", label: "Veredelung" },
-  { to: "/baugruppen", label: "Baugruppen" },
-  { to: "/investitionen", label: "Investitionen" },
-  { to: "/business-case", label: "Business Case" },
-];
+import { isStammdatenSectionPath, navItems } from "./navConfig";
+
+export { isStammdatenSectionPath, navItems } from "./navConfig";
 
 function linkClass(isActive: boolean) {
   return [
@@ -33,17 +14,23 @@ function linkClass(isActive: boolean) {
 
 export function Sidebar() {
   const location = useLocation();
-  const isStammdatenActive = location.pathname.startsWith("/stammdaten");
+  const isStammdatenActive = isStammdatenSectionPath(location.pathname);
   const [stammdatenOpen, setStammdatenOpen] = useState(isStammdatenActive);
 
+  useEffect(() => {
+    if (isStammdatenActive) {
+      setStammdatenOpen(true);
+    }
+  }, [isStammdatenActive]);
+
   return (
-    <aside className="flex w-64 flex-col bg-sidebar text-white">
+    <aside className="flex w-64 shrink-0 flex-col bg-sidebar text-white">
       <div className="border-b border-slate-700 px-4 py-5">
         <h1 className="text-lg font-semibold">Kalkulations-Tool</h1>
         <p className="text-xs text-slate-400">Kunststoffmodule Automotive</p>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+      <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Hauptnavigation">
         {navItems.map((item) => {
           if ("children" in item) {
             return (
@@ -51,6 +38,7 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => setStammdatenOpen((open) => !open)}
+                  aria-expanded={stammdatenOpen}
                   className={[
                     "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
                     isStammdatenActive
@@ -59,7 +47,9 @@ export function Sidebar() {
                   ].join(" ")}
                 >
                   {item.label}
-                  <span className="text-xs">{stammdatenOpen ? "▾" : "▸"}</span>
+                  <span className="text-xs" aria-hidden>
+                    {stammdatenOpen ? "▾" : "▸"}
+                  </span>
                 </button>
                 {stammdatenOpen && item.children && (
                   <div className="ml-2 mt-1 space-y-1 border-l border-slate-600 pl-2">

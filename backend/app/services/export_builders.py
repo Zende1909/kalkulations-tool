@@ -768,7 +768,7 @@ def build_dashboard_export(
 
     kpi_rows = [
         kpi_row("Anzahl Projekte", "anzahl_projekte"),
-        kpi_row("Spritzguss-Kalkulationen", "anzahl_spritzguss_kalkulationen"),
+        kpi_row("Einzelteilkalkulationen", "anzahl_spritzguss_kalkulationen"),
         kpi_row("Anzahl Baugruppen", "anzahl_baugruppen"),
         kpi_row("Ø Endpreis je Einzelteil", "durchschnitt_endpreis_einzelteil", avg=True),
         kpi_row("Ø Baugruppenpreis je Stück", "durchschnitt_baugruppenpreis", avg=True),

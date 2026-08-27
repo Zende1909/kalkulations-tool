@@ -5,13 +5,25 @@ Kalkulationstool für Kunststoffmodule in der Automotive-Zulieferindustrie.
 ## Bereiche
 
 - Stammdatenverwaltung
-- Spritzguss-Kalkulation
+- Einzelteilkalkulation
 - Veredelung
 - Investitionen
 - Baugruppen
 - Dashboard
 
 ## Lokale Entwicklung
+
+Schnellstart (Backend + Frontend in zwei Fenstern):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-kalkulationstool.ps1
+```
+
+- Backend: `http://127.0.0.1:8000`
+- Frontend: die von Vite ausgegebene Adresse (meist `http://127.0.0.1:5173`)
+- Beenden: die beiden geöffneten PowerShell-Fenster schließen
+
+Manuell getrennt:
 
 Backend:
 
