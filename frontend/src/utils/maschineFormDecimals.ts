@@ -3,7 +3,7 @@
  * ohne Prozentumrechnung. Readonly-Stundensatz wird nicht mitgeschickt.
  */
 
-import { formatDecimalForInput, parseDecimalInput } from "./decimalInput";
+import { coerceFormDecimal, formatDecimalForInput } from "./decimalInput";
 
 /** Editierbare numerische Maschinenfelder (Float laut Schema). */
 export const MASCHINE_NUMERIC_FIELDS = [
@@ -23,20 +23,7 @@ const READONLY_RATE_FIELDS = [
   "source_currency",
 ] as const;
 
-export function coerceFormDecimal(
-  raw: string | number | boolean | null | undefined,
-): number | null {
-  if (raw === "" || raw == null) return null;
-  if (typeof raw === "boolean") {
-    throw new Error("Erwartete Zahl, bool erhalten");
-  }
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  const parsed = parseDecimalInput(String(raw));
-  if (typeof parsed === "number" && Number.isFinite(parsed)) return parsed;
-  throw new Error(
-    `Ungültige Zahl „${String(raw)}“ – bitte z. B. 44,1 oder 44.1 eingeben`,
-  );
-}
+export { coerceFormDecimal } from "./decimalInput";
 
 export function loadMaschineFormValues(
   values: Record<string, string | number | boolean>,
@@ -84,7 +71,7 @@ export function submitMaschineFormValues(
       payload[key] = null;
       continue;
     }
-    payload[key] = coerceFormDecimal(raw);
+    payload[key] = coerceFormDecimal(raw, "44,1 oder 44.1");
   }
 
   if (typeof values.aktiv === "boolean") {

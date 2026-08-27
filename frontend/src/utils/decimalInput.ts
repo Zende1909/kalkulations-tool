@@ -76,3 +76,18 @@ export function formatPercentPoints(value: number | null | undefined, digits = 2
     maximumFractionDigits: digits,
   })} %`;
 }
+
+/** Wandelt Formular-Rohwerte (inkl. „2,10“) in Zahlen um; wirft bei Ungültigem. */
+export function coerceFormDecimal(
+  raw: string | number | boolean | null | undefined,
+  example = "2,10 oder 2.10",
+): number | null {
+  if (raw === "" || raw == null) return null;
+  if (typeof raw === "boolean") {
+    throw new Error("Erwartete Zahl, bool erhalten");
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  const parsed = parseDecimalInput(String(raw));
+  if (typeof parsed === "number" && Number.isFinite(parsed)) return parsed;
+  throw new Error(`Ungültige Zahl „${String(raw)}“ – bitte z. B. ${example} eingeben`);
+}
