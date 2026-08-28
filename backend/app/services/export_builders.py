@@ -242,11 +242,11 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
         money("Maschinenkosten", "maschinenkosten"),
         money("Fertigungslohn", "fertigungslohn"),
         ExportMoneyRow(
-            "Setup Maschinen je Teil",
+            "Setup Maschinen je Teil (Anteil, gerundet)",
             _float_from(ergebnis, "setup_maschinenkosten_je_teil"),
         ),
         ExportMoneyRow(
-            "Setup Lohn je Teil",
+            "Setup Lohn je Teil (Anteil, gerundet)",
             _float_from(ergebnis, "setup_lohnkosten_je_teil"),
         ),
         ExportMoneyRow(

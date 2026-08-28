@@ -296,16 +296,26 @@ def berechne_spritzguss(data: SpritzgussInput) -> SpritzgussErgebnis:
     setup_lohn_teil = Decimal("0")
     setup_je_teil = Decimal("0")
     if setup_aktiv:
-        # Setup über Losgröße – ohne zusätzlichen Spritzguss-Ausschuss (Excel-Logik)
+        # Setup über Losgröße – ohne zusätzlichen Spritzguss-Ausschuss (Excel-Logik).
+        # Maschinen- und Lohnanteil gemeinsam berechnen; Detailanteile nur für Anzeige.
         stunden = _d(data.setup_zeit_min) / Decimal("60")
-        setup_maschinen_gesamt = _money(stunden * _d(data.setup_maschinenstundensatz))
+        los = _d(int(data.losgroesse or 1))
+        setup_stundensatz = _d(data.setup_maschinenstundensatz) + (
+            _d(data.setup_lohnstundensatz) * _d(data.setup_mitarbeiter)
+        )
+        setup_je_teil = (setup_stundensatz * stunden) / los
+        setup_maschinen_gesamt = _money(
+            stunden * _d(data.setup_maschinenstundensatz)
+        )
         setup_lohn_gesamt = _money(
             stunden * _d(data.setup_lohnstundensatz) * _d(data.setup_mitarbeiter)
         )
-        los = _d(int(data.losgroesse or 1))
-        setup_maschine_teil = _money(setup_maschinen_gesamt / los)
-        setup_lohn_teil = _money(setup_lohn_gesamt / los)
-        setup_je_teil = _money(setup_maschine_teil + setup_lohn_teil)
+        setup_maschine_teil = _money(
+            stunden * _d(data.setup_maschinenstundensatz) / los
+        )
+        setup_lohn_teil = _money(
+            stunden * _d(data.setup_lohnstundensatz) * _d(data.setup_mitarbeiter) / los
+        )
 
     # FGK-Basis: Maschine + Lohn + Setup (je Teil), ohne Material
     fgk_basis = _money(maschinenkosten + fertigungslohn + setup_je_teil)

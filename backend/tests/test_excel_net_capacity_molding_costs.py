@@ -195,7 +195,7 @@ def test_setup_aktiv_vs_deaktiviert():
     assert mit.setup_kosten_je_teil > 0
     assert ohne.setup_kosten_je_teil == 0
     setup_raw = (80 / 60) * (40.610485 + 25.0 * 1.5) / 4808
-    assert mit.setup_kosten_je_teil == pytest.approx(_money(setup_raw))
+    assert mit.setup_kosten_je_teil == pytest.approx(setup_raw)
 
 
 def test_mit_und_ohne_veredelung_fgk_einmal():
