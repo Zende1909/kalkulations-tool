@@ -518,8 +518,8 @@ def _seed_references(db) -> None:
     )
     db.execute(
         text(
-            "INSERT INTO kaufteile (id, artikelnummer, bezeichnung, preis, nominierung) "
-            "VALUES (301, 'K-1', 'Lautsprecher', 8.0, 'selbstnominiert')"
+            "INSERT INTO kaufteile (id, artikelnummer, bezeichnung, preis, nominierung, project_id) "
+            "VALUES (301, 'K-1', 'Lautsprecher', 8.0, 'selbstnominiert', 100)"
         )
     )
     db.execute(

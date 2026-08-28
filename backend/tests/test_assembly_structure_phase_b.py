@@ -128,6 +128,7 @@ def _create_phase_b_schema(engine) -> None:
             waehrung VARCHAR(8) NOT NULL DEFAULT 'EUR',
             gueltig_ab DATE,
             aktiv BOOLEAN NOT NULL DEFAULT 1,
+            project_id INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -290,13 +291,13 @@ def _seed_part(db, *, project_id: int = 100, part_id: int = 501) -> int:
     return part_id
 
 
-def _seed_kaufteil(db, kaufteil_id: int = 301) -> int:
+def _seed_kaufteil(db, kaufteil_id: int = 301, project_id: int = 100) -> int:
     db.execute(
         text(
-            "INSERT INTO kaufteile (id, artikelnummer, bezeichnung, lieferant, preis) "
-            "VALUES (:id, 'K-1', 'Clip', 'Lieferant A', 0.25)"
+            "INSERT INTO kaufteile (id, artikelnummer, bezeichnung, lieferant, preis, project_id) "
+            "VALUES (:id, 'K-1', 'Clip', 'Lieferant A', 0.25, :pid)"
         ),
-        {"id": kaufteil_id},
+        {"id": kaufteil_id, "pid": project_id},
     )
     db.commit()
     return kaufteil_id

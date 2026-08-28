@@ -891,22 +891,25 @@ def berechnen(
 def list_kalkulationen(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
+    nur_aktiv: bool = Query(False),
+    project_id: int | None = Query(None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
-    rows = db.scalars(
-        select(SpritzgussKalkulation)
-        .order_by(SpritzgussKalkulation.updated_at.desc())
-        .offset(skip)
-        .limit(limit)
-    ).all()
+    stmt = select(SpritzgussKalkulation).order_by(SpritzgussKalkulation.updated_at.desc())
+    if nur_aktiv:
+        stmt = stmt.where(SpritzgussKalkulation.aktiv.is_(True))
+    if project_id is not None:
+        stmt = stmt.where(SpritzgussKalkulation.project_id == project_id)
+    rows = db.scalars(stmt.offset(skip).limit(limit)).all()
+    from app.services.spritzguss_cost_snapshot import (
+        selbstkosten_aus_ergebnis,
+        verkaufspreis_aus_ergebnis,
+    )
+
     result: list[SpritzgussKalkulationListItem] = []
     for row in rows:
-        verkaufspreis = None
-        if isinstance(row.ergebnis, dict):
-            verkaufspreis = row.ergebnis.get("endpreis_je_stueck")
-            if verkaufspreis is None:
-                verkaufspreis = row.ergebnis.get("verkaufspreis")
+        ergebnis = row.ergebnis if isinstance(row.ergebnis, dict) else None
         result.append(
             SpritzgussKalkulationListItem(
                 id=row.id,
@@ -914,8 +917,10 @@ def list_kalkulationen(
                 teilenummer=row.teilenummer,
                 kunde=row.kunde,
                 projekt=row.projekt,
+                project_id=getattr(row, "project_id", None),
                 jahresstueckzahl=row.jahresstueckzahl,
-                verkaufspreis=verkaufspreis,
+                verkaufspreis=verkaufspreis_aus_ergebnis(ergebnis),
+                selbstkosten=selbstkosten_aus_ergebnis(ergebnis),
                 updated_at=row.updated_at,
                 aktiv=row.aktiv,
             )

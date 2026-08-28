@@ -397,7 +397,9 @@ class SpritzgussKalkulationListItem(BaseModel):
     teilenummer: str
     kunde: str
     projekt: str
+    project_id: int | None = None
     jahresstueckzahl: int
     verkaufspreis: float | None = None
+    selbstkosten: float | None = None
     updated_at: datetime
     aktiv: bool

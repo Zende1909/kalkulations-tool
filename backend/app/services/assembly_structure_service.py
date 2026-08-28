@@ -451,6 +451,18 @@ def validate_project_scope(
 
     for index, position in enumerate(positions, start=1):
         prefix = f"Position #{index}"
+        if position.purchased_part_id is not None:
+            part_project_id = db.scalar(
+                select(Kaufteil.project_id).where(Kaufteil.id == position.purchased_part_id)
+            )
+            if part_project_id is not None and part_project_id != project_id:
+                raise AssemblyStructureError(
+                    f"{prefix}: Kaufteil gehört nicht zum Projekt der Baugruppe"
+                )
+            if part_project_id is None:
+                raise AssemblyStructureError(
+                    f"{prefix}: Kaufteil ohne Projekt-Zuordnung ist nicht zulässig"
+                )
         if position.part_calculation_id is not None:
             part_project_id = db.scalar(
                 select(SpritzgussKalkulation.project_id).where(
@@ -460,6 +472,10 @@ def validate_project_scope(
             if part_project_id is not None and part_project_id != project_id:
                 raise AssemblyStructureError(
                     f"{prefix}: Spritzguss-Kalkulation gehört nicht zum Projekt der Baugruppe"
+                )
+            if part_project_id is None:
+                raise AssemblyStructureError(
+                    f"{prefix}: Spritzguss-Kalkulation ohne Projekt-Zuordnung ist nicht zulässig"
                 )
         if position.child_assembly_id is not None:
             child = db.get(Baugruppe, position.child_assembly_id)

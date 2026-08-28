@@ -188,6 +188,17 @@ def _create_schema(engine) -> None:
             )
             """,
             """
+            CREATE TABLE zuschlagssaetze (
+                id INTEGER PRIMARY KEY,
+                typ VARCHAR(64) NOT NULL,
+                bezeichnung VARCHAR(255) NOT NULL DEFAULT '',
+                satz_prozent FLOAT NOT NULL DEFAULT 0,
+                aktiv BOOLEAN NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """,
+            """
             CREATE TABLE spritzguss_veredelung_zuordnungen (
                 id INTEGER PRIMARY KEY,
                 kalkulation_id INTEGER NOT NULL
@@ -220,6 +231,20 @@ def db():
     Session = sessionmaker(bind=engine, expire_on_commit=False)
     session = Session()
     session.execute(text("PRAGMA foreign_keys=ON"))
+    session.execute(
+        text(
+            """
+            INSERT INTO zuschlagssaetze (typ, bezeichnung, satz_prozent, aktiv) VALUES
+            ('mgk_kaufteil_selbst', 'MGK', 3, 1),
+            ('mgk_kaufteil_oem', 'MGK OEM', 5, 1),
+            ('fgk', 'FGK', 22, 1),
+            ('vvgk', 'VVGK', 10, 1),
+            ('gewinn', 'Gewinn', 15, 1),
+            ('skonto', 'Skonto', 0, 1)
+            """
+        )
+    )
+    session.commit()
     yield session
     session.close()
 

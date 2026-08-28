@@ -40,6 +40,7 @@ from app.schemas.baugruppe import (
     VeredelungZuordnungRead,
 )
 from app.services.baugruppe_kalkulation import (
+    BaugruppeMarkupError,
     BaugruppeValidationError,
     EinzelteilEingabe,
     InvestitionAnzeige,
@@ -47,6 +48,7 @@ from app.services.baugruppe_kalkulation import (
     VeredelungEingabe,
     berechne_baugruppe,
 )
+from app.services.spritzguss_cost_snapshot import selbstkosten_aus_ergebnis
 from app.services.central_markup_rates import (
     CentralMarkupRatesError,
     load_central_markup_rates,
@@ -82,29 +84,34 @@ def _kaufteil_preis_inkl_mgk(
     return _money(einkauf + mgk_amount + handling)
 
 
-def _endpreis_aus_spritzguss(kalk: SpritzgussKalkulation) -> float:
-    if isinstance(kalk.ergebnis, dict):
-        preis = kalk.ergebnis.get("endpreis_je_stueck")
-        if preis is None:
-            preis = kalk.ergebnis.get("verkaufspreis")
-        if preis is not None:
-            return float(preis)
+def _selbstkosten_aus_spritzguss(kalk: SpritzgussKalkulation) -> float:
+    ergebnis = kalk.ergebnis if isinstance(kalk.ergebnis, dict) else None
+    selbstkosten = selbstkosten_aus_ergebnis(ergebnis)
+    if selbstkosten is not None:
+        return _money(selbstkosten)
     return 0.0
 
 
-def _live_kosten_veredelung(schritt: Veredelungsschritt) -> float:
-    return berechne_veredelung(
+def _veredelung_direktkosten(schritt: Veredelungsschritt) -> tuple[float, float]:
+    """Direkte Montagekosten vor Ausschuss und Ausschussquote in Prozentpunkten."""
+    result = berechne_veredelung(
         VeredelungCalcInput(
             taktzeit_s=schritt.taktzeit_s,
             anzahl_mitarbeiter=schritt.anzahl_mitarbeiter,
             lohnstundensatz=schritt.lohnstundensatz,
             maschinenstundensatz=schritt.maschinenstundensatz,
             verbrauchskosten_je_stueck=schritt.verbrauchskosten_je_stueck,
-            ausschussquote_pct=schritt.ausschussquote_pct,
+            ausschussquote_pct=0.0,
             fgk_pct=schritt.fgk_pct,
             reihenfolge=schritt.reihenfolge,
         )
-    ).kosten_inkl_ausschuss
+    )
+    return _money(result.kosten_vor_ausschuss), float(schritt.ausschussquote_pct)
+
+
+def _endpreis_aus_spritzguss(kalk: SpritzgussKalkulation) -> float:
+    """Legacy-Alias: Baugruppe nutzt Selbstkosten, nicht Verkaufspreis."""
+    return _selbstkosten_aus_spritzguss(kalk)
 
 
 def _normalize_spritzguss_zuordnungen(
@@ -185,6 +192,64 @@ def _normalize_veredelung_zuordnungen(
                 detail=f"Veredelungs-Zuordnung #{index}: ungültiges Format",
             )
     return result
+
+
+def _validate_zuordnungen_project_scope(
+    db: Session,
+    project_id: int | None,
+    spritzguss_zuordnungen: list[SpritzgussZuordnungInput],
+    kaufteil_zuordnungen: list[KaufteilZuordnungInput],
+    *,
+    allow_inactive_spritzguss_ids: set[int] | None = None,
+    allow_inactive_kaufteil_ids: set[int] | None = None,
+) -> None:
+    """Erzwingt exakte Projektübereinstimmung für Komponenten (keine globalen Datensätze)."""
+    if project_id is None:
+        return
+    allow_sg = allow_inactive_spritzguss_ids or set()
+    allow_kt = allow_inactive_kaufteil_ids or set()
+
+    for index, z in enumerate(spritzguss_zuordnungen, start=1):
+        kalk = db.get(SpritzgussKalkulation, z.spritzguss_kalkulation_id)
+        if not kalk:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Einzelteil-Zuordnung #{index}: Spritzguss-Kalkulation nicht gefunden",
+            )
+        if kalk.project_id != project_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Einzelteil-Zuordnung #{index}: Kalkulation gehört nicht zum "
+                    f"Projekt der Baugruppe (project_id={project_id})"
+                ),
+            )
+        if not kalk.aktiv and kalk.id not in allow_sg:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Einzelteil-Zuordnung #{index}: inaktive Kalkulation nicht auswählbar",
+            )
+
+    for index, z in enumerate(kaufteil_zuordnungen, start=1):
+        kt = db.get(Kaufteil, z.kaufteil_id)
+        if not kt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Kaufteil-Zuordnung #{index}: Kaufteil nicht gefunden",
+            )
+        if kt.project_id != project_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"Kaufteil-Zuordnung #{index}: Kaufteil gehört nicht zum "
+                    f"Projekt der Baugruppe (project_id={project_id})"
+                ),
+            )
+        if not kt.aktiv and kt.id not in allow_kt:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Kaufteil-Zuordnung #{index}: inaktives Kaufteil nicht auswählbar",
+            )
 
 
 def _load_investitionen(
@@ -330,18 +395,21 @@ def _resolve_eingaben(
             )
         snap = vd_snap.get(z.veredelungsschritt_id)
         if use_snapshots and snap is not None:
-            kosten = snap.snapshot_kosten
+            kosten_vor_ausschuss = snap.snapshot_kosten
             bezeichnung = snap.snapshot_bezeichnung
         else:
-            kosten = _live_kosten_veredelung(schritt)
+            kosten_vor_ausschuss, _ = _veredelung_direktkosten(schritt)
             bezeichnung = schritt.bezeichnung
+        ausschussquote_pct = float(schritt.ausschussquote_pct)
         veredelungen.append(
             VeredelungEingabe(
                 veredelungsschritt_id=z.veredelungsschritt_id,
                 bezeichnung=bezeichnung,
                 reihenfolge=z.reihenfolge,
                 mengenfaktor=z.mengenfaktor,
-                snapshot_kosten=kosten,
+                kosten_vor_ausschuss=kosten_vor_ausschuss,
+                ausschussquote_pct=ausschussquote_pct,
+                snapshot_kosten=kosten_vor_ausschuss,
             )
         )
 
@@ -359,6 +427,9 @@ def _build_calc_response(
     use_snapshots: bool = False,
     baugruppe_id: int | None = None,
     werk_id: int | None = None,
+    project_id: int | None = None,
+    allow_inactive_spritzguss_ids: set[int] | None = None,
+    allow_inactive_kaufteil_ids: set[int] | None = None,
 ) -> BaugruppeCalcResponse:
     if not name.strip():
         raise HTTPException(
@@ -368,6 +439,29 @@ def _build_calc_response(
     sg = _normalize_spritzguss_zuordnungen(spritzguss_zuordnungen)
     kt = _normalize_kaufteil_zuordnungen(kaufteil_zuordnungen)
     vd = _normalize_veredelung_zuordnungen(veredelung_zuordnungen)
+
+    effective_project_id = project_id
+    if effective_project_id is None and baugruppe_id is not None:
+        bg = db.get(Baugruppe, baugruppe_id)
+        if bg:
+            effective_project_id = _effective_project_id(bg)
+
+    _validate_zuordnungen_project_scope(
+        db,
+        effective_project_id,
+        sg,
+        kt,
+        allow_inactive_spritzguss_ids=allow_inactive_spritzguss_ids,
+        allow_inactive_kaufteil_ids=allow_inactive_kaufteil_ids,
+    )
+
+    try:
+        rates = load_central_markup_rates(db, werk_id=werk_id)
+        gewinn_pct = rates.gewinn_pct
+    except CentralMarkupRatesError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
 
     try:
         einzelteile, kaufteile, veredelungen = _resolve_eingaben(
@@ -390,7 +484,12 @@ def _build_calc_response(
             veredelungen,
             jahresstueckzahl=jahresstueckzahl,
             investitionen=investitionen,
+            gewinn_pct=gewinn_pct,
         )
+    except BaugruppeMarkupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     except BaugruppeValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
@@ -400,7 +499,16 @@ def _build_calc_response(
         "zusammenfassung": ergebnis.as_zusammenfassung(),
         "einzelteile": {f"position_{i + 1}": p.zwischensumme for i, p in enumerate(ergebnis.einzelteile)},
         "kaufteile": {f"position_{i + 1}": p.zwischensumme for i, p in enumerate(ergebnis.kaufteile)},
-        "veredelung": {f"schritt_{v.reihenfolge}": v.zwischensumme for v in ergebnis.veredelungen},
+        "veredelung": {f"schritt_{v.reihenfolge}": v.direktkosten for v in ergebnis.veredelungen},
+        "ueberleitung": {
+            "vorprodukt": ergebnis.vorprodukt_gesamt,
+            "assembly_direkt": ergebnis.assembly_direkt_gesamt,
+            "assembly_ausschuss": ergebnis.assembly_ausschuss_zuschlag,
+            "kostenbasis_nach_assembly": ergebnis.kostenbasis_nach_assembly,
+            "gewinn_pct": ergebnis.gewinn_pct,
+            "gewinn_betrag": ergebnis.gewinn_betrag,
+            "endpreis": ergebnis.baugruppenpreis_je_stueck,
+        },
         "investitionen": {f"inv_{i.id}": i.amount for i in ergebnis.investitionen},
     }
 
@@ -436,7 +544,7 @@ def _sync_spritzguss_zuordnungen(
                 spritzguss_kalkulation_id=z.spritzguss_kalkulation_id,
                 menge=z.menge,
                 reihenfolge=z.reihenfolge,
-                snapshot_preis=_endpreis_aus_spritzguss(kalk),
+                snapshot_preis=_selbstkosten_aus_spritzguss(kalk),
                 snapshot_bezeichnung=kalk.teilebezeichnung,
                 snapshot_teilenummer=kalk.teilenummer,
             )
@@ -503,13 +611,14 @@ def _sync_veredelung_zuordnungen(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Veredelungsschritt {z.veredelungsschritt_id} nicht gefunden",
             )
+        kosten_vor_ausschuss, _ = _veredelung_direktkosten(schritt)
         db.add(
             BaugruppeVeredelungZuordnung(
                 baugruppe_id=obj.id,
                 veredelungsschritt_id=z.veredelungsschritt_id,
                 reihenfolge=z.reihenfolge,
                 mengenfaktor=z.mengenfaktor,
-                snapshot_kosten=_live_kosten_veredelung(schritt),
+                snapshot_kosten=kosten_vor_ausschuss,
                 snapshot_bezeichnung=schritt.bezeichnung,
             )
         )
@@ -570,6 +679,9 @@ def _apply_calculation(db: Session, obj: Baugruppe) -> BaugruppeCalcResponse:
         use_snapshots=True,
         baugruppe_id=obj.id,
         werk_id=getattr(obj, "werk_id", None),
+        project_id=_effective_project_id(obj),
+        allow_inactive_spritzguss_ids={r.spritzguss_kalkulation_id for r in sg_rows},
+        allow_inactive_kaufteil_ids={r.kaufteil_id for r in kt_rows},
     )
     obj.ergebnis = response.ergebnis.model_dump()
     obj.ergebnis_bloecke = response.bloecke
@@ -815,6 +927,7 @@ def berechnen(
         veredelung_zuordnungen=body.veredelung_zuordnungen,
         use_snapshots=False,
         werk_id=body.werk_id,
+        project_id=body.project_id,
     )
 
 
@@ -897,8 +1010,11 @@ def create_baugruppe(
     obj = Baugruppe(**payload)
     db.add(obj)
     db.flush()
-    _sync_spritzguss_zuordnungen(db, obj, body.spritzguss_zuordnungen)
-    _sync_kaufteil_zuordnungen(db, obj, body.kaufteil_zuordnungen)
+    sg_norm = _normalize_spritzguss_zuordnungen(body.spritzguss_zuordnungen)
+    kt_norm = _normalize_kaufteil_zuordnungen(body.kaufteil_zuordnungen)
+    _validate_zuordnungen_project_scope(db, project_id, sg_norm, kt_norm)
+    _sync_spritzguss_zuordnungen(db, obj, sg_norm)
+    _sync_kaufteil_zuordnungen(db, obj, kt_norm)
     _sync_veredelung_zuordnungen(db, obj, body.veredelung_zuordnungen)
     _apply_calculation(db, obj)
     db.commit()
@@ -953,10 +1069,44 @@ def update_baugruppe(
     for field, value in updates.items():
         setattr(obj, field, value)
 
+    effective_pid = _effective_project_id(obj)
+    allow_sg: set[int] = {
+        r.spritzguss_kalkulation_id
+        for r in db.scalars(
+            select(BaugruppeSpritzgussZuordnung).where(
+                BaugruppeSpritzgussZuordnung.baugruppe_id == obj.id
+            )
+        ).all()
+    }
+    allow_kt: set[int] = {
+        r.kaufteil_id
+        for r in db.scalars(
+            select(BaugruppeKaufteilZuordnung).where(
+                BaugruppeKaufteilZuordnung.baugruppe_id == obj.id
+            )
+        ).all()
+    }
+
     if sg_z is not None:
-        _sync_spritzguss_zuordnungen(db, obj, sg_z)
+        sg_norm = _normalize_spritzguss_zuordnungen(sg_z)
+        _validate_zuordnungen_project_scope(
+            db,
+            effective_pid,
+            sg_norm,
+            [],
+            allow_inactive_spritzguss_ids=allow_sg,
+        )
+        _sync_spritzguss_zuordnungen(db, obj, sg_norm)
     if kt_z is not None:
-        _sync_kaufteil_zuordnungen(db, obj, kt_z)
+        kt_norm = _normalize_kaufteil_zuordnungen(kt_z)
+        _validate_zuordnungen_project_scope(
+            db,
+            effective_pid,
+            [],
+            kt_norm,
+            allow_inactive_kaufteil_ids=allow_kt,
+        )
+        _sync_kaufteil_zuordnungen(db, obj, kt_norm)
     if vd_z is not None:
         _sync_veredelung_zuordnungen(db, obj, vd_z)
 

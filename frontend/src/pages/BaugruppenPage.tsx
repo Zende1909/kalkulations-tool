@@ -56,10 +56,15 @@ function euro(value: number | undefined | null): string {
 }
 
 const ZUSAMMENFASSUNG: Array<{ key: keyof BaugruppeErgebnis; label: string; highlight?: boolean }> = [
-  { key: "einzelteile_gesamt", label: "Einzelteile gesamt (€)" },
-  { key: "kaufteile_gesamt", label: "Kaufteile gesamt (€)" },
-  { key: "veredelung_gesamt", label: "Montage/Veredelung gesamt (€)" },
-  { key: "baugruppenpreis_je_stueck", label: "Baugruppenpreis je Stück (€)", highlight: true },
+  { key: "einzelteile_gesamt", label: "Einzelteil-Selbstkosten gesamt (€)" },
+  { key: "kaufteile_gesamt", label: "Kaufteil-Selbstkosten gesamt (€)" },
+  { key: "vorprodukt_gesamt", label: "Vorprodukt-Zwischensumme (€)" },
+  { key: "assembly_direkt_gesamt", label: "Assembly-/Montage direkt (€)" },
+  { key: "assembly_ausschuss_zuschlag", label: "Assembly-Ausschusszuschlag (€)" },
+  { key: "kostenbasis_nach_assembly", label: "Kostenbasis nach Assembly (€)" },
+  { key: "gewinn_pct", label: "Gewinnsatz (%)" },
+  { key: "gewinn_betrag", label: "Gewinnbetrag (€)" },
+  { key: "baugruppenpreis_je_stueck", label: "Endpreis je Stück (€)", highlight: true },
   { key: "jahresstueckzahl", label: "Jahresstückzahl" },
   { key: "jahresumsatz", label: "Jahresumsatz (€)" },
   { key: "investitionen_gesamt", label: "Investitionen gesamt (€)" },
@@ -96,6 +101,7 @@ export function BaugruppenPage() {
   const [listFilter, setListFilter] = useState<"aktiv" | "archiviert">("aktiv");
   const [jahresstueckzahlHint, setJahresstueckzahlHint] = useState<string | null>(null);
   const [jahresstueckzahlLoading, setJahresstueckzahlLoading] = useState(false);
+  const [projectFilterHint, setProjectFilterHint] = useState<string | null>(null);
   const [laender, setLaender] = useState<Land[]>([]);
   const [werke, setWerke] = useState<Werk[]>([]);
   const [selectedLandId, setSelectedLandId] = useState<number | null>(null);
@@ -184,25 +190,72 @@ export function BaugruppenPage() {
     setList(items);
   }, [listFilter]);
 
-  const loadReferences = useCallback(async () => {
-    const [sg, kt, vd, lands, plants] = await Promise.all([
-      listKalkulationen(),
-      listKaufteile({ nurAktiv: true }),
-      listVeredelungsschritte(),
+  const loadReferences = useCallback(async (projectId: number | null) => {
+    const [lands, plants] = await Promise.all([
       api.get<Land[]>("/laender"),
       api.get<Werk[]>("/werke"),
     ]);
-    setSpritzgussList(sg.filter((s) => s.aktiv));
-    setKaufteileList(kt.filter((k) => k.aktiv));
-    setVeredelungList(vd.filter((v) => v.aktiv));
     setLaender(lands);
     setWerke(plants);
+
+    if (projectId == null) {
+      setSpritzgussList([]);
+      setKaufteileList([]);
+      return;
+    }
+
+    const [sg, kt, vd] = await Promise.all([
+      listKalkulationen({ nurAktiv: true, projectId }),
+      listKaufteile({ nurAktiv: true, projectId }),
+      listVeredelungsschritte(),
+    ]);
+    setSpritzgussList(sg);
+    setKaufteileList(kt);
+    setVeredelungList(vd.filter((v) => v.aktiv));
   }, []);
 
   useEffect(() => {
     loadList().catch(() => undefined);
-    loadReferences().catch(() => undefined);
-  }, [loadList, loadReferences]);
+  }, [loadList]);
+
+  useEffect(() => {
+    loadReferences(form.project_id).catch(() => undefined);
+  }, [form.project_id, loadReferences]);
+
+  useEffect(() => {
+    if (form.project_id == null) return;
+    const projectChangedFromLoaded =
+      editId == null || form.project_id !== loadedHierarchy.project_id;
+    if (!projectChangedFromLoaded) return;
+
+    const validSg = new Set(spritzgussList.map((s) => s.id));
+    const validKt = new Set(kaufteileList.map((k) => k.id));
+    const removedSg = selectedSpritzguss.filter((s) => !validSg.has(s.spritzguss_kalkulation_id));
+    const removedKt = selectedKaufteile.filter((k) => !validKt.has(k.kaufteil_id));
+    if (removedSg.length === 0 && removedKt.length === 0) return;
+
+    if (removedSg.length > 0) {
+      setSelectedSpritzguss((current) =>
+        current.filter((s) => validSg.has(s.spritzguss_kalkulation_id)),
+      );
+    }
+    if (removedKt.length > 0) {
+      setSelectedKaufteile((current) =>
+        current.filter((k) => validKt.has(k.kaufteil_id)),
+      );
+    }
+    setProjectFilterHint(
+      "Nicht zum gewählten Projekt passende Komponenten wurden aus der Auswahl entfernt.",
+    );
+  }, [
+    form.project_id,
+    editId,
+    loadedHierarchy.project_id,
+    spritzgussList,
+    kaufteileList,
+    selectedSpritzguss,
+    selectedKaufteile,
+  ]);
 
   // Jahresstückzahl aus Projekt-Durchschnitt (serverseitig berechnet).
   // Gespeicherte Werte beim bloßen Öffnen nicht überschreiben – nur bei Projektwechsel / Neuanlage.
@@ -264,6 +317,7 @@ export function BaugruppenPage() {
     setLoadedHierarchy({ customer_id: null, program_id: null, project_id: null });
     setUnlinkConfirmed(false);
     setJahresstueckzahlHint(null);
+    setProjectFilterHint(null);
     setSelectedSpritzguss([]);
     setSelectedKaufteile([]);
     setSelectedVeredelung([]);
@@ -288,7 +342,7 @@ export function BaugruppenPage() {
         spritzguss_kalkulation_id: id,
         bezeichnung: item.teilebezeichnung,
         teilenummer: item.teilenummer,
-        endpreis: item.verkaufspreis ?? 0,
+        endpreis: item.selbstkosten ?? item.verkaufspreis ?? 0,
         menge: 1,
         reihenfolge: nextOrder,
       },
@@ -708,9 +762,15 @@ export function BaugruppenPage() {
                 }
                 onChange={(next) => {
                   setUnlinkConfirmed(false);
+                  setProjectFilterHint(null);
                   setForm((current) => applyHierarchyToFormFields(current, next, legacyFreitext));
                 }}
               />
+              {projectFilterHint ? (
+                <p className="md:col-span-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  {projectFilterHint}
+                </p>
+              ) : null}
               <label className="block text-sm">
                 <span className="text-gray-600">Land / Region</span>
                 <select
@@ -870,8 +930,10 @@ export function BaugruppenPage() {
             addLabel="Einzelteilkalkulation hinzufügen"
             options={spritzgussList.map((s) => ({
               id: s.id,
-              label: `${s.teilebezeichnung} (${s.teilenummer}) – ${euro(s.verkaufspreis)} €`,
+              label: `${s.teilebezeichnung} (${s.teilenummer}) – Selbstkosten ${euro(s.selbstkosten ?? s.verkaufspreis)} €`,
             }))}
+            disabled={form.project_id == null}
+            disabledHint="Bitte zuerst ein Projekt auswählen."
             onAdd={addSpritzguss}
             emptyText="Noch keine Einzelteile."
           >
@@ -880,7 +942,11 @@ export function BaugruppenPage() {
               .map((s) => (
                 <PositionRow
                   key={s.spritzguss_kalkulation_id}
-                  title={s.bezeichnung}
+                  title={`${s.bezeichnung}${
+                    !spritzgussList.some((x) => x.id === s.spritzguss_kalkulation_id)
+                      ? " (inaktiv / anderes Projekt)"
+                      : ""
+                  }`}
                   subtitle={s.teilenummer}
                   menge={s.menge}
                   preis={s.endpreis}
@@ -919,7 +985,7 @@ export function BaugruppenPage() {
                       s.spritzguss_kalkulation_id,
                     )
                   }
-                  preisLabel="Endpreis"
+                  preisLabel="Selbstkosten"
                 />
               ))}
           </PositionSection>
@@ -929,8 +995,10 @@ export function BaugruppenPage() {
             addLabel="Kaufteil hinzufügen"
             options={kaufteileList.map((k) => ({
               id: k.id,
-              label: `${k.bezeichnung} (${k.artikelnummer}) – ${euro(k.preis)} €`,
+              label: `${k.bezeichnung} (${k.artikelnummer}) – ${euro(k.preis)} € Einkauf`,
             }))}
+            disabled={form.project_id == null}
+            disabledHint="Bitte zuerst ein Projekt auswählen."
             onAdd={addKaufteil}
             emptyText="Noch keine Kaufteile."
           >
@@ -939,7 +1007,11 @@ export function BaugruppenPage() {
               .map((k) => (
                 <PositionRow
                   key={k.kaufteil_id}
-                  title={k.bezeichnung}
+                  title={`${k.bezeichnung}${
+                    !kaufteileList.some((x) => x.id === k.kaufteil_id)
+                      ? " (inaktiv / anderes Projekt)"
+                      : ""
+                  }`}
                   subtitle={k.lieferant}
                   menge={k.menge}
                   preis={k.snapshot_preis ?? k.preis}
@@ -1129,7 +1201,9 @@ export function BaugruppenPage() {
                       const display =
                         key === "jahresstueckzahl"
                           ? String(value)
-                          : euro(typeof value === "number" ? value : Number(value));
+                          : key === "gewinn_pct"
+                            ? `${value.toLocaleString("de-DE")} %`
+                            : euro(typeof value === "number" ? value : Number(value));
                       return (
                         <div
                           key={key}
@@ -1212,6 +1286,8 @@ function PositionSection({
   onAdd,
   emptyText,
   children,
+  disabled = false,
+  disabledHint,
 }: {
   title: string;
   addLabel: string;
@@ -1219,15 +1295,21 @@ function PositionSection({
   onAdd: (id: number) => void;
   emptyText: string;
   children: ReactNode;
+  disabled?: boolean;
+  disabledHint?: string;
 }) {
   const [selected, setSelected] = useState("");
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4">
       <h3 className="mb-3 font-semibold text-gray-900">{title}</h3>
+      {disabled && disabledHint ? (
+        <p className="mb-3 text-sm text-amber-800">{disabledHint}</p>
+      ) : null}
       <div className="mb-3 flex gap-2">
         <select
-          className="flex-1 rounded border px-2 py-1.5 text-sm"
+          className="flex-1 rounded border px-2 py-1.5 text-sm disabled:bg-gray-100"
           value={selected}
+          disabled={disabled}
           onChange={(e) => setSelected(e.target.value)}
         >
           <option value="">– auswählen –</option>
@@ -1239,7 +1321,7 @@ function PositionSection({
         </select>
         <button
           type="button"
-          disabled={!selected}
+          disabled={disabled || !selected}
           className="rounded bg-slate-700 px-3 py-1.5 text-sm text-white disabled:opacity-50"
           onClick={() => {
             onAdd(Number(selected));

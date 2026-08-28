@@ -1,13 +1,26 @@
-"""Berechnungslogik für Baugruppenkalkulationen."""
+"""Berechnungslogik für Baugruppenkalkulationen.
+
+Fachmodell (Bumper-Zusammenbau):
+1. Vorprodukt = Σ Einzelteil-Selbstkosten + Σ Kaufteil-Selbstkosten (inkl. MGK)
+2. + direkte Montage-/Assemblykosten vor Ausschuss (pro Veredelungsschritt)
+3. Ausbeutekette: (Vorprodukt + Direktkosten) / (1 − Ausschussquote/100) je Prozessschritt
+4. Gewinn genau einmal auf die Kostenbasis nach Assembly-Ausschuss (kein erneutes SG&A)
+"""
 
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from decimal import Decimal, ROUND_HALF_UP
 
+from app.services.process_yield import apply_process_yield
+
 
 class BaugruppeValidationError(ValueError):
     """Ungültige Eingaben für die Baugruppenkalkulation."""
+
+
+class BaugruppeMarkupError(ValueError):
+    """Fehlende zentrale Zuschlagssätze für die Baugruppenkalkulation."""
 
 
 def _d(value: float | int | Decimal | str) -> Decimal:
@@ -44,7 +57,9 @@ class VeredelungEingabe:
     bezeichnung: str
     reihenfolge: int
     mengenfaktor: float
-    snapshot_kosten: float
+    kosten_vor_ausschuss: float
+    ausschussquote_pct: float
+    snapshot_kosten: float | None = None
 
 
 @dataclass(frozen=True)
@@ -78,8 +93,15 @@ class VeredelungPositionErgebnis:
     veredelungsschritt_id: int
     bezeichnung: str
     reihenfolge: int
-    kosten_je_stueck: float
+    kosten_vor_ausschuss: float
+    ausschussquote_pct: float
     mengenfaktor: float
+    direktkosten: float
+    vorprodukt_eingang: float
+    ausschuss_zuschlag: float
+    ausbeute_faktor: float
+    kosten_nach_ausschuss: float
+    kosten_je_stueck: float
     zwischensumme: float
 
     def to_dict(self) -> dict:
@@ -91,6 +113,12 @@ class BaugruppeErgebnis:
     einzelteile_gesamt: float
     kaufteile_gesamt: float
     veredelung_gesamt: float
+    vorprodukt_gesamt: float
+    assembly_direkt_gesamt: float
+    assembly_ausschuss_zuschlag: float
+    kostenbasis_nach_assembly: float
+    gewinn_pct: float
+    gewinn_betrag: float
     baugruppenpreis_je_stueck: float
     jahresstueckzahl: int
     jahresumsatz: float
@@ -105,6 +133,12 @@ class BaugruppeErgebnis:
             "einzelteile_gesamt": self.einzelteile_gesamt,
             "kaufteile_gesamt": self.kaufteile_gesamt,
             "veredelung_gesamt": self.veredelung_gesamt,
+            "vorprodukt_gesamt": self.vorprodukt_gesamt,
+            "assembly_direkt_gesamt": self.assembly_direkt_gesamt,
+            "assembly_ausschuss_zuschlag": self.assembly_ausschuss_zuschlag,
+            "kostenbasis_nach_assembly": self.kostenbasis_nach_assembly,
+            "gewinn_pct": self.gewinn_pct,
+            "gewinn_betrag": self.gewinn_betrag,
             "baugruppenpreis_je_stueck": self.baugruppenpreis_je_stueck,
             "jahresstueckzahl": self.jahresstueckzahl,
             "jahresumsatz": self.jahresumsatz,
@@ -120,6 +154,12 @@ class BaugruppeErgebnis:
             "einzelteile_gesamt": self.einzelteile_gesamt,
             "kaufteile_gesamt": self.kaufteile_gesamt,
             "veredelung_gesamt": self.veredelung_gesamt,
+            "vorprodukt_gesamt": self.vorprodukt_gesamt,
+            "assembly_direkt_gesamt": self.assembly_direkt_gesamt,
+            "assembly_ausschuss_zuschlag": self.assembly_ausschuss_zuschlag,
+            "kostenbasis_nach_assembly": self.kostenbasis_nach_assembly,
+            "gewinn_pct": self.gewinn_pct,
+            "gewinn_betrag": self.gewinn_betrag,
             "baugruppenpreis_je_stueck": self.baugruppenpreis_je_stueck,
             "jahresstueckzahl": self.jahresstueckzahl,
             "jahresumsatz": self.jahresumsatz,
@@ -147,6 +187,16 @@ def validate_preis(preis: float, *, label: str = "Preis") -> None:
         raise BaugruppeValidationError(f"{label} darf nicht negativ sein")
 
 
+def validate_gewinn_pct(gewinn_pct: float | None) -> float:
+    if gewinn_pct is None:
+        raise BaugruppeMarkupError(
+            "Kein aktiver zentraler Gewinnsatz hinterlegt. Bitte Zuschlagssätze pflegen."
+        )
+    if gewinn_pct < 0:
+        raise BaugruppeMarkupError("Gewinnsatz darf nicht negativ sein.")
+    return float(gewinn_pct)
+
+
 def _check_duplicates(ids: list[int], *, label: str) -> None:
     seen: set[int] = set()
     for item_id in ids:
@@ -162,9 +212,11 @@ def berechne_baugruppe(
     *,
     jahresstueckzahl: int = 0,
     investitionen: list[InvestitionAnzeige] | None = None,
+    gewinn_pct: float | None = None,
 ) -> BaugruppeErgebnis:
-    """Berechnet Baugruppenpreis ohne zusätzliche VVGK/Gewinn-Zuschläge."""
+    """Berechnet Baugruppen-Endpreis mit Assembly-Ausbeute und einmaligem Gewinn."""
     validate_jahresstueckzahl(jahresstueckzahl)
+    gewinn_rate = validate_gewinn_pct(gewinn_pct)
     _check_duplicates(
         [e.spritzguss_kalkulation_id for e in einzelteile],
         label="Einzelteil",
@@ -179,7 +231,7 @@ def berechne_baugruppe(
     einzelteile_summe = Decimal("0")
     for teil in sorted(einzelteile, key=lambda t: t.reihenfolge):
         validate_menge(teil.menge, label="Einzelteil-Menge")
-        validate_preis(teil.snapshot_preis, label="Einzelteil-Preis")
+        validate_preis(teil.snapshot_preis, label="Einzelteil-Selbstkosten")
         zwischensumme = _money(_d(teil.menge) * _d(teil.snapshot_preis))
         einzelteile_summe += zwischensumme
         einzelteile_ergebnis.append(
@@ -192,6 +244,7 @@ def berechne_baugruppe(
                 detail={
                     "teilenummer": teil.teilenummer,
                     "reihenfolge": teil.reihenfolge,
+                    "kostenart": "selbstkosten",
                 },
             )
         )
@@ -200,7 +253,7 @@ def berechne_baugruppe(
     kaufteile_summe = Decimal("0")
     for teil in sorted(kaufteile, key=lambda t: t.reihenfolge):
         validate_menge(teil.menge, label="Kaufteil-Menge")
-        validate_preis(teil.snapshot_preis, label="Kaufteil-Preis")
+        validate_preis(teil.snapshot_preis, label="Kaufteil-Selbstkosten")
         zwischensumme = _money(_d(teil.menge) * _d(teil.snapshot_preis))
         kaufteile_summe += zwischensumme
         kaufteile_ergebnis.append(
@@ -213,30 +266,54 @@ def berechne_baugruppe(
                 detail={
                     "lieferant": teil.lieferant,
                     "reihenfolge": teil.reihenfolge,
+                    "kostenart": "selbstkosten_inkl_mgk",
                 },
             )
         )
 
+    vorprodukt = _money(einzelteile_summe + kaufteile_summe)
+    running = vorprodukt
+    assembly_direct_total = Decimal("0")
+    scrap_surcharge_total = Decimal("0")
     veredelungen_ergebnis: list[VeredelungPositionErgebnis] = []
-    veredelung_summe = Decimal("0")
+
     for schritt in sorted(veredelungen, key=lambda v: v.reihenfolge):
         validate_mengenfaktor(schritt.mengenfaktor)
-        validate_preis(schritt.snapshot_kosten, label="Veredelungskosten")
-        zwischensumme = _money(_d(schritt.snapshot_kosten) * _d(schritt.mengenfaktor))
-        veredelung_summe += zwischensumme
+        validate_preis(schritt.kosten_vor_ausschuss, label="Veredelungskosten")
+        vorprodukt_eingang = running
+        direct = _money(_d(schritt.kosten_vor_ausschuss) * _d(schritt.mengenfaktor))
+        assembly_direct_total += direct
+        try:
+            running, surcharge, yield_factor = apply_process_yield(
+                running,
+                direct,
+                schritt.ausschussquote_pct,
+            )
+        except ValueError as exc:
+            raise BaugruppeValidationError(str(exc)) from exc
+        scrap_surcharge_total += surcharge
         veredelungen_ergebnis.append(
             VeredelungPositionErgebnis(
                 veredelungsschritt_id=schritt.veredelungsschritt_id,
                 bezeichnung=schritt.bezeichnung,
                 reihenfolge=schritt.reihenfolge,
-                kosten_je_stueck=schritt.snapshot_kosten,
+                kosten_vor_ausschuss=schritt.kosten_vor_ausschuss,
+                ausschussquote_pct=schritt.ausschussquote_pct,
                 mengenfaktor=schritt.mengenfaktor,
-                zwischensumme=float(zwischensumme),
+                direktkosten=float(direct),
+                vorprodukt_eingang=float(_money(vorprodukt_eingang)),
+                ausschuss_zuschlag=float(surcharge),
+                ausbeute_faktor=float(yield_factor),
+                kosten_nach_ausschuss=float(running),
+                kosten_je_stueck=schritt.kosten_vor_ausschuss,
+                zwischensumme=float(direct),
             )
         )
 
-    baugruppenpreis = _money(einzelteile_summe + kaufteile_summe + veredelung_summe)
-    jahresumsatz = _money(baugruppenpreis * _d(jahresstueckzahl))
+    kostenbasis_nach_assembly = _money(running)
+    gewinn_betrag = _money(kostenbasis_nach_assembly * _d(gewinn_rate) / Decimal("100"))
+    endpreis = _money(kostenbasis_nach_assembly + gewinn_betrag)
+    jahresumsatz = _money(endpreis * _d(jahresstueckzahl))
 
     investitionen_liste = investitionen or []
     investitionen_gesamt = sum(i.amount for i in investitionen_liste)
@@ -244,8 +321,14 @@ def berechne_baugruppe(
     return BaugruppeErgebnis(
         einzelteile_gesamt=float(einzelteile_summe),
         kaufteile_gesamt=float(kaufteile_summe),
-        veredelung_gesamt=float(veredelung_summe),
-        baugruppenpreis_je_stueck=float(baugruppenpreis),
+        veredelung_gesamt=float(assembly_direct_total),
+        vorprodukt_gesamt=float(vorprodukt),
+        assembly_direkt_gesamt=float(assembly_direct_total),
+        assembly_ausschuss_zuschlag=float(scrap_surcharge_total),
+        kostenbasis_nach_assembly=float(kostenbasis_nach_assembly),
+        gewinn_pct=gewinn_rate,
+        gewinn_betrag=float(gewinn_betrag),
+        baugruppenpreis_je_stueck=float(endpreis),
         jahresstueckzahl=jahresstueckzahl,
         jahresumsatz=float(jahresumsatz),
         einzelteile=einzelteile_ergebnis,

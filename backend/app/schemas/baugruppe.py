@@ -168,6 +168,12 @@ class BaugruppeErgebnisSchema(BaseModel):
     jahresstueckzahl: int
     jahresumsatz: float
     investitionen_gesamt: float = 0
+    vorprodukt_gesamt: float | None = None
+    assembly_direkt_gesamt: float | None = None
+    assembly_ausschuss_zuschlag: float | None = None
+    kostenbasis_nach_assembly: float | None = None
+    gewinn_pct: float | None = None
+    gewinn_betrag: float | None = None
     einzelteile: list[dict] = Field(default_factory=list)
     kaufteile: list[dict] = Field(default_factory=list)
     veredelungen: list[dict] = Field(default_factory=list)
@@ -178,6 +184,7 @@ class BaugruppeCalcRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     jahresstueckzahl: int = Field(ge=0, default=0)
     werk_id: int | None = None
+    project_id: int | None = None
     spritzguss_zuordnungen: list[SpritzgussZuordnungInput] = Field(default_factory=list)
     kaufteil_zuordnungen: list[KaufteilZuordnungInput] = Field(default_factory=list)
     veredelung_zuordnungen: list[VeredelungZuordnungInput] = Field(default_factory=list)

@@ -47,8 +47,14 @@ export function berechnen(payload: CalcPayload) {
   return api.post<SpritzgussCalcResponse>("/spritzguss/berechnen", payload);
 }
 
-export function listKalkulationen() {
-  return api.get<SpritzgussListItem[]>("/spritzguss");
+export function listKalkulationen(
+  options: { nurAktiv?: boolean; projectId?: number } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.nurAktiv) params.set("nur_aktiv", "true");
+  if (options.projectId != null) params.set("project_id", String(options.projectId));
+  const q = params.toString();
+  return api.get<SpritzgussListItem[]>(`/spritzguss${q ? `?${q}` : ""}`);
 }
 
 export function getKalkulation(id: number) {

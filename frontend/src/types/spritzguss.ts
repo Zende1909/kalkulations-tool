@@ -157,8 +157,10 @@ export interface SpritzgussListItem {
   teilenummer: string;
   kunde: string;
   projekt: string;
+  project_id: number | null;
   jahresstueckzahl: number;
   verkaufspreis: number | null;
+  selbstkosten: number | null;
   updated_at: string;
   aktiv: boolean;
 }

@@ -56,6 +56,12 @@ export interface BaugruppeErgebnis {
   einzelteile_gesamt: number;
   kaufteile_gesamt: number;
   veredelung_gesamt: number;
+  vorprodukt_gesamt?: number;
+  assembly_direkt_gesamt?: number;
+  assembly_ausschuss_zuschlag?: number;
+  kostenbasis_nach_assembly?: number;
+  gewinn_pct?: number;
+  gewinn_betrag?: number;
   baugruppenpreis_je_stueck: number;
   jahresstueckzahl: number;
   jahresumsatz: number;
