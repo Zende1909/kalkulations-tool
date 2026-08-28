@@ -51,6 +51,7 @@ def _export_investment_from_row(inv: Investition, hinweis: str) -> ExportInvestm
         bottom_price=getattr(inv, "bottom_price", None),
         revenue_amount=getattr(inv, "revenue_amount", None),
         legacy_amount=inv.amount,
+        payment_type=inv.payment_type,
     )
     return ExportInvestment(
         bezeichnung=inv.name or inv.description or inv.part_name,
@@ -73,6 +74,7 @@ def _export_investment_from_dict(inv: dict, hinweis: str) -> ExportInvestment:
         bottom_price=inv.get("bottom_price"),
         revenue_amount=inv.get("revenue_amount"),
         legacy_amount=inv.get("betrag"),
+        payment_type=inv.get("payment_type"),
     )
     return ExportInvestment(
         bezeichnung=str(inv.get("bezeichnung") or ""),

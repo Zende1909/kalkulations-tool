@@ -120,6 +120,8 @@ export interface BusinessCaseKpis {
   investitionen_gesamt: number;
   amortisationsinvestitionen_gesamt: number;
   einmalinvestitionen_gesamt: number;
+  capex_investitionen_gesamt: number;
+  entwicklungsinvestitionen_gesamt: number;
   amortisationsanteil_je_stueck: number | null;
   investition_cost_total: number;
   investition_bottom_price_total: number;
@@ -141,9 +143,15 @@ export interface BusinessCaseResponse {
   parts: BusinessCasePartRow[];
   assemblies: BusinessCaseAssemblyRow[];
   investments: BusinessCaseInvestmentRow[];
+  investments_capex: BusinessCaseInvestmentRow[];
+  investments_entwicklung: BusinessCaseInvestmentRow[];
+  investments_other: BusinessCaseInvestmentRow[];
   sales_summary: Record<string, unknown>;
   investment_summary: Record<string, unknown>;
   investment_financial_summary: {
+    capex: InvestmentCategorySummary;
+    entwicklung: InvestmentCategorySummary;
+    legacy: InvestmentCategorySummary;
     material_assignments: InvestmentFinancialBlock;
     project_assignments: InvestmentFinancialBlock;
     totals: InvestmentFinancialBlock;
@@ -162,6 +170,11 @@ export interface InvestmentFinancialBlock {
   margin_revenue_minus_cost_total: number | null;
   margin_revenue_minus_bottom_price_total: number | null;
   margin_bottom_price_minus_cost_total: number | null;
+  margin_revenue_minus_cost_pct?: number | null;
+  margin_revenue_minus_bottom_price_pct?: number | null;
+}
+
+export interface InvestmentCategorySummary extends InvestmentFinancialBlock {
   margin_revenue_minus_cost_pct?: number | null;
   margin_revenue_minus_bottom_price_pct?: number | null;
 }

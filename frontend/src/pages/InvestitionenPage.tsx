@@ -21,9 +21,12 @@ import type { Customer, Program, Project } from "../types/hierarchy";
 import {
   ASSIGNMENT_TYPE_LABELS,
   ASSIGNMENT_TYPES,
+  CAPEX_HINWEIS,
   emptyInvestitionForm,
+  ENTWICKLUNG_HINWEIS,
   EINMALZAHLUNG_HINWEIS,
   INVESTMENT_TYPES,
+  isCapexPayment,
   PAYMENT_TYPES,
   type AssignmentType,
   type Investition,
@@ -82,6 +85,15 @@ function validateForm(
     if (vol == null || !Number.isInteger(vol) || vol < 1) {
       return "Amortisationsvolumen muss eine positive ganze Zahl sein.";
     }
+  }
+  if (isCapexPayment(form.payment_type)) {
+    if (form.cost_amount <= 0) return "Bei CAPEX sind Kosten erforderlich und müssen größer als 0 sein.";
+    if (form.bottom_price != null || form.revenue_amount != null) {
+      return "Bei CAPEX sind Bottom Price und Erlös nicht zulässig.";
+    }
+  }
+  if (form.payment_type === "Entwicklung" && form.cost_amount <= 0) {
+    return "Bei Entwicklung sind Kosten erforderlich und müssen größer als 0 sein.";
   }
   if (assignmentType === "einzelteil" && !form.calculation_id) {
     return "Bitte ein Einzelteil wählen.";
@@ -370,6 +382,10 @@ export function InvestitionenPage() {
       revenueAmount = revenueRaw.trim()
         ? coerceFormDecimal(revenueRaw, "0,10 oder 0.10")
         : null;
+      if (isCapexPayment(form.payment_type)) {
+        bottomPrice = null;
+        revenueAmount = null;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ungültiger Betrag.");
       return;
@@ -685,7 +701,7 @@ export function InvestitionenPage() {
             </label>
             <fieldset className="md:col-span-3 rounded border p-3">
               <legend className="px-1 text-sm font-medium">Zahlungsart *</legend>
-              <div className="flex gap-4">
+              <div className="flex flex-wrap gap-4">
                 {PAYMENT_TYPES.map((pt) => (
                   <label key={pt} className="inline-flex items-center gap-2 text-sm">
                     <input
@@ -696,7 +712,10 @@ export function InvestitionenPage() {
                         setForm({
                           ...form,
                           payment_type: pt,
-                          amortization_volume: pt === "Einmalzahlung" ? null : form.amortization_volume,
+                          amortization_volume:
+                            pt === "Amortisation" ? form.amortization_volume : null,
+                          bottom_price: pt === "CAPEX" ? null : form.bottom_price,
+                          revenue_amount: pt === "CAPEX" ? null : form.revenue_amount,
                         })
                       }
                     />
@@ -704,6 +723,15 @@ export function InvestitionenPage() {
                   </label>
                 ))}
               </div>
+              {form.payment_type === "CAPEX" && (
+                <p className="mt-2 text-xs text-gray-600">{CAPEX_HINWEIS}</p>
+              )}
+              {form.payment_type === "Entwicklung" && (
+                <p className="mt-2 text-xs text-gray-600">{ENTWICKLUNG_HINWEIS}</p>
+              )}
+              {form.payment_type === "Einmalzahlung" && (
+                <p className="mt-2 text-xs text-gray-600">{EINMALZAHLUNG_HINWEIS}</p>
+              )}
             </fieldset>
             <DecimalInputField
               label="Kosten (€) *"
@@ -711,18 +739,22 @@ export function InvestitionenPage() {
               onRawChange={setCostRaw}
               className="mt-1 block w-full rounded border px-2 py-1.5"
             />
-            <DecimalInputField
-              label="Bottom Price (€)"
-              rawValue={bottomPriceRaw}
-              onRawChange={setBottomPriceRaw}
-              className="mt-1 block w-full rounded border px-2 py-1.5"
-            />
-            <DecimalInputField
-              label="Erlös (€)"
-              rawValue={revenueRaw}
-              onRawChange={setRevenueRaw}
-              className="mt-1 block w-full rounded border px-2 py-1.5"
-            />
+            {!isCapexPayment(form.payment_type) && (
+              <>
+                <DecimalInputField
+                  label="Bottom Price (€)"
+                  rawValue={bottomPriceRaw}
+                  onRawChange={setBottomPriceRaw}
+                  className="mt-1 block w-full rounded border px-2 py-1.5"
+                />
+                <DecimalInputField
+                  label="Erlös (€)"
+                  rawValue={revenueRaw}
+                  onRawChange={setRevenueRaw}
+                  className="mt-1 block w-full rounded border px-2 py-1.5"
+                />
+              </>
+            )}
             {formWarnings.length > 0 && (
               <div className="md:col-span-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                 <ul className="list-disc pl-5">

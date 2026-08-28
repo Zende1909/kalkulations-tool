@@ -315,6 +315,7 @@ def _load_investitionen(
             bottom_price=getattr(inv, "bottom_price", None),
             revenue_amount=getattr(inv, "revenue_amount", None),
             legacy_amount=inv.amount,
+            payment_type=inv.payment_type,
         )
         result.append(
             InvestitionAnzeige(

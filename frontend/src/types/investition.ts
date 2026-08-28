@@ -8,7 +8,7 @@ export const INVESTMENT_TYPES = [
   "Sonstige",
 ] as const;
 
-export const PAYMENT_TYPES = ["Amortisation", "Einmalzahlung"] as const;
+export const PAYMENT_TYPES = ["Amortisation", "Einmalzahlung", "CAPEX", "Entwicklung"] as const;
 
 export const ASSIGNMENT_TYPES = [
   "einzelteil",
@@ -193,5 +193,22 @@ export const emptyInvestitionForm = (): InvestitionPayload => ({
 });
 
 export const EINMALZAHLUNG_HINWEIS = "Separat, nicht im Stückpreis enthalten";
+export const CAPEX_HINWEIS = "Werksinvestition ohne Bottom Price und Erlös";
+export const ENTWICKLUNG_HINWEIS = "Entwicklungsinvestition mit optionalem Bottom Price und Erlös";
+
+export function paymentHintFor(paymentType: string): string {
+  if (paymentType === "Einmalzahlung") return EINMALZAHLUNG_HINWEIS;
+  if (paymentType === "CAPEX") return CAPEX_HINWEIS;
+  if (paymentType === "Entwicklung") return ENTWICKLUNG_HINWEIS;
+  return "";
+}
+
+export function isCapexPayment(paymentType: string): boolean {
+  return paymentType === "CAPEX";
+}
+
+export function isEntwicklungPayment(paymentType: string): boolean {
+  return paymentType === "Entwicklung";
+}
 
 export type ZuordnungFilter = "" | AssignmentType;

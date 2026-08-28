@@ -32,7 +32,12 @@ from app.services.investition_financials import (
     build_investment_financial_view,
     effective_cost_amount,
 )
-from app.services.investition_service import EINMALZAHLUNG_HINWEIS, zuordnung_label
+from app.services.investition_service import (
+    is_capex,
+    is_entwicklung,
+    payment_hint_for,
+    zuordnung_label,
+)
 from app.services.project_volume_service import build_project_volume_profile
 
 
@@ -250,9 +255,14 @@ def build_project_business_case(
     )
 
     investments: list[dict] = []
+    investments_capex: list[dict] = []
+    investments_entwicklung: list[dict] = []
+    investments_other: list[dict] = []
     financial_rows: list[dict] = []
     amort_gesamt = 0.0
     einmal_gesamt = 0.0
+    capex_gesamt = 0.0
+    entwicklung_gesamt = 0.0
     amort_anteil_summe = 0.0
     for inv in inv_rows:
         calc = sg_map.get(inv.calculation_id) if inv.calculation_id else None
@@ -267,13 +277,18 @@ def build_project_business_case(
             bottom_price=getattr(inv, "bottom_price", None),
             revenue_amount=getattr(inv, "revenue_amount", None),
             legacy_amount=inv.amount,
+            payment_type=inv.payment_type,
         )
-        financials["margin_revenue_minus_cost_pct"] = revenue_margin_percent(
-            financials["revenue_amount"], financials["cost_amount"]
-        )
-        financials["margin_revenue_minus_bottom_price_pct"] = revenue_margin_percent(
-            financials["revenue_amount"], financials["bottom_price"]
-        )
+        if is_capex(inv.payment_type):
+            financials["margin_revenue_minus_cost_pct"] = None
+            financials["margin_revenue_minus_bottom_price_pct"] = None
+        else:
+            financials["margin_revenue_minus_cost_pct"] = revenue_margin_percent(
+                financials["revenue_amount"], financials["cost_amount"]
+            )
+            financials["margin_revenue_minus_bottom_price_pct"] = revenue_margin_percent(
+                financials["revenue_amount"], financials["bottom_price"]
+            )
         atype = infer_assignment_type(
             assignment_type=getattr(inv, "assignment_type", None),
             calculation_id=inv.calculation_id,
@@ -284,9 +299,13 @@ def build_project_business_case(
             amort_gesamt += cost
             if piece is not None:
                 amort_anteil_summe += piece
-        else:
+        elif is_capex(inv.payment_type):
+            capex_gesamt += cost
+        elif is_entwicklung(inv.payment_type):
+            entwicklung_gesamt += cost
+        elif inv.payment_type == "Einmalzahlung":
             einmal_gesamt += cost
-        hint = EINMALZAHLUNG_HINWEIS if inv.payment_type == "Einmalzahlung" else ""
+        hint = payment_hint_for(inv.payment_type)
         material_number = inv.part_number or ""
         if atype == "einzelteil" and calc is not None:
             material_number = calc.teilenummer or material_number
@@ -341,9 +360,16 @@ def build_project_business_case(
             "bemerkung": inv.description or "",
         }
         investments.append(row)
+        if is_capex(inv.payment_type):
+            investments_capex.append(row)
+        elif is_entwicklung(inv.payment_type):
+            investments_entwicklung.append(row)
+        else:
+            investments_other.append(row)
         financial_rows.append(
             {
                 **financials,
+                "payment_type": inv.payment_type,
                 "assignment_type": atype,
                 "calculation_id": inv.calculation_id,
                 "baugruppe_id": inv.baugruppe_id,
@@ -354,7 +380,10 @@ def build_project_business_case(
     sales_totals = aggregate_sales_totals(sales_positions)
     investment_financial_summary = aggregate_investment_financials(financial_rows)
     fin_totals = investment_financial_summary["totals"]
-    investitionen_gesamt = round(amort_gesamt + einmal_gesamt, 2)
+    fin_capex = investment_financial_summary["capex"]
+    fin_entwicklung = investment_financial_summary["entwicklung"]
+    fin_legacy = investment_financial_summary["legacy"]
+    investitionen_gesamt = round(fin_totals["cost_amount_total"], 2)
 
     excluded_in_baugruppe_count = len(linked_sg_ids & {r.id for r in sg_rows})
 
@@ -395,6 +424,8 @@ def build_project_business_case(
             "investitionen_gesamt": investitionen_gesamt,
             "amortisationsinvestitionen_gesamt": round(amort_gesamt, 2),
             "einmalinvestitionen_gesamt": round(einmal_gesamt, 2),
+            "capex_investitionen_gesamt": round(capex_gesamt, 2),
+            "entwicklungsinvestitionen_gesamt": round(entwicklung_gesamt, 2),
             "amortisationsanteil_je_stueck": round(amort_anteil_summe, 2) if amort_anteil_summe else None,
             "investition_cost_total": fin_totals["cost_amount_total"],
             "investition_bottom_price_total": fin_totals["bottom_price_total"],
@@ -408,11 +439,16 @@ def build_project_business_case(
         "parts": parts,
         "assemblies": assemblies,
         "investments": investments,
+        "investments_capex": investments_capex,
+        "investments_entwicklung": investments_entwicklung,
+        "investments_other": investments_other,
         "sales_summary": sales_totals,
         "investment_summary": {
             "investitionen_gesamt": investitionen_gesamt,
             "amortisationsinvestitionen_gesamt": round(amort_gesamt, 2),
             "einmalinvestitionen_gesamt": round(einmal_gesamt, 2),
+            "capex_investitionen_gesamt": round(capex_gesamt, 2),
+            "entwicklungsinvestitionen_gesamt": round(entwicklung_gesamt, 2),
             "amortisationsanteil_je_stueck": round(amort_anteil_summe, 2) if amort_anteil_summe else None,
             "investition_cost_total": fin_totals["cost_amount_total"],
             "investition_bottom_price_total": fin_totals["bottom_price_total"],
@@ -422,6 +458,9 @@ def build_project_business_case(
                 "margin_revenue_minus_bottom_price_total"
             ],
             "margin_bottom_price_minus_cost_total": fin_totals["margin_bottom_price_minus_cost_total"],
+            "capex": fin_capex,
+            "entwicklung": fin_entwicklung,
+            "legacy": fin_legacy,
             "material_assignments": investment_financial_summary["material_assignments"],
             "project_assignments": investment_financial_summary["project_assignments"],
         },

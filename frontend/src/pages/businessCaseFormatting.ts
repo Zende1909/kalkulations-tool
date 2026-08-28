@@ -52,6 +52,15 @@ export function formatRevenueEuro(value: number | null | undefined): string {
   return `${whole.toLocaleString("de-DE", { maximumFractionDigits: 0 })} €`;
 }
 
+export function formatInvestmentOptional(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "nicht hinterlegt";
+  return formatEuro(value);
+}
+
+export function formatInvestmentNotApplicable(): string {
+  return "nicht zutreffend";
+}
+
 export function formatInteger(value: number | null | undefined): string {
   if (value == null) return "–";
   return value.toLocaleString("de-DE");

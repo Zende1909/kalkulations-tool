@@ -17,6 +17,7 @@ import { useAuth } from "../context/AuthContext";
 import { EINMALZAHLUNG_HINWEIS } from "../types/investition";
 import type {
   BusinessCaseAssemblyRow,
+  BusinessCaseInvestmentRow,
   BusinessCasePartRow,
   BusinessCaseResponse,
   PriceEditTarget,
@@ -25,6 +26,7 @@ import { coerceFormDecimal, formatDecimalForInputDe } from "../utils/decimalInpu
 import {
   formatCost,
   formatEuro,
+  formatInvestmentOptional,
   formatInteger,
   formatManualPrice,
   formatMarginWithPercent,
@@ -38,21 +40,92 @@ const emptyHierarchy = (): HierarchySelection => ({
   project_id: null,
 });
 
-function FinancialSummaryBlock({
+function InvestmentTable({
+  rows,
+  mode,
+}: {
+  rows: BusinessCaseInvestmentRow[];
+  mode: "capex" | "entwicklung" | "other";
+}) {
+  if (rows.length === 0) return null;
+  const showMargins = mode !== "capex";
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-gray-600">
+            <th className="py-2 pr-3">Bezeichnung</th>
+            <th className="py-2 pr-3">Zuordnung</th>
+            {mode === "capex" && <th className="py-2 pr-3">Zahlungsart</th>}
+            <th className="py-2 pr-3">Kosten einmalig</th>
+            {showMargins && <th className="py-2 pr-3">Bottom Price einmalig</th>}
+            {showMargins && <th className="py-2 pr-3">Erlös einmalig</th>}
+            {showMargins && <th className="py-2 pr-3">Erlös−Kosten</th>}
+            {showMargins && <th className="py-2 pr-3">Erlös−Bottom</th>}
+            <th className="py-2">Hinweis</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((inv) => (
+            <tr key={inv.id} className="border-b border-gray-100">
+              <td className="py-2 pr-3">{inv.bezeichnung}</td>
+              <td className="py-2 pr-3">{inv.zuordnung}</td>
+              {mode === "capex" && <td className="py-2 pr-3">{inv.payment_type}</td>}
+              <td className="py-2 pr-3">{formatEuro(inv.cost_amount)}</td>
+              {showMargins && (
+                <td className="py-2 pr-3">{formatInvestmentOptional(inv.bottom_price)}</td>
+              )}
+              {showMargins && (
+                <td className="py-2 pr-3">{formatInvestmentOptional(inv.revenue_amount)}</td>
+              )}
+              {showMargins && (
+                <td className={`py-2 pr-3 ${marginClass(inv.margin_revenue_minus_cost)}`}>
+                  {inv.revenue_amount != null
+                    ? formatMarginWithPercent(
+                        inv.margin_revenue_minus_cost,
+                        inv.margin_revenue_minus_cost_pct,
+                      )
+                    : "–"}
+                </td>
+              )}
+              {showMargins && (
+                <td className={`py-2 pr-3 ${marginClass(inv.margin_revenue_minus_bottom_price)}`}>
+                  {inv.revenue_amount != null && inv.bottom_price != null
+                    ? formatMarginWithPercent(
+                        inv.margin_revenue_minus_bottom_price,
+                        inv.margin_revenue_minus_bottom_price_pct,
+                      )
+                    : "–"}
+                </td>
+              )}
+              <td className="py-2 text-xs text-amber-800">
+                {[inv.hinweis, ...(inv.amount_warnings ?? [])].filter(Boolean).join(" · ")}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CategorySummary({
   title,
   block,
+  showMargins = true,
 }: {
   title: string;
   block: {
     count: number;
     cost_amount_total: number;
-    bottom_price_total: number;
-    revenue_amount_total: number;
-    margin_revenue_minus_cost_total: number | null;
-    margin_revenue_minus_bottom_price_total: number | null;
+    bottom_price_total?: number;
+    revenue_amount_total?: number;
+    margin_revenue_minus_cost_total?: number | null;
+    margin_revenue_minus_bottom_price_total?: number | null;
     margin_revenue_minus_cost_pct?: number | null;
     margin_revenue_minus_bottom_price_pct?: number | null;
   };
+  showMargins?: boolean;
 }) {
   return (
     <div className="rounded border border-gray-200 p-3 text-sm">
@@ -60,22 +133,26 @@ function FinancialSummaryBlock({
       <div className="grid gap-1 sm:grid-cols-2">
         <div>Anzahl: {block.count}</div>
         <div>Kosten: {formatEuro(block.cost_amount_total)}</div>
-        <div>Bottom Price: {formatEuro(block.bottom_price_total)}</div>
-        <div>Erlös: {formatEuro(block.revenue_amount_total)}</div>
-        <div className={marginClass(block.margin_revenue_minus_cost_total)}>
-          Erlös − Kosten:{" "}
-          {formatMarginWithPercent(
-            block.margin_revenue_minus_cost_total,
-            block.margin_revenue_minus_cost_pct,
-          )}
-        </div>
-        <div className={marginClass(block.margin_revenue_minus_bottom_price_total)}>
-          Erlös − Bottom:{" "}
-          {formatMarginWithPercent(
-            block.margin_revenue_minus_bottom_price_total,
-            block.margin_revenue_minus_bottom_price_pct,
-          )}
-        </div>
+        {showMargins && (
+          <>
+            <div>Bottom Price: {formatEuro(block.bottom_price_total ?? 0)}</div>
+            <div>Erlös: {formatEuro(block.revenue_amount_total ?? 0)}</div>
+            <div className={marginClass(block.margin_revenue_minus_cost_total ?? null)}>
+              Erlös − Kosten:{" "}
+              {formatMarginWithPercent(
+                block.margin_revenue_minus_cost_total ?? null,
+                block.margin_revenue_minus_cost_pct ?? null,
+              )}
+            </div>
+            <div className={marginClass(block.margin_revenue_minus_bottom_price_total ?? null)}>
+              Erlös − Bottom:{" "}
+              {formatMarginWithPercent(
+                block.margin_revenue_minus_bottom_price_total ?? null,
+                block.margin_revenue_minus_bottom_price_pct ?? null,
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -585,70 +662,50 @@ export function BusinessCasePage() {
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 font-semibold">Investitionen</h3>
             {data.investment_financial_summary && (
-              <div className="mb-4 grid gap-3 lg:grid-cols-2">
-                <FinancialSummaryBlock
-                  title="Materialnummernbezogen"
-                  block={data.investment_financial_summary.material_assignments}
+              <div className="mb-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+                <CategorySummary
+                  title="CAPEX / Werksinvestitionen"
+                  block={data.investment_financial_summary.capex}
+                  showMargins={false}
                 />
-                <FinancialSummaryBlock
-                  title="Gesamtprojekt"
-                  block={data.investment_financial_summary.project_assignments}
+                <CategorySummary
+                  title="Entwicklungsinvestitionen"
+                  block={data.investment_financial_summary.entwicklung}
+                />
+                <CategorySummary
+                  title="Amortisation / Einmalzahlung"
+                  block={data.investment_financial_summary.legacy}
+                />
+                <CategorySummary
+                  title="Gesamt Investitionskosten"
+                  block={data.investment_financial_summary.totals}
                 />
               </div>
             )}
             {data.investments.length === 0 ? (
               <p className="text-sm text-gray-600">Keine Investitionen.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-gray-600">
-                      <th className="py-2 pr-3">Bezeichnung</th>
-                      <th className="py-2 pr-3">Zuordnungstyp</th>
-                      <th className="py-2 pr-3">Materialnr.</th>
-                      <th className="py-2 pr-3">Kunde/Programm/Projekt</th>
-                      <th className="py-2 pr-3">Kosten</th>
-                      <th className="py-2 pr-3">Bottom Price</th>
-                      <th className="py-2 pr-3">Erlös</th>
-                      <th className="py-2 pr-3">Erlös−Kosten</th>
-                      <th className="py-2 pr-3">Erlös−Bottom</th>
-                      <th className="py-2">Hinweis</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.investments.map((inv) => (
-                      <tr key={inv.id} className="border-b border-gray-100">
-                        <td className="py-2 pr-3">{inv.bezeichnung}</td>
-                        <td className="py-2 pr-3">{inv.assignment_type_label || inv.assignment_type || "–"}</td>
-                        <td className="py-2 pr-3">
-                          {inv.material_number ||
-                            (inv.assignment_type === "gesamtprojekt" ? "Gesamtprojekt" : "–")}
-                        </td>
-                        <td className="py-2 pr-3 text-xs">
-                          {inv.customer_name} / {inv.program_name} / {inv.project_name}
-                        </td>
-                        <td className="py-2 pr-3">{formatEuro(inv.cost_amount)}</td>
-                        <td className="py-2 pr-3">{formatEuro(inv.bottom_price)}</td>
-                        <td className="py-2 pr-3">{formatEuro(inv.revenue_amount)}</td>
-                        <td className={`py-2 pr-3 ${marginClass(inv.margin_revenue_minus_cost)}`}>
-                          {formatMarginWithPercent(
-                            inv.margin_revenue_minus_cost,
-                            inv.margin_revenue_minus_cost_pct,
-                          )}
-                        </td>
-                        <td className={`py-2 pr-3 ${marginClass(inv.margin_revenue_minus_bottom_price)}`}>
-                          {formatMarginWithPercent(
-                            inv.margin_revenue_minus_bottom_price,
-                            inv.margin_revenue_minus_bottom_price_pct,
-                          )}
-                        </td>
-                        <td className="py-2 text-xs text-amber-800">
-                          {[inv.hinweis, ...(inv.amount_warnings ?? [])].filter(Boolean).join(" · ")}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-6">
+                {(data.investments_capex?.length ?? 0) > 0 && (
+                  <div>
+                    <h4 className="mb-2 font-semibold text-gray-800">CAPEX / Werksinvestitionen</h4>
+                    <InvestmentTable rows={data.investments_capex} mode="capex" />
+                  </div>
+                )}
+                {(data.investments_entwicklung?.length ?? 0) > 0 && (
+                  <div>
+                    <h4 className="mb-2 font-semibold text-gray-800">Entwicklungsinvestitionen</h4>
+                    <InvestmentTable rows={data.investments_entwicklung} mode="entwicklung" />
+                  </div>
+                )}
+                {(data.investments_other?.length ?? 0) > 0 && (
+                  <div>
+                    <h4 className="mb-2 font-semibold text-gray-800">
+                      Amortisation / Einmalzahlung
+                    </h4>
+                    <InvestmentTable rows={data.investments_other} mode="other" />
+                  </div>
+                )}
               </div>
             )}
             <p className="mt-3 text-xs text-amber-800">{EINMALZAHLUNG_HINWEIS}</p>

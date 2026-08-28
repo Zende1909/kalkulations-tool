@@ -14,12 +14,41 @@ INVESTMENT_TYPES = (
     "Sonstige",
 )
 
-PAYMENT_TYPES = ("Amortisation", "Einmalzahlung")
+PAYMENT_TYPES = ("Amortisation", "Einmalzahlung", "CAPEX", "Entwicklung")
+
+PAYMENT_TYPE_CAPEX = "CAPEX"
+PAYMENT_TYPE_ENTWICKLUNG = "Entwicklung"
+PAYMENT_TYPE_AMORTISATION = "Amortisation"
+PAYMENT_TYPE_EINMALZAHLUNG = "Einmalzahlung"
 
 # Optionaler Planungsstatus – kein Beschaffungs-/Lieferstatus
 PLANNING_STATUS_VALUES = ("Geplant", "Berücksichtigt", "Entfällt")
 
 EINMALZAHLUNG_HINWEIS = "Separat, nicht im Stückpreis enthalten"
+CAPEX_HINWEIS = "Werksinvestition ohne Bottom Price und Erlös"
+ENTWICKLUNG_HINWEIS = "Entwicklungsinvestition mit optionalem Bottom Price und Erlös"
+
+
+def is_capex(payment_type: str) -> bool:
+    return payment_type == PAYMENT_TYPE_CAPEX
+
+
+def is_entwicklung(payment_type: str) -> bool:
+    return payment_type == PAYMENT_TYPE_ENTWICKLUNG
+
+
+def is_legacy_payment(payment_type: str) -> bool:
+    return payment_type in (PAYMENT_TYPE_AMORTISATION, PAYMENT_TYPE_EINMALZAHLUNG)
+
+
+def payment_hint_for(payment_type: str) -> str:
+    if payment_type == PAYMENT_TYPE_EINMALZAHLUNG:
+        return EINMALZAHLUNG_HINWEIS
+    if is_capex(payment_type):
+        return CAPEX_HINWEIS
+    if is_entwicklung(payment_type):
+        return ENTWICKLUNG_HINWEIS
+    return ""
 
 
 def _is_positive_int(value: float | int) -> bool:
@@ -48,7 +77,7 @@ def compute_cost_per_piece(
     payment_type: str,
     amortization_volume: int | None,
 ) -> float | None:
-    if payment_type == "Einmalzahlung":
+    if payment_type in (PAYMENT_TYPE_EINMALZAHLUNG, PAYMENT_TYPE_CAPEX, PAYMENT_TYPE_ENTWICKLUNG):
         return None
     if amortization_volume is None or amortization_volume < 1:
         return None
@@ -120,8 +149,28 @@ def validate_investition_input(
             detail=f"Ungültiger Planungsstatus: {planning_status}",
         )
 
-    volume: int | None
-    if payment_type == "Einmalzahlung":
+    if is_capex(payment_type):
+        if cost <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Bei CAPEX sind Kosten erforderlich und müssen größer als 0 sein.",
+            )
+        if bottom is not None or revenue is not None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Bei CAPEX sind Bottom Price und Erlös nicht zulässig.",
+            )
+        bottom = None
+        revenue = None
+        volume = None
+    elif is_entwicklung(payment_type):
+        if cost <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Bei Entwicklung sind Kosten erforderlich und müssen größer als 0 sein.",
+            )
+        volume = None
+    elif payment_type == PAYMENT_TYPE_EINMALZAHLUNG:
         volume = None
     else:
         if amortization_volume is None:

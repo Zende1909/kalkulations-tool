@@ -26,7 +26,7 @@ from app.services.investition_assignment_service import (
     validate_assignment_payload,
 )
 from app.services.investition_financials import build_investment_financial_view
-from app.services.investition_service import EINMALZAHLUNG_HINWEIS, validate_investition_input, zuordnung_label
+from app.services.investition_service import PAYMENT_TYPE_CAPEX, payment_hint_for, validate_investition_input, zuordnung_label
 
 router = APIRouter(prefix="/investitionen", tags=["Investitionen"])
 
@@ -76,6 +76,7 @@ def _to_read(
         bottom_price=getattr(row, "bottom_price", None),
         revenue_amount=getattr(row, "revenue_amount", None),
         legacy_amount=row.amount,
+        payment_type=row.payment_type,
     )
     return InvestitionRead(
         id=row.id,
@@ -125,7 +126,7 @@ def _to_read(
             program_name=program.name if program else None,
             project_name=project.name if project else row.project_id or None,
         ),
-        payment_hint=EINMALZAHLUNG_HINWEIS if row.payment_type == "Einmalzahlung" else "",
+        payment_hint=payment_hint_for(row.payment_type),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -208,6 +209,14 @@ def _build_payload(
         cost_amount = data.get("amount")
     if cost_amount is None and existing is not None:
         cost_amount = getattr(existing, "cost_amount", existing.amount)
+
+    if (
+        data.get("payment_type") == PAYMENT_TYPE_CAPEX
+        and existing is not None
+        and existing.payment_type != PAYMENT_TYPE_CAPEX
+    ):
+        data["bottom_price"] = None
+        data["revenue_amount"] = None
 
     computed = validate_investition_input(
         name=data["name"],

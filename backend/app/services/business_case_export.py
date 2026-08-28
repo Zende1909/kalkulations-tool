@@ -29,6 +29,7 @@ class BusinessCaseExportData:
     parts: list[dict]
     assemblies: list[dict]
     investments: list[dict]
+    investment_financial_summary: dict = field(default_factory=dict)
     position_headers: list[str] = field(default_factory=list)
     position_rows: list[list] = field(default_factory=list)
     investment_headers: list[str] = field(default_factory=list)
@@ -110,6 +111,7 @@ def build_business_case_export(
         position_rows.append(_position_row(asm, "Baugruppe", "name"))
 
     investment_headers = [
+        "Zahlungsart",
         "Bezeichnung",
         "Zuordnungstyp",
         "Materialnummer",
@@ -127,6 +129,7 @@ def build_business_case_export(
     ]
     investment_rows = [
         [
+            inv.get("payment_type"),
             inv.get("bezeichnung"),
             inv.get("assignment_type_label") or inv.get("assignment_type"),
             inv.get("material_number") or "",
@@ -155,6 +158,7 @@ def build_business_case_export(
         parts=data["parts"],
         assemblies=data["assemblies"],
         investments=data["investments"],
+        investment_financial_summary=data.get("investment_financial_summary") or {},
         position_headers=position_headers,
         position_rows=position_rows,
         investment_headers=investment_headers,
@@ -206,7 +210,7 @@ def render_business_case_excel(data: BusinessCaseExportData) -> bytes:
             elif col == 8 and isinstance(val, (int, float)):
                 cell.number_format = "#,##0"
     ws_inv = wb.create_sheet("Investitionen")
-    inv_pct_cols = {11, 13}
+    inv_pct_cols = {12, 14}
     for col, header in enumerate(data.investment_headers, 1):
         ws_inv.cell(row=1, column=col, value=header).font = BOLD
     for i, irow in enumerate(data.investment_rows, start=2):
@@ -214,6 +218,21 @@ def render_business_case_excel(data: BusinessCaseExportData) -> bytes:
             cell = ws_inv.cell(row=i, column=col, value=val)
             if isinstance(val, float):
                 cell.number_format = PCT_FORMAT if col in inv_pct_cols else EUR_FORMAT
+    summary_row = len(data.investment_rows) + 3
+    ws_inv.cell(row=summary_row, column=1, value="Summen").font = BOLD
+    fin = data.investment_financial_summary or {}
+    summary_labels = [
+        ("CAPEX / Werksinvestitionen", fin.get("capex", {})),
+        ("Entwicklungsinvestitionen", fin.get("entwicklung", {})),
+        ("Amortisation / Einmalzahlung", fin.get("legacy", {})),
+        ("Gesamt Investitionskosten", fin.get("totals", {})),
+    ]
+    for offset, (label, block) in enumerate(summary_labels, start=1):
+        row_idx = summary_row + offset
+        ws_inv.cell(row=row_idx, column=1, value=label)
+        ws_inv.cell(row=row_idx, column=2, value=(block or {}).get("count"))
+        cost_cell = ws_inv.cell(row=row_idx, column=8, value=(block or {}).get("cost_amount_total"))
+        cost_cell.number_format = EUR_FORMAT
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()

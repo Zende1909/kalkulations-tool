@@ -130,10 +130,12 @@ def _scoped_financial_rows(scoped: list[InvestitionSnapshot]) -> list[dict]:
             bottom_price=inv.bottom_price,
             revenue_amount=inv.revenue_amount,
             legacy_amount=inv.amount,
+            payment_type=inv.payment_type,
         )
         rows.append(
             {
                 **financials,
+                "payment_type": inv.payment_type,
                 "id": inv.id,
                 "assignment_type": inv.assignment_type,
                 "calculation_id": inv.calculation_id,

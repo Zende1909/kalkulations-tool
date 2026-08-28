@@ -632,23 +632,18 @@ def render_business_case_pdf(data) -> bytes:
     )
 
     investment_rows: list[list[str]] = []
+    money_cols = {7, 8, 9, 10, 12, 14}
+    pct_cols = {11, 13}
     for row in data.investment_rows:
-        investment_rows.append(
-            [
-                str(row[0] or ""),
-                str(row[1] or ""),
-                str(row[2] or ""),
-                str(row[3] or ""),
-                str(row[4] or ""),
-                str(row[5] or ""),
-                _fmt_optional_money(row[6] if isinstance(row[6], (int, float)) else None),
-                _fmt_optional_money(row[7] if isinstance(row[7], (int, float)) else None),
-                _fmt_optional_money(row[8] if isinstance(row[8], (int, float)) else None),
-                _fmt_optional_money(row[9] if isinstance(row[9], (int, float)) else None),
-                _fmt_optional_money(row[10] if isinstance(row[10], (int, float)) else None),
-                _fmt_optional_money(row[11] if isinstance(row[11], (int, float)) else None),
-            ]
-        )
+        cells: list[str] = []
+        for idx, val in enumerate(row):
+            if idx in money_cols and isinstance(val, (int, float)):
+                cells.append(_fmt_optional_money(val))
+            elif idx in pct_cols and isinstance(val, (int, float)):
+                cells.append(f"{val:.2f} %".replace(".", ","))
+            else:
+                cells.append(str(val if val is not None else "–"))
+        investment_rows.append(cells)
     story.extend(
         _export_table_block(
             ExportTable(

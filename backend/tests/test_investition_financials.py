@@ -40,6 +40,17 @@ def test_build_financial_view_without_optional_amounts():
     assert view["warnings"] == []
 
 
+def test_build_financial_view_capex_ignores_optional_amounts():
+    view = build_investment_financial_view(
+        cost_amount=80_000,
+        bottom_price=90_000,
+        revenue_amount=100_000,
+        payment_type="CAPEX",
+    )
+    assert view["bottom_price"] is None
+    assert view["revenue_amount"] is None
+
+
 def test_build_financial_view_margins_and_warnings():
     view = build_investment_financial_view(
         cost_amount=80_000,
@@ -62,6 +73,7 @@ def test_negative_margins_produce_warnings():
 def test_aggregate_splits_material_and_project():
     rows = [
         {
+            "payment_type": "Einmalzahlung",
             "cost_amount": 80_000,
             "bottom_price": 90_000,
             "revenue_amount": 100_000,
@@ -71,6 +83,7 @@ def test_aggregate_splits_material_and_project():
             "assignment_type": "einzelteil",
         },
         {
+            "payment_type": "Einmalzahlung",
             "cost_amount": 50_000,
             "bottom_price": None,
             "revenue_amount": None,

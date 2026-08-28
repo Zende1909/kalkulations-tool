@@ -122,6 +122,8 @@ class BusinessCaseKpis(BaseModel):
     investitionen_gesamt: float = 0
     amortisationsinvestitionen_gesamt: float = 0
     einmalinvestitionen_gesamt: float = 0
+    capex_investitionen_gesamt: float = 0
+    entwicklungsinvestitionen_gesamt: float = 0
     amortisationsanteil_je_stueck: float | None = None
     investition_cost_total: float = 0
     investition_bottom_price_total: float = 0
@@ -152,6 +154,9 @@ class BusinessCaseResponse(BaseModel):
     parts: list[BusinessCasePartRow] = Field(default_factory=list)
     assemblies: list[BusinessCaseAssemblyRow] = Field(default_factory=list)
     investments: list[BusinessCaseInvestmentRow] = Field(default_factory=list)
+    investments_capex: list[BusinessCaseInvestmentRow] = Field(default_factory=list)
+    investments_entwicklung: list[BusinessCaseInvestmentRow] = Field(default_factory=list)
+    investments_other: list[BusinessCaseInvestmentRow] = Field(default_factory=list)
     sales_summary: dict = Field(default_factory=dict)
     investment_summary: dict = Field(default_factory=dict)
     investment_financial_summary: dict = Field(default_factory=dict)
