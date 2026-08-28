@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from app.api.router import api_router
 from app.config import settings
@@ -32,6 +34,7 @@ from app.models import (  # noqa: F401
 from app.db_upgrade import (
     ensure_assembly_structure_schema,
     ensure_investition_schema,
+    ensure_kaufteil_sga_override_schema,
     ensure_spritzguss_hierarchy_schema,
     ensure_spritzguss_schema,
 )
@@ -52,6 +55,7 @@ def _run_dev_schema_bootstrap() -> None:
     ensure_spritzguss_hierarchy_schema(engine)
     ensure_investition_schema(engine)
     ensure_assembly_structure_schema(engine)
+    ensure_kaufteil_sga_override_schema(engine)
     # Bootstrap ergänzt Spalten, stamp/upgrade aber nicht – Drift klar loggen.
     from app.startup import warn_if_database_behind_alembic_head
 
@@ -115,6 +119,20 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+
+@app.exception_handler(OperationalError)
+async def database_operational_error_handler(_request: Request, exc: OperationalError) -> JSONResponse:
+    """Schema-Drift (z. B. fehlende Migration) als verständlicher Fachfehler, nicht HTTP 500."""
+    message = str(exc.orig) if getattr(exc, "orig", None) else str(exc)
+    if "sga_override_aktiv" in message or "sga_satz_manuell" in message:
+        detail = (
+            "Datenbank-Schema veraltet: Bitte Migration "
+            "'e1a0011_kaufteil_sga_override' ausführen (alembic upgrade head)."
+        )
+    else:
+        detail = f"Datenbankfehler bei der Anfrage: {message}"
+    return JSONResponse(status_code=422, content={"detail": detail})
 
 
 @app.get("/health")

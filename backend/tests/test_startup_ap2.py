@@ -47,6 +47,7 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> dict:
         "ensure_hierarchy": 0,
         "ensure_investition": 0,
         "ensure_assembly": 0,
+        "ensure_kaufteil_sga": 0,
         "alembic_verify": 0,
     }
 
@@ -75,6 +76,11 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> dict:
         app_main,
         "ensure_assembly_structure_schema",
         lambda _e: calls.__setitem__("ensure_assembly", calls["ensure_assembly"] + 1),
+    )
+    monkeypatch.setattr(
+        app_main,
+        "ensure_kaufteil_sga_override_schema",
+        lambda _e: calls.__setitem__("ensure_kaufteil_sga", calls["ensure_kaufteil_sga"] + 1),
     )
     monkeypatch.setattr(
         app_main,
@@ -149,6 +155,7 @@ def test_production_startup_does_not_mutate_via_bootstrap(monkeypatch: pytest.Mo
         + calls["ensure_hierarchy"]
         + calls["ensure_investition"]
         + calls["ensure_assembly"]
+        + calls["ensure_kaufteil_sga"]
     )
     assert mutation_calls == 0
     assert not hasattr(app_main, "seed_admin_user")
@@ -168,6 +175,7 @@ def test_development_startup_runs_bootstrap_without_admin_seed(monkeypatch: pyte
     assert calls["ensure_hierarchy"] == 1
     assert calls["ensure_investition"] == 1
     assert calls["ensure_assembly"] == 1
+    assert calls["ensure_kaufteil_sga"] == 1
     assert calls["alembic_verify"] == 0
     assert not hasattr(app_main, "seed_admin_user")
 
@@ -364,6 +372,7 @@ def test_smoke_production_startup_against_temp_migrated_db(monkeypatch: pytest.M
         monkeypatch.setattr(app_main, "ensure_spritzguss_hierarchy_schema", _count_ensure)
         monkeypatch.setattr(app_main, "ensure_investition_schema", _count_ensure)
         monkeypatch.setattr(app_main, "ensure_assembly_structure_schema", _count_ensure)
+        monkeypatch.setattr(app_main, "ensure_kaufteil_sga_override_schema", _count_ensure)
 
         with TestClient(app_main.app) as client:
             assert client.get("/health").status_code == 200

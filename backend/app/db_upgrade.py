@@ -299,3 +299,23 @@ def ensure_assembly_structure_schema(engine: Engine) -> None:
             constraint_statements,
             label="ensure_assembly_structure_schema.constraints",
         )
+
+
+def ensure_kaufteil_sga_override_schema(engine: Engine) -> None:
+    """SG&A-Override-Spalten auf kaufteile (Migration e1a0011, idempotent)."""
+    from sqlalchemy import inspect
+
+    insp = inspect(engine)
+    if not insp.has_table("kaufteile"):
+        return
+    statements = [
+        """
+        ALTER TABLE kaufteile
+        ADD COLUMN IF NOT EXISTS sga_override_aktiv BOOLEAN NOT NULL DEFAULT FALSE
+        """,
+        """
+        ALTER TABLE kaufteile
+        ADD COLUMN IF NOT EXISTS sga_satz_manuell DOUBLE PRECISION
+        """,
+    ]
+    _execute_ddl(engine, statements, label="ensure_kaufteil_sga_override_schema")

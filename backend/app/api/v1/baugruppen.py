@@ -56,7 +56,7 @@ from app.services.central_markup_rates import (
 from app.services.kaufteil_kalkulation import KaufteilKalkulationError, berechne_kaufteil_kosten
 from app.services.project_volume_service import average_jahresstueckzahl_for_project
 from app.services.veredelung_kalkulation import VeredelungInput as VeredelungCalcInput
-from app.services.veredelung_kalkulation import berechne_veredelung
+from app.services.veredelung_kalkulation import VeredelungValidationError, berechne_veredelung
 from decimal import Decimal, ROUND_HALF_UP
 
 router = APIRouter(prefix="/baugruppen", tags=["Baugruppen"])
@@ -109,18 +109,24 @@ def _selbstkosten_aus_spritzguss(kalk: SpritzgussKalkulation) -> float:
 
 def _veredelung_direktkosten(schritt: Veredelungsschritt) -> tuple[float, float, float, float, float]:
     """Direkte Montagekosten je Stück vor Assembly-Ausschuss (ohne FGK)."""
-    result = berechne_veredelung(
-        VeredelungCalcInput(
-            taktzeit_s=schritt.taktzeit_s,
-            anzahl_mitarbeiter=schritt.anzahl_mitarbeiter,
-            lohnstundensatz=schritt.lohnstundensatz,
-            maschinenstundensatz=schritt.maschinenstundensatz,
-            verbrauchskosten_je_stueck=schritt.verbrauchskosten_je_stueck,
-            ausschussquote_pct=0.0,
-            fgk_pct=0.0,
-            reihenfolge=schritt.reihenfolge,
+    try:
+        result = berechne_veredelung(
+            VeredelungCalcInput(
+                taktzeit_s=schritt.taktzeit_s,
+                anzahl_mitarbeiter=schritt.anzahl_mitarbeiter,
+                lohnstundensatz=schritt.lohnstundensatz,
+                maschinenstundensatz=schritt.maschinenstundensatz,
+                verbrauchskosten_je_stueck=schritt.verbrauchskosten_je_stueck,
+                ausschussquote_pct=0.0,
+                fgk_pct=0.0,
+                reihenfolge=schritt.reihenfolge,
+            )
         )
-    )
+    except VeredelungValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Veredelungsschritt '{schritt.bezeichnung}': {exc}",
+        ) from exc
     return (
         result.lohnkosten_je_stueck,
         result.maschinenkosten_je_stueck,
@@ -388,13 +394,15 @@ def _resolve_eingaben(
                 detail=f"Kaufteil {z.kaufteil_id} nicht gefunden",
             )
         snap = kt_snap.get(z.kaufteil_id)
-        einkauf_override = z.snapshot_preis if z.snapshot_preis is not None else None
         detail = _kaufteil_kosten_detail(
             db,
             kt,
             werk_id=werk_id,
-            einkauf_override=einkauf_override,
         )
+        unit_total = float(detail.kosten_inkl_overheads_je_stueck)
+        if use_snapshots and snap is not None:
+            # Gespeicherter Snapshot = Kosten inkl. Overheads je Stück (nicht Einkaufspreis).
+            unit_total = float(snap.snapshot_preis)
         bezeichnung = snap.snapshot_bezeichnung if snap else kt.bezeichnung
         lieferant = snap.snapshot_lieferant if snap else kt.lieferant
         kaufteile.append(
@@ -413,7 +421,7 @@ def _resolve_eingaben(
                 sga_satz_pct=float(detail.sga_satz_pct),
                 sga_quelle=detail.sga_quelle,
                 sga_je_stueck=float(detail.sga_je_stueck),
-                kosten_inkl_overheads_je_stueck=float(detail.kosten_inkl_overheads_je_stueck),
+                kosten_inkl_overheads_je_stueck=unit_total,
             )
         )
 

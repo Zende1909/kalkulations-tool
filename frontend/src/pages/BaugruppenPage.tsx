@@ -492,6 +492,8 @@ export function BaugruppenPage() {
       setBloecke(result.bloecke);
       setSuccess("Berechnung erfolgreich.");
     } catch (err) {
+      setErgebnis(null);
+      setBloecke(null);
       setError(err instanceof Error ? err.message : "Berechnung fehlgeschlagen");
     } finally {
       setBusy(false);

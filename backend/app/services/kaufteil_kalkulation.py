@@ -72,6 +72,11 @@ def berechne_kaufteil_kosten(
     if einkaufspreis is None or _d(einkaufspreis) < 0:
         raise KaufteilKalkulationError(f"{kontext}: Einkaufspreis darf nicht negativ sein.")
 
+    if nominierung is None:
+        raise KaufteilKalkulationError(
+            f"{kontext}: fehlende Kaufteil-Nominierung – bitte selbstnominiert oder OEM-nominiert wählen."
+        )
+
     try:
         mgk_pct = _d(rates.mgk_pct_for_nominierung(nominierung, kontext=kontext))
     except CentralMarkupRatesError as exc:
@@ -87,7 +92,8 @@ def berechne_kaufteil_kosten(
         oem = einkauf * oem_pct / Decimal("100")
     elif nominierung != "selbstnominiert":
         raise KaufteilKalkulationError(
-            f"{kontext}: unbekannte Nominierung – bitte selbstnominiert oder OEM-nominiert wählen."
+            f"{kontext}: unbekannte Nominierung '{nominierung}' – "
+            "bitte selbstnominiert oder OEM-nominiert wählen."
         )
 
     sga_basis = einkauf + mgk + oem
@@ -101,7 +107,7 @@ def berechne_kaufteil_kosten(
     total = sga_basis + sga
 
     return KaufteilKostenDetail(
-        nominierung=str(nominierung),
+        nominierung=nominierung,
         einkaufspreis_je_stueck=einkauf,
         mgk_satz_pct=mgk_pct,
         mgk_je_stueck=mgk,
