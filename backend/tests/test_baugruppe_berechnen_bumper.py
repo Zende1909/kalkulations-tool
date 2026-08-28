@@ -208,6 +208,10 @@ def _create_schema(engine, *, with_sga_columns: bool = True) -> None:
                     included_in_unit_price BOOLEAN NOT NULL DEFAULT 0,
                     archived BOOLEAN NOT NULL DEFAULT 0,
                     linked_project_id INTEGER,
+                    customer_id INTEGER,
+                    program_id INTEGER,
+                    assignment_type VARCHAR(32),
+                    kaufteil_id INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )

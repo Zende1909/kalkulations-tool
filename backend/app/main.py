@@ -33,6 +33,7 @@ from app.models import (  # noqa: F401
 )
 from app.db_upgrade import (
     ensure_assembly_structure_schema,
+    ensure_investition_assignment_schema,
     ensure_investition_schema,
     ensure_kaufteil_sga_override_schema,
     ensure_spritzguss_hierarchy_schema,
@@ -54,6 +55,7 @@ def _run_dev_schema_bootstrap() -> None:
     ensure_spritzguss_schema(engine)
     ensure_spritzguss_hierarchy_schema(engine)
     ensure_investition_schema(engine)
+    ensure_investition_assignment_schema(engine)
     ensure_assembly_structure_schema(engine)
     ensure_kaufteil_sga_override_schema(engine)
     # Bootstrap ergänzt Spalten, stamp/upgrade aber nicht – Drift klar loggen.

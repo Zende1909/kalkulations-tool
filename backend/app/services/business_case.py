@@ -27,6 +27,10 @@ class InvestitionSnapshot:
     baugruppe_id: int | None
     included_in_unit_price: bool
     archived: bool
+    kaufteil_id: int | None = None
+    assignment_type: str | None = None
+    linked_project_id: int | None = None
+    part_number: str = ""
 
 
 @dataclass(frozen=True)
@@ -56,12 +60,16 @@ def filter_investitionen(
     *,
     project: str | None = None,
     customer: str | None = None,
+    linked_project_id: int | None = None,
     calculation_id: int | None = None,
     baugruppe_id: int | None = None,
+    kaufteil_id: int | None = None,
     scope: str | None = None,
 ) -> list[InvestitionSnapshot]:
     result = [r for r in rows if not r.archived]
-    if project:
+    if linked_project_id is not None:
+        result = [r for r in result if r.linked_project_id == linked_project_id]
+    elif project:
         result = [r for r in result if r.project_id == project]
     if customer:
         result = [r for r in result if r.customer == customer]
@@ -69,12 +77,20 @@ def filter_investitionen(
         result = [r for r in result if r.calculation_id == calculation_id]
     elif baugruppe_id is not None:
         result = [r for r in result if r.baugruppe_id == baugruppe_id]
+    elif kaufteil_id is not None:
+        result = [r for r in result if r.kaufteil_id == kaufteil_id]
     elif scope == "gesamtprojekt":
-        result = [r for r in result if r.calculation_id is None and r.baugruppe_id is None]
+        result = [
+            r
+            for r in result
+            if r.calculation_id is None and r.baugruppe_id is None and r.kaufteil_id is None
+        ]
     elif scope == "einzelteil":
         result = [r for r in result if r.calculation_id is not None]
     elif scope == "baugruppe":
         result = [r for r in result if r.baugruppe_id is not None]
+    elif scope == "kaufteil":
+        result = [r for r in result if r.kaufteil_id is not None]
     return result
 
 
@@ -83,12 +99,15 @@ def _investition_applies_to_scope(
     *,
     calculation_id: int | None,
     baugruppe_id: int | None,
+    kaufteil_id: int | None = None,
 ) -> bool:
     if calculation_id is not None:
         return inv.calculation_id == calculation_id
     if baugruppe_id is not None:
         return inv.baugruppe_id == baugruppe_id
-    return inv.calculation_id is None and inv.baugruppe_id is None
+    if kaufteil_id is not None:
+        return inv.kaufteil_id == kaufteil_id
+    return inv.calculation_id is None and inv.baugruppe_id is None and inv.kaufteil_id is None
 
 
 def build_business_case(

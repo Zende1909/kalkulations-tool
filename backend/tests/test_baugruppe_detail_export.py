@@ -96,8 +96,12 @@ def db():
                 description TEXT NOT NULL DEFAULT '',
                 included_in_unit_price BOOLEAN NOT NULL DEFAULT 0,
                 archived BOOLEAN NOT NULL DEFAULT 0,
-                linked_project_id INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            linked_project_id INTEGER,
+            customer_id INTEGER,
+            program_id INTEGER,
+            assignment_type VARCHAR(32),
+            kaufteil_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """,

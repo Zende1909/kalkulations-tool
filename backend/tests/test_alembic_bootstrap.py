@@ -112,10 +112,13 @@ def test_baseline_revision_is_discoverable():
 def test_alembic_head_is_plant_costing_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0011_kaufteil_sga_override"]
-    rev = scripts.get_revision("e1a0011_kaufteil_sga_override")
+    assert scripts.get_heads() == ["e1a0012_investition_assignment_hierarchy"]
+    rev = scripts.get_revision("e1a0012_investition_assignment_hierarchy")
     assert rev is not None
-    assert rev.down_revision == "e1a0010_produktionsintervall_losgroesse_modus"
+    assert rev.down_revision == "e1a0011_kaufteil_sga_override"
+    rev11 = scripts.get_revision("e1a0011_kaufteil_sga_override")
+    assert rev11 is not None
+    assert rev11.down_revision == "e1a0010_produktionsintervall_losgroesse_modus"
     rev10 = scripts.get_revision("e1a0010_produktionsintervall_losgroesse_modus")
     assert rev10 is not None
     assert rev10.down_revision == "e1a0009_werk_operating_params"

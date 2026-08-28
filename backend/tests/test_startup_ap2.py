@@ -46,6 +46,7 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> dict:
         "ensure_spritzguss": 0,
         "ensure_hierarchy": 0,
         "ensure_investition": 0,
+        "ensure_investition_assignment": 0,
         "ensure_assembly": 0,
         "ensure_kaufteil_sga": 0,
         "alembic_verify": 0,
@@ -71,6 +72,13 @@ def _patch_common(monkeypatch: pytest.MonkeyPatch) -> dict:
         app_main,
         "ensure_investition_schema",
         lambda _e: calls.__setitem__("ensure_investition", calls["ensure_investition"] + 1),
+    )
+    monkeypatch.setattr(
+        app_main,
+        "ensure_investition_assignment_schema",
+        lambda _e: calls.__setitem__(
+            "ensure_investition_assignment", calls["ensure_investition_assignment"] + 1
+        ),
     )
     monkeypatch.setattr(
         app_main,
@@ -154,6 +162,7 @@ def test_production_startup_does_not_mutate_via_bootstrap(monkeypatch: pytest.Mo
         + calls["ensure_spritzguss"]
         + calls["ensure_hierarchy"]
         + calls["ensure_investition"]
+        + calls["ensure_investition_assignment"]
         + calls["ensure_assembly"]
         + calls["ensure_kaufteil_sga"]
     )
@@ -174,6 +183,7 @@ def test_development_startup_runs_bootstrap_without_admin_seed(monkeypatch: pyte
     assert calls["ensure_spritzguss"] == 1
     assert calls["ensure_hierarchy"] == 1
     assert calls["ensure_investition"] == 1
+    assert calls["ensure_investition_assignment"] == 1
     assert calls["ensure_assembly"] == 1
     assert calls["ensure_kaufteil_sga"] == 1
     assert calls["alembic_verify"] == 0
@@ -225,7 +235,7 @@ def test_ensure_investition_schema_contains_no_dml():
 
 def test_alembic_head_revision_is_plant_costing():
     heads = get_alembic_head_revisions()
-    assert heads == ("e1a0011_kaufteil_sga_override",)
+    assert heads == ("e1a0012_investition_assignment_hierarchy",)
 
 
 def test_warn_if_database_behind_alembic_head_logs(caplog, tmp_path: Path):

@@ -128,6 +128,32 @@ def ensure_investition_schema(engine: Engine) -> None:
     _execute_ddl(engine, statements, label="ensure_investition_schema")
 
 
+def ensure_investition_assignment_schema(engine: Engine) -> None:
+    """Hierarchie- und Zuordnungsfelder für Investitionen (additiv)."""
+    statements = [
+        """
+        ALTER TABLE investitionen
+        ADD COLUMN IF NOT EXISTS customer_id INTEGER
+        REFERENCES customers(id) ON DELETE SET NULL
+        """,
+        """
+        ALTER TABLE investitionen
+        ADD COLUMN IF NOT EXISTS program_id INTEGER
+        REFERENCES programs(id) ON DELETE SET NULL
+        """,
+        """
+        ALTER TABLE investitionen
+        ADD COLUMN IF NOT EXISTS assignment_type VARCHAR(32)
+        """,
+        """
+        ALTER TABLE investitionen
+        ADD COLUMN IF NOT EXISTS kaufteil_id INTEGER
+        REFERENCES kaufteile(id) ON DELETE SET NULL
+        """,
+    ]
+    _execute_ddl(engine, statements, label="ensure_investition_assignment_schema")
+
+
 def ensure_assembly_structure_schema(engine: Engine) -> None:
     """Phase A: assembly_positions + erweiterte baugruppen-Spalten (additiv).
 

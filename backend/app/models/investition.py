@@ -39,3 +39,13 @@ class Investition(Base, TimestampMixin):
     linked_project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    program_id: Mapped[int | None] = mapped_column(
+        ForeignKey("programs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    assignment_type: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    kaufteil_id: Mapped[int | None] = mapped_column(
+        ForeignKey("kaufteile.id", ondelete="SET NULL"), nullable=True, index=True
+    )

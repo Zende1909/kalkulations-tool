@@ -137,6 +137,8 @@ def zuordnung_label(
     *,
     calculation_id: int | None,
     baugruppe_id: int | None,
+    kaufteil_id: int | None = None,
+    assignment_type: str | None = None,
     part_number: str,
     part_name: str,
     project_id: str,
@@ -144,19 +146,44 @@ def zuordnung_label(
     calc_bezeichnung: str | None = None,
     bg_name: str | None = None,
     bg_teilenummer: str | None = None,
+    kt_bezeichnung: str | None = None,
+    kt_artikelnummer: str | None = None,
+    customer_name: str | None = None,
+    program_name: str | None = None,
+    project_name: str | None = None,
 ) -> str:
-    if calculation_id is not None:
+    from app.services.investition_assignment_service import (
+        ASSIGNMENT_TYPE_LABELS,
+        infer_assignment_type,
+    )
+
+    atype = infer_assignment_type(
+        assignment_type=assignment_type,
+        calculation_id=calculation_id,
+        baugruppe_id=baugruppe_id,
+        kaufteil_id=kaufteil_id,
+    )
+    if atype == "einzelteil" or calculation_id is not None:
         nummer = calc_teilenummer or part_number
         bez = calc_bezeichnung or part_name
         if nummer and bez:
             return f"Einzelteil: {nummer} – {bez}"
         return f"Einzelteil #{calculation_id}"
-    if baugruppe_id is not None:
+    if atype == "kaufteil" or kaufteil_id is not None:
+        nummer = kt_artikelnummer or part_number
+        bez = kt_bezeichnung or part_name
+        if nummer and bez:
+            return f"Kaufteil: {nummer} – {bez}"
+        return f"Kaufteil #{kaufteil_id}"
+    if atype == "baugruppe" or baugruppe_id is not None:
         nummer = bg_teilenummer or part_number
         name = bg_name or part_name
         if nummer and name:
             return f"Baugruppe: {nummer} – {name}"
         return f"Baugruppe #{baugruppe_id}"
-    if project_id:
-        return f"Gesamtprojekt: {project_id}"
+    label_project = project_name or project_id
+    if customer_name and program_name and label_project:
+        return f"Gesamtprojekt: {customer_name} / {program_name} / {label_project}"
+    if label_project:
+        return f"Gesamtprojekt: {label_project}"
     return "Gesamtprojekt"
