@@ -16,6 +16,7 @@ from app.models import (  # noqa: F401
     BaugruppeKaufteilZuordnung,
     BaugruppeSpritzgussZuordnung,
     BaugruppeVeredelungZuordnung,
+    BusinessCaseManualPrice,
     Customer,
     Investition,
     Kaufteil,
@@ -33,6 +34,7 @@ from app.models import (  # noqa: F401
 )
 from app.db_upgrade import (
     ensure_assembly_structure_schema,
+    ensure_business_case_manual_price_schema,
     ensure_investition_assignment_schema,
     ensure_investition_financial_schema,
     ensure_investition_schema,
@@ -58,6 +60,7 @@ def _run_dev_schema_bootstrap() -> None:
     ensure_investition_schema(engine)
     ensure_investition_assignment_schema(engine)
     ensure_investition_financial_schema(engine)
+    ensure_business_case_manual_price_schema(engine)
     ensure_assembly_structure_schema(engine)
     ensure_kaufteil_sga_override_schema(engine)
     # Bootstrap ergänzt Spalten, stamp/upgrade aber nicht – Drift klar loggen.

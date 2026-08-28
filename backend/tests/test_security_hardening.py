@@ -36,6 +36,7 @@ def _patch_startup_to_skip_db(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(app_main, "ensure_investition_schema", lambda _engine: None)
     monkeypatch.setattr(app_main, "ensure_investition_assignment_schema", lambda _engine: None)
     monkeypatch.setattr(app_main, "ensure_investition_financial_schema", lambda _engine: None)
+    monkeypatch.setattr(app_main, "ensure_business_case_manual_price_schema", lambda _engine: None)
     monkeypatch.setattr(app_main, "ensure_assembly_structure_schema", lambda _engine: None)
     monkeypatch.setattr(app_main, "ensure_kaufteil_sga_override_schema", lambda _engine: None)
     monkeypatch.setattr(app_main, "verify_database_at_alembic_head", lambda _engine: None)

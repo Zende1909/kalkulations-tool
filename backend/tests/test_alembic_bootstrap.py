@@ -44,7 +44,9 @@ EXPECTED_POST_BASELINE_TABLES = {
     "werk_zuschlaege",
 }
 
-EXPECTED_CURRENT_ORM_TABLES = EXPECTED_BASELINE_TABLES | EXPECTED_POST_BASELINE_TABLES
+EXPECTED_CURRENT_ORM_TABLES = EXPECTED_BASELINE_TABLES | EXPECTED_POST_BASELINE_TABLES | {
+    "business_case_manual_prices",
+}
 
 
 def _alembic_config() -> Config:
@@ -112,10 +114,13 @@ def test_baseline_revision_is_discoverable():
 def test_alembic_head_is_plant_costing_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0013_investition_cost_bottom_revenue"]
-    rev = scripts.get_revision("e1a0013_investition_cost_bottom_revenue")
+    assert scripts.get_heads() == ["e1a0014_business_case_manual_prices"]
+    rev = scripts.get_revision("e1a0014_business_case_manual_prices")
     assert rev is not None
-    assert rev.down_revision == "e1a0012_investition_assignment_hierarchy"
+    assert rev.down_revision == "e1a0013_investition_cost_bottom_revenue"
+    rev13 = scripts.get_revision("e1a0013_investition_cost_bottom_revenue")
+    assert rev13 is not None
+    assert rev13.down_revision == "e1a0012_investition_assignment_hierarchy"
     rev12 = scripts.get_revision("e1a0012_investition_assignment_hierarchy")
     assert rev12 is not None
     assert rev12.down_revision == "e1a0011_kaufteil_sga_override"

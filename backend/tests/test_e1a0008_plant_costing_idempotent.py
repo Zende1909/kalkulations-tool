@@ -308,7 +308,7 @@ def test_alembic_head_is_e1a0009_after_werk_params():
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     heads = ScriptDirectory.from_config(cfg).get_heads()
-    assert heads == ["e1a0013_investition_cost_bottom_revenue"]
+    assert heads == ["e1a0014_business_case_manual_prices"]
     rev = ScriptDirectory.from_config(cfg).get_revision(REVISION)
     assert rev is not None
     assert rev.down_revision == PREV

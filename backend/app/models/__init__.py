@@ -7,6 +7,7 @@ from app.models.baugruppe import (
     BaugruppeSpritzgussZuordnung,
     BaugruppeVeredelungZuordnung,
 )
+from app.models.business_case_manual_price import BusinessCaseManualPrice
 from app.models.customer import Customer
 from app.models.investition import Investition
 from app.models.kaufteil import Kaufteil
@@ -33,6 +34,7 @@ __all__ = [
     "Land",
     "Werk",
     "WerkZuschlag",
+    "BusinessCaseManualPrice",
     "Customer",
     "Program",
     "ProgramVolume",

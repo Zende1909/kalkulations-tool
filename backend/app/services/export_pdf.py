@@ -558,3 +558,98 @@ def render_dashboard_pdf(data: DashboardExportData) -> bytes:
         story.extend(_bar_chart_block("Umsatzpotenzial je Projekt", data.revenue_chart))
     doc.build(story, onFirstPage=_page_footer, onLaterPages=_page_footer)
     return buffer.getvalue()
+
+
+def _fmt_optional_money(value: float | None) -> str:
+    if value is None:
+        return "–"
+    return _money(value)
+
+
+def render_business_case_pdf(data) -> bytes:
+    """PDF für Business-Case-Export (BusinessCaseExportData)."""
+    from app.services.business_case_export import BusinessCaseExportData
+    from app.services.export_models import ExportTable
+
+    if not isinstance(data, BusinessCaseExportData):
+        raise TypeError("expected BusinessCaseExportData")
+
+    buffer = io.BytesIO()
+    doc = _build_doc(buffer, "Business Case")
+    meta = [
+        ("Kunde", data.customer),
+        ("Programm", data.program),
+        ("Projekt", data.project),
+        ("Erstellt", _fmt_dt(data.generated_at)),
+    ]
+    story = _header_block(data.company_name, "Business Case", meta)
+    kpis = [
+        ("Gesamtkosten", _fmt_optional_money(data.kpis.get("cost_total"))),
+        ("Bottom-Price-Umsatz", _fmt_optional_money(data.kpis.get("bottom_price_revenue_total"))),
+        ("Tatsächlicher Umsatz", _fmt_optional_money(data.kpis.get("actual_revenue_total"))),
+        ("Bottom-Price-Marge", _fmt_optional_money(data.kpis.get("margin_bottom_price_total"))),
+        ("Tatsächliche Marge", _fmt_optional_money(data.kpis.get("margin_actual_total"))),
+        ("Projektstückzahl", str(data.kpis.get("project_volume_total") or "–")),
+        ("Einzelteile", str(data.kpis.get("anzahl_einzelteile") or 0)),
+        ("Baugruppen", str(data.kpis.get("anzahl_baugruppen") or 0)),
+    ]
+    story.extend(_kv_table("Kennzahlen", kpis))
+
+    position_rows: list[list[str]] = []
+    for row in data.position_rows:
+        position_rows.append(
+            [
+                str(row[0] or ""),
+                str(row[1] or ""),
+                str(row[2] or ""),
+                _fmt_optional_money(row[3] if isinstance(row[3], (int, float)) else None),
+                _fmt_optional_money(row[4] if isinstance(row[4], (int, float)) else None),
+                _fmt_optional_money(row[5] if isinstance(row[5], (int, float)) else None),
+                _fmt_optional_money(row[6] if isinstance(row[6], (int, float)) else None),
+                str(row[7] if row[7] is not None else "–"),
+                _fmt_optional_money(row[8] if isinstance(row[8], (int, float)) else None),
+                _fmt_optional_money(row[9] if isinstance(row[9], (int, float)) else None),
+                _fmt_optional_money(row[10] if isinstance(row[10], (int, float)) else None),
+                _fmt_optional_money(row[11] if isinstance(row[11], (int, float)) else None),
+                _fmt_optional_money(row[12] if isinstance(row[12], (int, float)) else None),
+            ]
+        )
+    story.extend(
+        _export_table_block(
+            ExportTable(
+                title="Materialpositionen",
+                headers=data.position_headers,
+                rows=position_rows,
+            )
+        )
+    )
+
+    investment_rows: list[list[str]] = []
+    for row in data.investment_rows:
+        investment_rows.append(
+            [
+                str(row[0] or ""),
+                str(row[1] or ""),
+                str(row[2] or ""),
+                str(row[3] or ""),
+                str(row[4] or ""),
+                str(row[5] or ""),
+                _fmt_optional_money(row[6] if isinstance(row[6], (int, float)) else None),
+                _fmt_optional_money(row[7] if isinstance(row[7], (int, float)) else None),
+                _fmt_optional_money(row[8] if isinstance(row[8], (int, float)) else None),
+                _fmt_optional_money(row[9] if isinstance(row[9], (int, float)) else None),
+                _fmt_optional_money(row[10] if isinstance(row[10], (int, float)) else None),
+                _fmt_optional_money(row[11] if isinstance(row[11], (int, float)) else None),
+            ]
+        )
+    story.extend(
+        _export_table_block(
+            ExportTable(
+                title="Investitionen",
+                headers=data.investment_headers,
+                rows=investment_rows,
+            )
+        )
+    )
+    doc.build(story, onFirstPage=_page_footer, onLaterPages=_page_footer)
+    return buffer.getvalue()

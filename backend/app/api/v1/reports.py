@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.permissions import require_viewer
 from app.database import get_db
 from app.models.user import User
+from app.services.business_case_export import build_business_case_export, render_business_case_excel
 from app.services.export_builders import (
     baugruppe_export_filename,
     build_baugruppe_export,
@@ -23,6 +24,7 @@ from app.services.export_excel import (
 )
 from app.services.export_pdf import (
     render_baugruppe_pdf,
+    render_business_case_pdf,
     render_dashboard_pdf,
     render_spritzguss_pdf,
 )
@@ -142,4 +144,50 @@ def export_dashboard_xlsx(
         xlsx,
         dashboard_export_filename(data, "xlsx"),
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@router.get("/business-case.xlsx")
+def export_business_case_xlsx(
+    customer_id: int = Query(..., ge=1),
+    program_id: int = Query(..., ge=1),
+    linked_project_id: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_viewer),
+):
+    data = build_business_case_export(
+        db,
+        customer_id=customer_id,
+        program_id=program_id,
+        linked_project_id=linked_project_id,
+    )
+    xlsx = render_business_case_excel(data)
+    safe_name = data.project.replace(" ", "_")
+    return _file_response(
+        xlsx,
+        f"business_case_{safe_name}.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@router.get("/business-case.pdf")
+def export_business_case_pdf(
+    customer_id: int = Query(..., ge=1),
+    program_id: int = Query(..., ge=1),
+    linked_project_id: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_viewer),
+):
+    data = build_business_case_export(
+        db,
+        customer_id=customer_id,
+        program_id=program_id,
+        linked_project_id=linked_project_id,
+    )
+    pdf = render_business_case_pdf(data)
+    safe_name = data.project.replace(" ", "_")
+    return _file_response(
+        pdf,
+        f"business_case_{safe_name}.pdf",
+        "application/pdf",
     )

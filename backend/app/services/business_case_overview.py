@@ -2,16 +2,30 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models.baugruppe import Baugruppe, BaugruppeKaufteilZuordnung, BaugruppeSpritzgussZuordnung, BaugruppeVeredelungZuordnung
+from app.models.baugruppe import (
+    Baugruppe,
+    BaugruppeKaufteilZuordnung,
+    BaugruppeSpritzgussZuordnung,
+    BaugruppeVeredelungZuordnung,
+)
+from app.models.customer import Customer
 from app.models.investition import Investition
+from app.models.program import Program
 from app.models.project import Project
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.spritzguss_veredelung_zuordnung import SpritzgussVeredelungZuordnung
+from app.services.business_case_pricing import (
+    aggregate_sales_totals,
+    build_position_pricing,
+    kosten_aus_baugruppe,
+    kosten_aus_spritzguss,
+    load_manual_prices_map,
+)
 from app.services.dashboard import endpreis_aus_spritzguss, jahresumsatz_aus_baugruppe, preis_aus_baugruppe
-from app.services.investition_assignment_service import infer_assignment_type
+from app.services.investition_assignment_service import ASSIGNMENT_TYPE_LABELS, infer_assignment_type
 from app.services.investition_financials import (
     aggregate_investment_financials,
     build_investment_financial_view,
@@ -21,158 +35,166 @@ from app.services.investition_service import EINMALZAHLUNG_HINWEIS, zuordnung_la
 from app.services.project_volume_service import build_project_volume_profile
 
 
-def _match_customer(row_customer: str, filter_customer: str) -> bool:
-    return not filter_customer or (row_customer or "").strip() == filter_customer.strip()
-
-
-def _match_project(row_project: str, filter_project: str) -> bool:
-    return not filter_project or (row_project or "").strip() == filter_project.strip()
-
-
-def _find_project_entity(db: Session, project_name: str) -> Project | None:
-    name = project_name.strip()
-    if not name:
-        return None
-    return db.scalar(select(Project).where(Project.name == name).limit(1))
-
-
-def _build_lifetime_yearly_rows(
+def _load_hierarchy_context(
     db: Session,
     *,
-    project_entity: Project | None,
-    teilepreis: float | None,
-    baugruppenpreis: float | None = None,
-    quantity_per_vehicle: float | None = None,
-) -> tuple[list[dict], float, float]:
-    """Liefert Jahreszeilen, Gesamtstückzahl und Umsatz über die Laufzeit."""
-    if project_entity is None:
-        return [], 0.0, 0.0
+    customer_id: int,
+    program_id: int,
+    linked_project_id: int,
+) -> tuple[Customer, Program, Project]:
+    customer = db.get(Customer, customer_id)
+    program = db.get(Program, program_id)
+    project = db.get(Project, linked_project_id)
+    if customer is None or program is None or project is None:
+        raise ValueError("Kunde, Programm oder Projekt nicht gefunden.")
+    if program.customer_id != customer.id:
+        raise ValueError("Programm passt nicht zum Kunden.")
+    if project.program_id != program.id:
+        raise ValueError("Projekt passt nicht zum Programm.")
+    return customer, program, project
 
-    profile = build_project_volume_profile(db, project_entity.id)
-    qty = quantity_per_vehicle if quantity_per_vehicle is not None else profile["quantity_per_vehicle"]
-    price = teilepreis if teilepreis is not None else baugruppenpreis
 
-    rows: list[dict] = []
-    total_volume = 0.0
-    total_revenue = 0.0
-    for row in profile["rows"]:
-        project_volume = row["project_volume"]
-        jahresumsatz = round(project_volume * price, 2) if price is not None else 0.0
-        total_volume += project_volume
-        total_revenue += jahresumsatz
-        rows.append(
-            {
-                "calendar_year": row["calendar_year"],
-                "vehicle_volume": row["vehicle_volume"],
-                "quantity_per_vehicle": qty,
-                "project_volume": project_volume,
-                "teilepreis_je_stueck": teilepreis,
-                "baugruppenpreis_je_stueck": baugruppenpreis,
-                "jahresumsatz": jahresumsatz,
-            }
+def _spritzguss_in_project(db: Session, linked_project_id: int) -> list[SpritzgussKalkulation]:
+    return list(
+        db.scalars(
+            select(SpritzgussKalkulation).where(
+                SpritzgussKalkulation.project_id == linked_project_id,
+            )
+        ).all()
+    )
+
+
+def _baugruppen_in_project(db: Session, linked_project_id: int) -> list[Baugruppe]:
+    return list(
+        db.scalars(
+            select(Baugruppe).where(
+                or_(
+                    Baugruppe.linked_project_id == linked_project_id,
+                    Baugruppe.project_id == linked_project_id,
+                )
+            )
+        ).all()
+    )
+
+
+def _spritzguss_ids_in_baugruppen(db: Session, baugruppe_ids: list[int]) -> set[int]:
+    if not baugruppe_ids:
+        return set()
+    rows = db.scalars(
+        select(BaugruppeSpritzgussZuordnung.spritzguss_kalkulation_id).where(
+            BaugruppeSpritzgussZuordnung.baugruppe_id.in_(baugruppe_ids)
         )
+    ).all()
+    return {int(r) for r in rows}
 
-    return rows, round(total_volume, 2), round(total_revenue, 2)
+
+def _project_volume(db: Session, project_id: int) -> float:
+    try:
+        profile = build_project_volume_profile(db, project_id)
+        return float(profile["total_project_volume"])
+    except Exception:
+        return 0.0
 
 
 def build_project_business_case(
     db: Session,
     *,
-    customer: str,
-    project: str,
+    customer_id: int,
+    program_id: int,
+    linked_project_id: int,
     calculation_id: int | None = None,
     baugruppe_id: int | None = None,
 ) -> dict:
-    sg_rows = [
-        r
-        for r in db.scalars(select(SpritzgussKalkulation)).all()
-        if _match_project(r.projekt, project) and _match_customer(r.kunde, customer)
-    ]
+    customer, program, project = _load_hierarchy_context(
+        db,
+        customer_id=customer_id,
+        program_id=program_id,
+        linked_project_id=linked_project_id,
+    )
+    customer_name = customer.name
+    program_name = program.name
+    project_name = project.name
+
+    sg_rows = _spritzguss_in_project(db, linked_project_id)
     if calculation_id is not None:
         sg_rows = [r for r in sg_rows if r.id == calculation_id]
 
-    bg_rows = [
-        r
-        for r in db.scalars(select(Baugruppe)).all()
-        if _match_project(r.projekt, project) and _match_customer(r.kunde, customer)
-    ]
+    bg_rows = _baugruppen_in_project(db, linked_project_id)
     if baugruppe_id is not None:
         bg_rows = [r for r in bg_rows if r.id == baugruppe_id]
 
-    inv_rows = [
-        r
-        for r in db.scalars(
-            select(Investition).where(
-                Investition.archived.is_(False),
-                Investition.project_id == project,
-            )
-        ).all()
-        if _match_customer(r.customer, customer)
-    ]
+    linked_sg_ids = _spritzguss_ids_in_baugruppen(db, [bg.id for bg in bg_rows])
+    standalone_sg_rows = [r for r in sg_rows if r.id not in linked_sg_ids]
+
+    manual_map = load_manual_prices_map(
+        db,
+        customer_id=customer_id,
+        program_id=program_id,
+        linked_project_id=linked_project_id,
+    )
+    project_volume_default = _project_volume(db, linked_project_id)
 
     sg_map = {r.id: r for r in sg_rows}
     bg_map = {r.id: r for r in bg_rows}
-    project_entity = _find_project_entity(db, project)
 
     parts: list[dict] = []
-    umsatz_einzelteile = 0.0
-    gesamtstueckzahl_laufzeit = 0.0
-    for row in sg_rows:
-        endpreis = endpreis_aus_spritzguss(row.ergebnis if isinstance(row.ergebnis, dict) else None)
-        linked_project = db.get(Project, row.project_id) if getattr(row, "project_id", None) else project_entity
-        yearly_rows, lifetime_volume, lifetime_revenue = _build_lifetime_yearly_rows(
-            db,
-            project_entity=linked_project,
-            teilepreis=endpreis,
+    sales_positions: list[dict] = []
+    for row in standalone_sg_rows:
+        ergebnis = row.ergebnis if isinstance(row.ergebnis, dict) else None
+        cost = kosten_aus_spritzguss(ergebnis)
+        endpreis = endpreis_aus_spritzguss(ergebnis)
+        manual = manual_map.get(("einzelteil", row.id))
+        bottom = manual.bottom_price_per_piece if manual else None
+        actual = manual.actual_price_per_piece if manual else None
+        volume = project_volume_default or float(row.jahresstueckzahl or 0)
+        pricing = build_position_pricing(
+            cost_per_piece=cost,
+            bottom_price_per_piece=bottom,
+            actual_price_per_piece=actual,
+            project_volume=volume,
         )
-        if yearly_rows:
-            jahresumsatz = lifetime_revenue
-            gesamtstueckzahl_laufzeit += lifetime_volume
-        else:
-            jahresumsatz = round(endpreis * row.jahresstueckzahl, 2) if endpreis and row.jahresstueckzahl else 0.0
-            gesamtstueckzahl_laufzeit += row.jahresstueckzahl
-        umsatz_einzelteile += jahresumsatz
         vd_count = db.scalar(
             select(func.count())
             .select_from(SpritzgussVeredelungZuordnung)
             .where(SpritzgussVeredelungZuordnung.kalkulation_id == row.id)
         ) or 0
-        parts.append(
-            {
-                "id": row.id,
-                "bezeichnung": row.teilebezeichnung,
-                "teilenummer": row.teilenummer,
-                "kunde": row.kunde,
-                "projekt": row.projekt,
-                "jahresstueckzahl": row.jahresstueckzahl,
-                "gesamtstueckzahl_laufzeit": lifetime_volume if yearly_rows else row.jahresstueckzahl,
-                "endpreis_je_stueck": endpreis,
-                "jahresumsatz": jahresumsatz,
-                "umsatzpotenzial_laufzeit": lifetime_revenue if yearly_rows else jahresumsatz,
-                "lifetime_years": yearly_rows,
-                "anzahl_veredelungsschritte": int(vd_count),
-            }
-        )
+        part_row = {
+            "id": row.id,
+            "assignment_type": "einzelteil",
+            "bezeichnung": row.teilebezeichnung,
+            "teilenummer": row.teilenummer,
+            "material_number": row.teilenummer,
+            "kunde": customer_name,
+            "program": program_name,
+            "projekt": project_name,
+            "customer_id": customer_id,
+            "program_id": program_id,
+            "linked_project_id": linked_project_id,
+            "jahresstueckzahl": row.jahresstueckzahl,
+            "gesamtstueckzahl_laufzeit": volume,
+            "endpreis_je_stueck": endpreis,
+            "anzahl_veredelungsschritte": int(vd_count),
+            **pricing,
+        }
+        parts.append(part_row)
+        sales_positions.append(pricing | {"project_volume": volume})
 
     assemblies: list[dict] = []
-    umsatz_baugruppen = 0.0
     for row in bg_rows:
-        preis = preis_aus_baugruppe(row.ergebnis if isinstance(row.ergebnis, dict) else None)
-        yearly_rows, lifetime_volume, lifetime_revenue = _build_lifetime_yearly_rows(
-            db,
-            project_entity=project_entity,
-            teilepreis=None,
-            baugruppenpreis=preis,
-            quantity_per_vehicle=getattr(row, "quantity_per_vehicle", None),
+        ergebnis = row.ergebnis if isinstance(row.ergebnis, dict) else None
+        cost = kosten_aus_baugruppe(ergebnis)
+        baugruppenpreis = preis_aus_baugruppe(ergebnis)
+        manual = manual_map.get(("baugruppe", row.id))
+        bottom = manual.bottom_price_per_piece if manual else None
+        actual = manual.actual_price_per_piece if manual else None
+        volume = project_volume_default or float(row.jahresstueckzahl or 0)
+        pricing = build_position_pricing(
+            cost_per_piece=cost,
+            bottom_price_per_piece=bottom,
+            actual_price_per_piece=actual,
+            project_volume=volume,
         )
-        if yearly_rows and preis is not None:
-            jahresumsatz = lifetime_revenue
-        else:
-            jahresumsatz = jahresumsatz_aus_baugruppe(
-                row.ergebnis if isinstance(row.ergebnis, dict) else None,
-                row.jahresstueckzahl,
-            )
-        umsatz_baugruppen += jahresumsatz
+        jahresumsatz = jahresumsatz_aus_baugruppe(ergebnis, row.jahresstueckzahl)
         sg_count = db.scalar(
             select(func.count())
             .select_from(BaugruppeSpritzgussZuordnung)
@@ -188,24 +210,41 @@ def build_project_business_case(
             .select_from(BaugruppeVeredelungZuordnung)
             .where(BaugruppeVeredelungZuordnung.baugruppe_id == row.id)
         ) or 0
-        assemblies.append(
-            {
-                "id": row.id,
-                "name": row.name,
-                "teilenummer": row.teilenummer,
-                "kunde": row.kunde,
-                "projekt": row.projekt,
-                "jahresstueckzahl": row.jahresstueckzahl,
-                "gesamtstueckzahl_laufzeit": lifetime_volume if yearly_rows else row.jahresstueckzahl,
-                "baugruppenpreis_je_stueck": preis,
-                "jahresumsatz": jahresumsatz,
-                "umsatzpotenzial_laufzeit": lifetime_revenue if yearly_rows else jahresumsatz,
-                "lifetime_years": yearly_rows,
-                "anzahl_einzelteile": int(sg_count),
-                "anzahl_kaufteile": int(kt_count),
-                "anzahl_veredelungsschritte": int(vd_count),
-            }
-        )
+        assembly_row = {
+            "id": row.id,
+            "assignment_type": "baugruppe",
+            "name": row.name,
+            "teilenummer": row.teilenummer,
+            "material_number": row.teilenummer,
+            "kunde": customer_name,
+            "program": program_name,
+            "projekt": project_name,
+            "customer_id": customer_id,
+            "program_id": program_id,
+            "linked_project_id": linked_project_id,
+            "jahresstueckzahl": row.jahresstueckzahl,
+            "gesamtstueckzahl_laufzeit": volume,
+            "baugruppenpreis_je_stueck": baugruppenpreis,
+            "jahresumsatz": jahresumsatz,
+            "umsatzpotenzial_laufzeit": pricing["actual_revenue"] or jahresumsatz,
+            "anzahl_einzelteile": int(sg_count),
+            "anzahl_kaufteile": int(kt_count),
+            "anzahl_veredelungsschritte": int(vd_count),
+            **pricing,
+        }
+        assemblies.append(assembly_row)
+        sales_positions.append(pricing | {"project_volume": volume})
+
+    inv_rows = list(
+        db.scalars(
+            select(Investition).where(
+                Investition.archived.is_(False),
+                Investition.linked_project_id == linked_project_id,
+                Investition.customer_id == customer_id,
+                Investition.program_id == program_id,
+            )
+        ).all()
+    )
 
     investments: list[dict] = []
     financial_rows: list[dict] = []
@@ -239,6 +278,13 @@ def build_project_business_case(
         else:
             einmal_gesamt += cost
         hint = EINMALZAHLUNG_HINWEIS if inv.payment_type == "Einmalzahlung" else ""
+        material_number = inv.part_number or ""
+        if atype == "einzelteil" and calc is not None:
+            material_number = calc.teilenummer or material_number
+        elif atype == "baugruppe" and bg is not None:
+            material_number = bg.teilenummer or material_number
+        elif atype == "gesamtprojekt":
+            material_number = ""
         row = {
             "id": inv.id,
             "bezeichnung": inv.name or inv.description or inv.part_name,
@@ -253,6 +299,15 @@ def build_project_business_case(
             "margin_bottom_price_minus_cost": financials["margin_bottom_price_minus_cost"],
             "amount_warnings": financials["warnings"],
             "assignment_type": atype,
+            "assignment_type_label": ASSIGNMENT_TYPE_LABELS.get(atype or "", ""),
+            "material_number": material_number,
+            "part_number": material_number,
+            "customer_name": customer_name,
+            "program_name": program_name,
+            "project_name": project_name,
+            "customer_id": inv.customer_id,
+            "program_id": inv.program_id,
+            "linked_project_id": inv.linked_project_id,
             "amortization_volume": inv.amortization_volume,
             "cost_per_piece": piece,
             "zuordnung": zuordnung_label(
@@ -262,11 +317,14 @@ def build_project_business_case(
                 assignment_type=atype,
                 part_number=inv.part_number or "",
                 part_name=inv.part_name or "",
-                project_id=inv.project_id or "",
+                project_id=project_name,
                 calc_teilenummer=calc.teilenummer if calc else None,
                 calc_bezeichnung=calc.teilebezeichnung if calc else None,
                 bg_name=bg.name if bg else None,
                 bg_teilenummer=bg.teilenummer if bg else None,
+                customer_name=customer_name,
+                program_name=program_name,
+                project_name=project_name,
             ),
             "hinweis": hint,
             "bemerkung": inv.description or "",
@@ -282,71 +340,49 @@ def build_project_business_case(
             }
         )
 
-    investitionen_gesamt = round(amort_gesamt + einmal_gesamt, 2)
+    sales_totals = aggregate_sales_totals(sales_positions)
     investment_financial_summary = aggregate_investment_financials(financial_rows)
     fin_totals = investment_financial_summary["totals"]
-    jahresstueckzahl_gesamt = sum(r.jahresstueckzahl for r in sg_rows) + sum(
-        r.jahresstueckzahl for r in bg_rows
-    )
+    investitionen_gesamt = round(amort_gesamt + einmal_gesamt, 2)
 
-    project_lifetime_profile: list[dict] = []
-    umsatz_je_jahr: dict[int, float] = {}
-    if project_entity is not None:
-        profile = build_project_volume_profile(db, project_entity.id)
-        avg_teilepreis_for_profile = None
-        preise = [p["endpreis_je_stueck"] for p in parts if p["endpreis_je_stueck"] is not None]
-        if preise:
-            avg_teilepreis_for_profile = sum(preise) / len(preise)
-        for row in profile["rows"]:
-            jahresumsatz = (
-                round(row["project_volume"] * avg_teilepreis_for_profile, 2)
-                if avg_teilepreis_for_profile is not None
-                else 0.0
-            )
-            umsatz_je_jahr[row["calendar_year"]] = umsatz_je_jahr.get(row["calendar_year"], 0.0) + jahresumsatz
-            project_lifetime_profile.append(
-                {
-                    "calendar_year": row["calendar_year"],
-                    "vehicle_volume": row["vehicle_volume"],
-                    "quantity_per_vehicle": row["quantity_per_vehicle"],
-                    "project_volume": row["project_volume"],
-                    "teilepreis_je_stueck": round(avg_teilepreis_for_profile, 2) if avg_teilepreis_for_profile else None,
-                    "jahresumsatz": jahresumsatz,
-                }
-            )
-
-    umsatzpotenzial_laufzeit = round(umsatz_einzelteile + umsatz_baugruppen, 2)
-
-    avg_teilepreis = None
-    if parts:
-        preise = [p["endpreis_je_stueck"] for p in parts if p["endpreis_je_stueck"] is not None]
-        avg_teilepreis = round(sum(preise) / len(preise), 2) if preise else None
-
-    avg_baugruppenpreis = None
-    if assemblies:
-        preise = [a["baugruppenpreis_je_stueck"] for a in assemblies if a["baugruppenpreis_je_stueck"] is not None]
-        avg_baugruppenpreis = round(sum(preise) / len(preise), 2) if preise else None
+    excluded_in_baugruppe_count = len(linked_sg_ids & {r.id for r in sg_rows})
 
     return {
-        "project": project,
-        "customer": customer,
+        "filter": {
+            "customer_id": customer_id,
+            "program_id": program_id,
+            "linked_project_id": linked_project_id,
+            "customer": customer_name,
+            "program": program_name,
+            "project": project_name,
+        },
+        "project": project_name,
+        "customer": customer_name,
+        "program": program_name,
+        "customer_id": customer_id,
+        "program_id": program_id,
+        "linked_project_id": linked_project_id,
         "kpis": {
-            "kunde": customer,
-            "projekt": project,
-            "jahresstueckzahl_gesamt": jahresstueckzahl_gesamt,
-            "gesamtstueckzahl_laufzeit": round(gesamtstueckzahl_laufzeit, 2),
-            "umsatzpotenzial_laufzeit": umsatzpotenzial_laufzeit,
-            "umsatzpotenzial_einzelteile": round(umsatz_einzelteile, 2),
-            "umsatzpotenzial_baugruppen": round(umsatz_baugruppen, 2),
+            "kunde": customer_name,
+            "programm": program_name,
+            "projekt": project_name,
+            "customer_id": customer_id,
+            "program_id": program_id,
+            "linked_project_id": linked_project_id,
+            "project_volume_total": sales_totals["project_volume_total"],
+            "cost_total": sales_totals["cost_total"],
+            "bottom_price_revenue_total": sales_totals["bottom_price_revenue_total"],
+            "actual_revenue_total": sales_totals["actual_revenue_total"],
+            "margin_bottom_price_total": sales_totals["margin_bottom_price_total"],
+            "margin_actual_total": sales_totals["margin_actual_total"],
             "anzahl_einzelteile": len(parts),
             "anzahl_baugruppen": len(assemblies),
+            "anzahl_einzelteile_in_baugruppen_ausgeschlossen": excluded_in_baugruppe_count,
             "anzahl_investitionen": len(investments),
             "investitionen_gesamt": investitionen_gesamt,
             "amortisationsinvestitionen_gesamt": round(amort_gesamt, 2),
             "einmalinvestitionen_gesamt": round(einmal_gesamt, 2),
             "amortisationsanteil_je_stueck": round(amort_anteil_summe, 2) if amort_anteil_summe else None,
-            "teilepreis_je_stueck": avg_teilepreis,
-            "baugruppenpreis_je_stueck": avg_baugruppenpreis,
             "investition_cost_total": fin_totals["cost_amount_total"],
             "investition_bottom_price_total": fin_totals["bottom_price_total"],
             "investition_revenue_total": fin_totals["revenue_amount_total"],
@@ -359,6 +395,7 @@ def build_project_business_case(
         "parts": parts,
         "assemblies": assemblies,
         "investments": investments,
+        "sales_summary": sales_totals,
         "investment_summary": {
             "investitionen_gesamt": investitionen_gesamt,
             "amortisationsinvestitionen_gesamt": round(amort_gesamt, 2),
@@ -374,30 +411,13 @@ def build_project_business_case(
             "margin_bottom_price_minus_cost_total": fin_totals["margin_bottom_price_minus_cost_total"],
             "material_assignments": investment_financial_summary["material_assignments"],
             "project_assignments": investment_financial_summary["project_assignments"],
-            "einmalinvestitionen": [
-                {
-                    "id": i["id"],
-                    "bezeichnung": i["bezeichnung"],
-                    "amount": i["amount"],
-                    "cost_amount": i["cost_amount"],
-                    "bottom_price": i["bottom_price"],
-                    "revenue_amount": i["revenue_amount"],
-                    "hinweis": i["hinweis"],
-                }
-                for i in investments
-                if i["payment_type"] == "Einmalzahlung"
-            ],
         },
         "investment_financial_summary": investment_financial_summary,
         "revenue_summary": {
-            "umsatzpotenzial_einzelteile": round(umsatz_einzelteile, 2),
-            "umsatzpotenzial_baugruppen": round(umsatz_baugruppen, 2),
-            "umsatzpotenzial_laufzeit": umsatzpotenzial_laufzeit,
-            "umsatz_je_kalenderjahr": [
-                {"calendar_year": year, "jahresumsatz": round(amount, 2)}
-                for year, amount in sorted(umsatz_je_jahr.items())
-            ],
-            "hinweis": "Einzelteil- und Baugruppenumsätze werden getrennt ausgewiesen und nicht addiert.",
+            "hinweis": (
+                "Einzelteile innerhalb von Baugruppen sind aus der Einzelteil-Liste "
+                "und den Teilepreis-Summen ausgeschlossen. Investitionen werden separat ausgewiesen."
+            ),
+            "excluded_einzelteile_in_baugruppen": excluded_in_baugruppe_count,
         },
-        "lifetime_volume_profile": project_lifetime_profile,
     }

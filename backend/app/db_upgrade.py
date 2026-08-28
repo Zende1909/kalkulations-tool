@@ -164,6 +164,29 @@ def ensure_investition_financial_schema(engine: Engine) -> None:
     _execute_ddl(engine, statements, label="ensure_investition_financial_schema")
 
 
+def ensure_business_case_manual_price_schema(engine: Engine) -> None:
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS business_case_manual_prices (
+            id SERIAL PRIMARY KEY,
+            customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+            program_id INTEGER NOT NULL REFERENCES programs(id) ON DELETE CASCADE,
+            linked_project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            assignment_type VARCHAR(32) NOT NULL,
+            object_id INTEGER NOT NULL,
+            bottom_price_per_piece DOUBLE PRECISION,
+            actual_price_per_piece DOUBLE PRECISION,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_bc_manual_price_scope UNIQUE (
+                customer_id, program_id, linked_project_id, assignment_type, object_id
+            )
+        )
+        """,
+    ]
+    _execute_ddl(engine, statements, label="ensure_business_case_manual_price_schema")
+
+
 def ensure_assembly_structure_schema(engine: Engine) -> None:
     """Phase A: assembly_positions + erweiterte baugruppen-Spalten (additiv).
 
