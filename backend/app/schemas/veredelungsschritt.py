@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.numbers import parse_percent_points
+
 from app.services.veredelung_kalkulation import VEREDELUNGSARTEN
 
 Veredelungsart = Literal[
@@ -32,6 +34,15 @@ class VeredelungsschrittBase(BaseModel):
     ausschussquote_pct: float = Field(ge=0, lt=100)
     fgk_pct: float = Field(ge=0)
     aktiv: bool = True
+
+    @field_validator("ausschussquote_pct", mode="before")
+    @classmethod
+    def coerce_ausschussquote_pct(cls, value: object) -> object:
+        if value is None or value == "":
+            return 0.0
+        parsed = parse_percent_points(value, field_label="Ausschussquote", allow_none=False)
+        assert parsed is not None
+        return parsed
 
     @field_validator("veredelungsart")
     @classmethod
@@ -74,6 +85,13 @@ class VeredelungsschrittUpdate(BaseModel):
     ausschussquote_pct: float | None = Field(default=None, ge=0, lt=100)
     fgk_pct: float | None = Field(default=None, ge=0)
     aktiv: bool | None = None
+
+    @field_validator("ausschussquote_pct", mode="before")
+    @classmethod
+    def coerce_ausschussquote_pct_update(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        return parse_percent_points(value, field_label="Ausschussquote", allow_none=True)
 
     @field_validator("maschinenstundensatz", mode="before")
     @classmethod

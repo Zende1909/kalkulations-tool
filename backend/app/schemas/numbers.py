@@ -32,3 +32,20 @@ def parse_de_float(value: Any, *, field_label: str, allow_none: bool = True) -> 
                 f"{field_label} muss eine Zahl sein (z. B. 44,1 oder 44.1)"
             ) from exc
     raise ValueError(f"{field_label} muss eine Zahl sein")
+
+
+def parse_percent_points(
+    value: Any,
+    *,
+    field_label: str = "Ausschussquote",
+    allow_none: bool = False,
+) -> float | None:
+    """Prozentpunkte (1,5 = 1,5 %) – kein Bruchanteil, keine /100-Umrechnung."""
+    parsed = parse_de_float(value, field_label=field_label, allow_none=allow_none)
+    if parsed is None:
+        return None
+    if parsed < 0:
+        raise ValueError(f"{field_label} darf nicht negativ sein")
+    if parsed >= 100:
+        raise ValueError(f"{field_label} muss kleiner als 100 % sein")
+    return parsed

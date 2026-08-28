@@ -46,6 +46,51 @@ export function formatDecimalForInput(
   return asStr;
 }
 
+/** Gespeicherte Prozentpunkte für DE-Eingabefelder (z. B. 1.5 → „1,5“). */
+export function formatDecimalForInputDe(
+  value: number | string | null | undefined,
+): string {
+  if (value == null || value === "") return "";
+  if (typeof value === "string") return value;
+  if (!Number.isFinite(value)) return "";
+  return value.toLocaleString("de-DE", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 10,
+    useGrouping: false,
+  });
+}
+
+export class PercentPointsParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PercentPointsParseError";
+  }
+}
+
+/** Parst Prozentpunkte (1,5 = 1,5 %) – nicht Bruchanteil. */
+export function parsePercentPointsInput(raw: string): number {
+  const text = raw.trim();
+  if (text === "") return 0;
+  if (isIncompleteDecimalInput(text)) {
+    throw new PercentPointsParseError(
+      "Ausschussquote unvollständig – bitte den Wert vervollständigen (z. B. 1,5).",
+    );
+  }
+  const parsed = parseDecimalInput(text);
+  if (parsed === "" || typeof parsed !== "number" || !Number.isFinite(parsed)) {
+    throw new PercentPointsParseError(
+      "Ungültige Ausschussquote – bitte z. B. 1,5 oder 1.5 eingeben.",
+    );
+  }
+  if (parsed < 0) {
+    throw new PercentPointsParseError("Ausschussquote darf nicht negativ sein.");
+  }
+  if (parsed >= 100) {
+    throw new PercentPointsParseError("Ausschussquote muss kleiner als 100 % sein.");
+  }
+  return parsed;
+}
+
 /**
  * Werk-Kapitalkostensätze: intern Anteil (0.08), UI Prozent (8).
  * Werte > 1 gelten als Altdaten-Fehler – keine automatische ×100-Korrektur.

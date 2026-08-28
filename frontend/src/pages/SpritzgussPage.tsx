@@ -33,7 +33,14 @@ import {
   type VeredelungZuordnungInput,
   type WerkzeugAbrechnungsart,
 } from "../types/spritzguss";
-import { formatPercentPoints, parseDecimalInput } from "../utils/decimalInput";
+import { DecimalInputField } from "../components/DecimalInputField";
+import {
+  formatDecimalForInputDe,
+  formatPercentPoints,
+  parseDecimalInput,
+  parsePercentPointsInput,
+  PercentPointsParseError,
+} from "../utils/decimalInput";
 import {
   berechneAutomatischeLosgroesse,
   inferLegacyLosgroesseModus,
@@ -272,6 +279,7 @@ function TextInput({
 export function SpritzgussPage() {
   const { canWrite } = useAuth();
   const [form, setForm] = useState<SpritzgussFormData>(emptySpritzgussForm());
+  const [ausschussquoteRaw, setAusschussquoteRaw] = useState("0");
   const [hierarchy, setHierarchy] = useState<HierarchySelection>({
     customer_id: null,
     program_id: null,
@@ -421,12 +429,11 @@ export function SpritzgussPage() {
     };
   }, [selectedWerk, jahresbedarf, form.losgroesse_modus, form.losgroesse_manuell]);
 
-  const calcPayload = useMemo(
+  const calcPayloadBase = useMemo(
     () => ({
       teilegewicht_netto_g: form.teilegewicht_netto_g,
       schussgewicht_g: form.schussgewicht_g,
       materialpreis_pro_kg: form.materialpreis_pro_kg,
-      ausschussquote_pct: form.ausschussquote_pct,
       mgk_pct: form.mgk_pct,
       material_nominierung: form.material_nominierung,
       zykluszeit_s: form.zykluszeit_s,
@@ -626,17 +633,26 @@ export function SpritzgussPage() {
     }));
   };
 
+  const resolveAusschussquotePct = (): number => parsePercentPointsInput(ausschussquoteRaw);
+
   const handleBerechnen = async () => {
     setBusy(true);
     setError(null);
     setSuccess(null);
     try {
-      const result = await berechnen(calcPayload);
+      const ausschussquote_pct = resolveAusschussquotePct();
+      const result = await berechnen({ ...calcPayloadBase, ausschussquote_pct });
       setBloecke(result.bloecke);
       updateSelectedFromResponse(result.veredelung_zuordnungen);
       setSuccess("Berechnung erfolgreich.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Berechnung fehlgeschlagen");
+      setError(
+        err instanceof PercentPointsParseError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Berechnung fehlgeschlagen",
+      );
     } finally {
       setBusy(false);
     }
@@ -648,6 +664,7 @@ export function SpritzgussPage() {
     setError(null);
     setSuccess(null);
     try {
+      const ausschussquote_pct = resolveAusschussquotePct();
       if (!form.teilebezeichnung.trim()) {
         throw new Error("Teilebezeichnung ist für das Speichern erforderlich.");
       }
@@ -659,6 +676,7 @@ export function SpritzgussPage() {
       }
       const payload = {
         ...form,
+        ausschussquote_pct,
         customer_id: hierarchy.customer_id,
         program_id: hierarchy.program_id,
         project_id: hierarchy.project_id,
@@ -685,7 +703,13 @@ export function SpritzgussPage() {
       );
       await loadList();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+      setError(
+        err instanceof PercentPointsParseError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Speichern fehlgeschlagen",
+      );
     } finally {
       setBusy(false);
     }
@@ -776,7 +800,9 @@ export function SpritzgussPage() {
         if (plant) setSelectedLandId(plant.land_id);
       } else {
         setSelectedLandId(null);
-      }      setBloecke((item.ergebnis_bloecke as SpritzgussBloecke) ?? null);
+      }
+      setAusschussquoteRaw(formatDecimalForInputDe(item.ausschussquote_pct));
+      setBloecke((item.ergebnis_bloecke as SpritzgussBloecke) ?? null);
       loadVeredelungFromSaved(item.veredelung_zuordnungen);
       setSuccess(`Kalkulation #${item.id} geladen.`);
     } catch (err) {
@@ -789,6 +815,7 @@ export function SpritzgussPage() {
   const handleNew = () => {
     setEditId(null);
     setForm(emptySpritzgussForm());
+    setAusschussquoteRaw("0");
     setHierarchy({
       customer_id: null,
       program_id: null,
@@ -983,11 +1010,10 @@ export function SpritzgussPage() {
                 min={0}
                 onChange={(v) => setField("teilegewicht_netto_g", v)}
               />
-              <NumberInput
+              <DecimalInputField
                 label="Ausschussquote (%)"
-                value={form.ausschussquote_pct}
-                min={0}
-                onChange={(v) => setField("ausschussquote_pct", v)}
+                rawValue={ausschussquoteRaw}
+                onRawChange={setAusschussquoteRaw}
               />
               <NumberInput
                 label="Materialpreis (€/kg, überschreibbar)"

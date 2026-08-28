@@ -3,6 +3,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.numbers import parse_percent_points
+
 from app.schemas.spritzguss_veredelung import VeredelungZuordnungInput, VeredelungZuordnungRead
 
 WerkzeugAbrechnungsart = Literal["amortisation", "einmalzahlung"]
@@ -92,6 +94,15 @@ class SpritzgussCalcRequest(BaseModel):
     setup_lohnstundensatz: float = Field(ge=0, default=0)
     setup_mitarbeiter: float = Field(ge=0, default=0)
     setup_aktiv: bool = False
+
+    @field_validator("ausschussquote_pct", mode="before")
+    @classmethod
+    def coerce_ausschussquote_pct(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return 0.0
+        parsed = parse_percent_points(value, field_label="Ausschussquote", allow_none=False)
+        assert parsed is not None
+        return parsed
 
     @field_validator("amortisationsvolumen", mode="before")
     @classmethod
@@ -225,6 +236,15 @@ class SpritzgussKalkulationBase(BaseModel):
     notizen: str = ""
     aktiv: bool = True
 
+    @field_validator("ausschussquote_pct", mode="before")
+    @classmethod
+    def coerce_ausschussquote_pct(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return 0.0
+        parsed = parse_percent_points(value, field_label="Ausschussquote", allow_none=False)
+        assert parsed is not None
+        return parsed
+
     @field_validator("amortisationsvolumen", mode="before")
     @classmethod
     def validate_volume_type(cls, value: Any) -> Any:
@@ -330,6 +350,13 @@ class SpritzgussKalkulationUpdate(BaseModel):
     notizen: str | None = None
     aktiv: bool | None = None
     veredelung_zuordnungen: list[VeredelungZuordnungInput] | None = None
+
+    @field_validator("ausschussquote_pct", mode="before")
+    @classmethod
+    def coerce_ausschussquote_pct_update(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return None
+        return parse_percent_points(value, field_label="Ausschussquote", allow_none=True)
 
     @field_validator("amortisationsvolumen", mode="before")
     @classmethod

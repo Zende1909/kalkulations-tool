@@ -26,7 +26,13 @@ import {
   type Veredelungsschritt,
   type VeredelungsschrittPayload,
 } from "../types/veredelung";
-import { parseDecimalInput } from "../utils/decimalInput";
+import {
+  formatDecimalForInputDe,
+  parseDecimalInput,
+  parsePercentPointsInput,
+  PercentPointsParseError,
+} from "../utils/decimalInput";
+import { DecimalInputField } from "../components/DecimalInputField";
 
 type FormMode = "create" | "edit";
 
@@ -87,6 +93,7 @@ export function VeredelungPage() {
   const [submitting, setSubmitting] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState<VeredelungsschrittPayload>(emptyVeredelungForm());
+  const [ausschussquoteRaw, setAusschussquoteRaw] = useState("0");
 
   const apiUrl = `${getApiBaseUrl()}/veredelung`;
 
@@ -127,6 +134,7 @@ export function VeredelungPage() {
     setFormMode("create");
     setEditingId(null);
     setForm(emptyVeredelungForm());
+    setAusschussquoteRaw("0");
     setFormError(null);
     setSuccess(null);
     setShowForm(true);
@@ -153,6 +161,7 @@ export function VeredelungPage() {
         fgk_pct: row.fgk_pct,
         aktiv: row.aktiv,
       });
+      setAusschussquoteRaw(formatDecimalForInputDe(row.ausschussquote_pct));
       setFormError(null);
       setSuccess(null);
       setShowForm(true);
@@ -183,7 +192,19 @@ export function VeredelungPage() {
   };
 
   const handleSubmit = async () => {
-    const clientError = validateForm(form);
+    let ausschussquote_pct: number;
+    try {
+      ausschussquote_pct = parsePercentPointsInput(ausschussquoteRaw);
+    } catch (err) {
+      setFormError(
+        err instanceof PercentPointsParseError
+          ? err.message
+          : "Ungültige Ausschussquote.",
+      );
+      return;
+    }
+    const formForValidation = { ...form, ausschussquote_pct };
+    const clientError = validateForm(formForValidation);
     if (clientError) {
       setFormError(clientError);
       return;
@@ -195,7 +216,7 @@ export function VeredelungPage() {
     setSuccess(null);
     try {
       const payload: VeredelungsschrittPayload = {
-        ...form,
+        ...formForValidation,
         bezeichnung: form.bezeichnung.trim(),
       };
 
@@ -611,22 +632,12 @@ export function VeredelungPage() {
                 />
               </label>
 
-              <label className="block text-sm">
-                <span className="font-medium text-gray-700">Ausschussquote (%)</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  required
-                  value={form.ausschussquote_pct}
-                  onChange={(e) =>
-                    setForm((c) => ({
-                      ...c,
-                      ausschussquote_pct: parseFormNumber(e.target.value, 0),
-                    }))
-                  }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
+              <DecimalInputField
+                label="Ausschussquote (%)"
+                rawValue={ausschussquoteRaw}
+                onRawChange={setAusschussquoteRaw}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
 
               <label className="flex items-center gap-2 text-sm md:col-span-2">
                 <input
