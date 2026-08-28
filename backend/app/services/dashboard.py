@@ -50,6 +50,9 @@ class InvestitionRecord:
     investment_type: str
     payment_type: str
     status: str
+    cost_amount: float | None = None
+    bottom_price: float | None = None
+    revenue_amount: float | None = None
     kunde: str = ""
     projekt: str = ""
     supplier: str = ""

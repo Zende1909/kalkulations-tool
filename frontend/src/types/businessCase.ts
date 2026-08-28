@@ -46,6 +46,14 @@ export interface BusinessCaseInvestmentRow {
   investment_type: string;
   payment_type: string;
   amount: number;
+  cost_amount: number;
+  bottom_price: number | null;
+  revenue_amount: number | null;
+  margin_revenue_minus_cost: number | null;
+  margin_revenue_minus_bottom_price: number | null;
+  margin_bottom_price_minus_cost: number | null;
+  amount_warnings?: string[];
+  assignment_type?: string | null;
   amortization_volume: number | null;
   cost_per_piece: number | null;
   zuordnung: string;
@@ -70,6 +78,12 @@ export interface BusinessCaseResponse {
     investitionen_gesamt: number;
     amortisationsinvestitionen_gesamt: number;
     einmalinvestitionen_gesamt: number;
+    investition_cost_total?: number;
+    investition_bottom_price_total?: number;
+    investition_revenue_total?: number;
+    margin_revenue_minus_cost_total?: number | null;
+    margin_revenue_minus_bottom_price_total?: number | null;
+    margin_bottom_price_minus_cost_total?: number | null;
     amortisationsanteil_je_stueck: number | null;
     teilepreis_je_stueck: number | null;
     baugruppenpreis_je_stueck: number | null;
@@ -78,6 +92,35 @@ export interface BusinessCaseResponse {
   assemblies: BusinessCaseAssemblyRow[];
   investments: BusinessCaseInvestmentRow[];
   investment_summary: Record<string, unknown>;
+  investment_financial_summary?: {
+    material_assignments: {
+      count: number;
+      cost_amount_total: number;
+      bottom_price_total: number;
+      revenue_amount_total: number;
+      margin_revenue_minus_cost_total: number | null;
+      margin_revenue_minus_bottom_price_total: number | null;
+      margin_bottom_price_minus_cost_total: number | null;
+    };
+    project_assignments: {
+      count: number;
+      cost_amount_total: number;
+      bottom_price_total: number;
+      revenue_amount_total: number;
+      margin_revenue_minus_cost_total: number | null;
+      margin_revenue_minus_bottom_price_total: number | null;
+      margin_bottom_price_minus_cost_total: number | null;
+    };
+    totals: {
+      count: number;
+      cost_amount_total: number;
+      bottom_price_total: number;
+      revenue_amount_total: number;
+      margin_revenue_minus_cost_total: number | null;
+      margin_revenue_minus_bottom_price_total: number | null;
+      margin_bottom_price_minus_cost_total: number | null;
+    };
+  };
   revenue_summary: {
     umsatzpotenzial_einzelteile: number;
     umsatzpotenzial_baugruppen: number;

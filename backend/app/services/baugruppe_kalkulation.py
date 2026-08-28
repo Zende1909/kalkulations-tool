@@ -85,6 +85,9 @@ class InvestitionAnzeige:
     amount: float
     status: str
     quelle: str
+    cost_amount: float | None = None
+    bottom_price: float | None = None
+    revenue_amount: float | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)

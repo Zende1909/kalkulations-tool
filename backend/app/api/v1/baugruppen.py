@@ -48,6 +48,7 @@ from app.services.baugruppe_kalkulation import (
     VeredelungEingabe,
     berechne_baugruppe,
 )
+from app.services.investition_financials import effective_cost_amount, financial_fields_for_export
 from app.services.spritzguss_cost_snapshot import selbstkosten_aus_ergebnis
 from app.services.central_markup_rates import (
     CentralMarkupRatesError,
@@ -305,14 +306,27 @@ def _load_investitionen(
             continue
         seen.add(inv.id)
         quelle = "Baugruppe" if inv.baugruppe_id else "Einzelteil"
+        cost = effective_cost_amount(
+            cost_amount=getattr(inv, "cost_amount", None),
+            amount=inv.amount,
+        )
+        fin = financial_fields_for_export(
+            cost_amount=getattr(inv, "cost_amount", None),
+            bottom_price=getattr(inv, "bottom_price", None),
+            revenue_amount=getattr(inv, "revenue_amount", None),
+            legacy_amount=inv.amount,
+        )
         result.append(
             InvestitionAnzeige(
                 id=inv.id,
                 bezeichnung=inv.name or inv.description or inv.part_name,
                 investment_type=inv.investment_type,
-                amount=float(inv.amount),
+                amount=float(cost),
                 status=inv.status,
                 quelle=quelle,
+                cost_amount=fin["cost_amount"],
+                bottom_price=fin["bottom_price"],
+                revenue_amount=fin["revenue_amount"],
             )
         )
     return result

@@ -33,7 +33,14 @@ export interface Investition {
   name: string;
   investment_type: InvestmentType | string;
   payment_type: PaymentType | string;
+  cost_amount: number;
+  bottom_price: number | null;
+  revenue_amount: number | null;
   amount: number;
+  margin_revenue_minus_cost: number | null;
+  margin_revenue_minus_bottom_price: number | null;
+  margin_bottom_price_minus_cost: number | null;
+  amount_warnings: string[];
   amortization_volume: number | null;
   cost_per_piece: number | null;
   project: string;
@@ -72,6 +79,16 @@ export interface InvestitionTarget {
   project_name?: string | null;
 }
 
+export interface InvestmentFinancialBlock {
+  count: number;
+  cost_amount_total: number;
+  bottom_price_total: number;
+  revenue_amount_total: number;
+  margin_revenue_minus_cost_total: number | null;
+  margin_revenue_minus_bottom_price_total: number | null;
+  margin_bottom_price_minus_cost_total: number | null;
+}
+
 export interface BusinessCaseSummary {
   filter: {
     project: string | null;
@@ -86,9 +103,28 @@ export interface BusinessCaseSummary {
   investitionen_gesamt: number;
   amortisationsinvestitionen_gesamt: number;
   einmalinvestitionen_gesamt: number;
+  investition_cost_total: number;
+  investition_bottom_price_total: number;
+  investition_revenue_total: number;
+  margin_revenue_minus_cost_total: number | null;
+  margin_revenue_minus_bottom_price_total: number | null;
+  margin_bottom_price_minus_cost_total: number | null;
+  investition_financial_summary?: {
+    material_assignments: InvestmentFinancialBlock;
+    project_assignments: InvestmentFinancialBlock;
+    totals: InvestmentFinancialBlock;
+  };
   amortisationsanteil_je_stueck: number | null;
   preis_inkl_amortisation_je_stueck: number | null;
-  einmalinvestitionen: Array<{ id: number; name: string; amount: number; hinweis: string }>;
+  einmalinvestitionen: Array<{
+    id: number;
+    name: string;
+    amount: number;
+    cost_amount: number;
+    bottom_price: number | null;
+    revenue_amount: number | null;
+    hinweis: string;
+  }>;
   anzahl_investitionen: number;
   hat_gespeicherte_kalkulation: boolean;
 }
@@ -97,7 +133,10 @@ export interface InvestitionPayload {
   name: string;
   investment_type: string;
   payment_type: PaymentType | string;
-  amount: number;
+  cost_amount: number;
+  bottom_price?: number | null;
+  revenue_amount?: number | null;
+  amount?: number;
   amortization_volume?: number | null;
   project?: string;
   customer?: string;
@@ -137,7 +176,9 @@ export const emptyInvestitionForm = (): InvestitionPayload => ({
   name: "",
   investment_type: "Werkzeug",
   payment_type: "",
-  amount: 0,
+  cost_amount: 0,
+  bottom_price: null,
+  revenue_amount: null,
   amortization_volume: null,
   project: "",
   customer: "",

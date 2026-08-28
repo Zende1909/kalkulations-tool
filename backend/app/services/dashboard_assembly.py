@@ -18,6 +18,7 @@ from app.services.dashboard import (
     parse_json_dict,
     preis_aus_baugruppe,
 )
+from app.services.investition_financials import effective_cost_amount, financial_fields_for_export
 
 
 def _money(value: object) -> float:
@@ -194,7 +195,16 @@ def build_assembly_overview(db: Session, assembly_id: int) -> dict:
     if part_ids:
         conditions.append(Investition.calculation_id.in_(part_ids))
     inv_rows = list(db.scalars(select(Investition).where(or_(*conditions))).all())
-    werkzeugkosten = round(sum(float(inv.amount) for inv in inv_rows), 2)
+    werkzeugkosten = round(
+        sum(
+            effective_cost_amount(
+                cost_amount=getattr(inv, "cost_amount", None),
+                amount=inv.amount,
+            )
+            for inv in inv_rows
+        ),
+        2,
+    )
     costs = _component_costs(ergebnis) if ergebnis else {
         "einzelteilkosten": 0.0,
         "kaufteilkosten": 0.0,
@@ -250,7 +260,16 @@ def build_assembly_overview(db: Session, assembly_id: int) -> dict:
                 "id": inv.id,
                 "bezeichnung": inv.name or inv.description or inv.part_name,
                 "typ": inv.investment_type,
-                "betrag": float(inv.amount),
+                "betrag": effective_cost_amount(
+                    cost_amount=getattr(inv, "cost_amount", None),
+                    amount=inv.amount,
+                ),
+                **financial_fields_for_export(
+                    cost_amount=getattr(inv, "cost_amount", None),
+                    bottom_price=getattr(inv, "bottom_price", None),
+                    revenue_amount=getattr(inv, "revenue_amount", None),
+                    legacy_amount=inv.amount,
+                ),
                 "status": inv.status,
             }
             for inv in inv_rows

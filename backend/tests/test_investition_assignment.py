@@ -405,3 +405,76 @@ def test_create_kaufteil_and_baugruppe(api_client: TestClient):
     bg = api_client.post("/api/v1/investitionen", json=bg_payload)
     assert bg.status_code == 201
     assert bg.json()["part_number"] == "BG-001"
+
+
+def test_create_investition_with_three_amounts_and_reload(api_client: TestClient):
+    payload = {
+        "name": "Werkzeug komplett",
+        "investment_type": "Werkzeug",
+        "payment_type": "Einmalzahlung",
+        "cost_amount": 80000,
+        "bottom_price": 90000,
+        "revenue_amount": 100000,
+        "customer_id": 1,
+        "program_id": 10,
+        "linked_project_id": 100,
+        "assignment_type": "gesamtprojekt",
+        "description": "",
+    }
+    created = api_client.post("/api/v1/investitionen", json=payload)
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["cost_amount"] == 80000.0
+    assert body["bottom_price"] == 90000.0
+    assert body["revenue_amount"] == 100000.0
+    assert body["margin_revenue_minus_cost"] == 20000.0
+    assert body["amount_warnings"] == []
+
+    loaded = api_client.get(f"/api/v1/investitionen/{body['id']}")
+    assert loaded.status_code == 200
+    reloaded = loaded.json()
+    assert reloaded["cost_amount"] == 80000.0
+    assert reloaded["bottom_price"] == 90000.0
+    assert reloaded["revenue_amount"] == 100000.0
+
+
+def test_legacy_amount_maps_to_cost_amount(api_client: TestClient):
+    payload = {
+        "name": "Legacy",
+        "investment_type": "Werkzeug",
+        "payment_type": "Einmalzahlung",
+        "amount": 55000,
+        "customer_id": 1,
+        "program_id": 10,
+        "linked_project_id": 100,
+        "assignment_type": "gesamtprojekt",
+        "description": "",
+    }
+    created = api_client.post("/api/v1/investitionen", json=payload)
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["cost_amount"] == 55000.0
+    assert body["amount"] == 55000.0
+    assert body["bottom_price"] is None
+    assert body["revenue_amount"] is None
+
+
+def test_negative_margin_warnings_without_block(api_client: TestClient):
+    payload = {
+        "name": "Kritisch",
+        "investment_type": "Werkzeug",
+        "payment_type": "Einmalzahlung",
+        "cost_amount": 80000,
+        "bottom_price": 70000,
+        "revenue_amount": 65000,
+        "customer_id": 1,
+        "program_id": 10,
+        "linked_project_id": 100,
+        "assignment_type": "gesamtprojekt",
+        "description": "",
+    }
+    created = api_client.post("/api/v1/investitionen", json=payload)
+    assert created.status_code == 201, created.text
+    warnings = created.json()["amount_warnings"]
+    assert len(warnings) == 3
+    assert created.json()["margin_revenue_minus_cost"] == -15000.0

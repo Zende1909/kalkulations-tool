@@ -1,4 +1,4 @@
-"""Investitions-Schemas inkl. hierarchischer Zuordnung."""
+"""Investitions-Schemas inkl. hierarchischer Zuordnung und Finanzbeträge."""
 
 from datetime import datetime
 from typing import Any, Literal
@@ -12,13 +12,22 @@ from app.services.investition_service import INVESTMENT_TYPES, PAYMENT_TYPES, PL
 AssignmentType = Literal["einzelteil", "kaufteil", "baugruppe", "gesamtprojekt"]
 
 
+def _parse_money(value: Any, label: str, *, allow_none: bool) -> Any:
+    if value is None or value == "":
+        return None if allow_none else 0.0
+    return parse_de_float(value, field_label=label, allow_none=allow_none)
+
+
 class InvestitionBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     name: str = Field(min_length=1, max_length=255)
     investment_type: str = Field(default="Werkzeug")
     payment_type: str
-    amount: float = Field(ge=0)
+    cost_amount: float = Field(default=0, ge=0)
+    bottom_price: float | None = Field(default=None, ge=0)
+    revenue_amount: float | None = Field(default=None, ge=0)
+    amount: float | None = Field(default=None, ge=0, deprecated=True)
     amortization_volume: int | None = Field(default=None, ge=1)
     project: str = Field(default="", max_length=255)
     customer: str = Field(default="", max_length=255)
@@ -35,14 +44,28 @@ class InvestitionBase(BaseModel):
     description: str = ""
     included_in_unit_price: bool | None = None
 
+    @field_validator("cost_amount", mode="before")
+    @classmethod
+    def coerce_cost_amount(cls, value: Any) -> Any:
+        return _parse_money(value, "Kosten", allow_none=False)
+
+    @field_validator("bottom_price", "revenue_amount", mode="before")
+    @classmethod
+    def coerce_optional_amounts(cls, value: Any) -> Any:
+        return _parse_money(value, "Betrag", allow_none=True)
+
     @field_validator("amount", mode="before")
     @classmethod
-    def coerce_amount(cls, value: Any) -> Any:
+    def coerce_legacy_amount(cls, value: Any) -> Any:
         if value is None or value == "":
-            return 0.0
-        parsed = parse_de_float(value, field_label="Betrag", allow_none=False)
-        assert parsed is not None
-        return parsed
+            return None
+        return parse_de_float(value, field_label="Betrag", allow_none=True)
+
+    @model_validator(mode="after")
+    def resolve_legacy_amount(self) -> "InvestitionBase":
+        if self.amount is not None and self.cost_amount == 0:
+            object.__setattr__(self, "cost_amount", self.amount)
+        return self
 
     @field_validator("investment_type")
     @classmethod
@@ -94,7 +117,10 @@ class InvestitionUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     investment_type: str | None = None
     payment_type: str | None = None
-    amount: float | None = Field(default=None, ge=0)
+    cost_amount: float | None = Field(default=None, ge=0)
+    bottom_price: float | None = Field(default=None, ge=0)
+    revenue_amount: float | None = Field(default=None, ge=0)
+    amount: float | None = Field(default=None, ge=0, deprecated=True)
     amortization_volume: int | None = Field(default=None, ge=1)
     project: str | None = Field(default=None, max_length=255)
     customer: str | None = None
@@ -112,7 +138,7 @@ class InvestitionUpdate(BaseModel):
     included_in_unit_price: bool | None = None
     archived: bool | None = None
 
-    @field_validator("amount", mode="before")
+    @field_validator("cost_amount", "bottom_price", "revenue_amount", "amount", mode="before")
     @classmethod
     def coerce_amount_update(cls, value: Any) -> Any:
         if value is None or value == "":
@@ -147,7 +173,14 @@ class InvestitionRead(BaseModel):
     name: str
     investment_type: str
     payment_type: str
+    cost_amount: float
+    bottom_price: float | None = None
+    revenue_amount: float | None = None
     amount: float
+    margin_revenue_minus_cost: float | None = None
+    margin_revenue_minus_bottom_price: float | None = None
+    margin_bottom_price_minus_cost: float | None = None
+    amount_warnings: list[str] = Field(default_factory=list)
     amortization_volume: int | None
     cost_per_piece: float | None
     project: str
@@ -175,6 +208,9 @@ class EinmalinvestitionPosition(BaseModel):
     id: int
     name: str
     amount: float
+    cost_amount: float = 0
+    bottom_price: float | None = None
+    revenue_amount: float | None = None
     hinweis: str
 
 
@@ -187,6 +223,12 @@ class BusinessCaseSummary(BaseModel):
     investitionen_gesamt: float = 0
     amortisationsinvestitionen_gesamt: float = 0
     einmalinvestitionen_gesamt: float = 0
+    investition_cost_total: float = 0
+    investition_bottom_price_total: float = 0
+    investition_revenue_total: float = 0
+    margin_revenue_minus_cost_total: float | None = None
+    margin_revenue_minus_bottom_price_total: float | None = None
+    margin_bottom_price_minus_cost_total: float | None = None
     amortisationsanteil_je_stueck: float | None = None
     preis_inkl_amortisation_je_stueck: float | None = None
     einmalinvestitionen: list[EinmalinvestitionPosition] = Field(default_factory=list)

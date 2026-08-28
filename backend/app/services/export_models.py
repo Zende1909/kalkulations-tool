@@ -33,6 +33,12 @@ class ExportInvestment:
     betrag: float
     status: str
     hinweis: str
+    cost_amount: float | None = None
+    bottom_price: float | None = None
+    revenue_amount: float | None = None
+    margin_revenue_minus_cost: float | None = None
+    margin_revenue_minus_bottom_price: float | None = None
+    margin_bottom_price_minus_cost: float | None = None
 
 
 @dataclass

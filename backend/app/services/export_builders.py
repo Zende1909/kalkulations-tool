@@ -26,6 +26,7 @@ from app.services.dashboard import (
     parse_json_dict,
     preis_aus_baugruppe,
 )
+from app.services.investition_financials import financial_fields_for_export
 from app.services.baugruppe_export_detail import build_baugruppe_detail_kalkulation
 from app.services.dashboard_assembly import build_assembly_overview
 from app.services.export_models import (
@@ -42,6 +43,50 @@ from app.services.export_models import (
 def safe_filename_part(value: str, fallback: str = "export") -> str:
     cleaned = re.sub(r"[^\w\-]+", "_", (value or fallback).strip())
     return cleaned[:60] or fallback
+
+
+def _export_investment_from_row(inv: Investition, hinweis: str) -> ExportInvestment:
+    fin = financial_fields_for_export(
+        cost_amount=getattr(inv, "cost_amount", None),
+        bottom_price=getattr(inv, "bottom_price", None),
+        revenue_amount=getattr(inv, "revenue_amount", None),
+        legacy_amount=inv.amount,
+    )
+    return ExportInvestment(
+        bezeichnung=inv.name or inv.description or inv.part_name,
+        typ=inv.investment_type,
+        betrag=float(fin["cost_amount"] or 0.0),
+        status=inv.status,
+        hinweis=hinweis,
+        cost_amount=fin["cost_amount"],
+        bottom_price=fin["bottom_price"],
+        revenue_amount=fin["revenue_amount"],
+        margin_revenue_minus_cost=fin["margin_revenue_minus_cost"],
+        margin_revenue_minus_bottom_price=fin["margin_revenue_minus_bottom_price"],
+        margin_bottom_price_minus_cost=fin["margin_bottom_price_minus_cost"],
+    )
+
+
+def _export_investment_from_dict(inv: dict, hinweis: str) -> ExportInvestment:
+    fin = financial_fields_for_export(
+        cost_amount=inv.get("cost_amount", inv.get("betrag")),
+        bottom_price=inv.get("bottom_price"),
+        revenue_amount=inv.get("revenue_amount"),
+        legacy_amount=inv.get("betrag"),
+    )
+    return ExportInvestment(
+        bezeichnung=str(inv.get("bezeichnung") or ""),
+        typ=str(inv.get("typ") or ""),
+        betrag=float(fin["cost_amount"] or 0.0),
+        status=str(inv.get("status") or ""),
+        hinweis=hinweis,
+        cost_amount=fin["cost_amount"],
+        bottom_price=fin["bottom_price"],
+        revenue_amount=fin["revenue_amount"],
+        margin_revenue_minus_cost=fin["margin_revenue_minus_cost"],
+        margin_revenue_minus_bottom_price=fin["margin_revenue_minus_bottom_price"],
+        margin_bottom_price_minus_cost=fin["margin_bottom_price_minus_cost"],
+    )
 
 
 def _euro_str(value: float | None) -> str:
@@ -301,12 +346,9 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
         select(Investition).where(Investition.calculation_id == calculation_id)
     ).all()
     investitionen = [
-        ExportInvestment(
-            bezeichnung=inv.name or inv.description or inv.part_name,
-            typ=inv.investment_type,
-            betrag=float(inv.amount),
-            status=inv.status,
-            hinweis=(
+        _export_investment_from_row(
+            inv,
+            (
                 "Separat, nicht im Stückpreis enthalten"
                 if inv.payment_type.casefold() == "einmalzahlung"
                 else "Separat ausgewiesen"
@@ -457,26 +499,14 @@ def build_baugruppe_export(db: Session, assembly_id: int) -> BaugruppeExportData
             continue
         seen.add(inv.id)
         investitionen.append(
-            ExportInvestment(
-                bezeichnung=inv.name or inv.description or inv.part_name,
-                typ=inv.investment_type,
-                betrag=float(inv.amount),
-                status=inv.status,
-                hinweis="Separat, nicht im Stückpreis enthalten",
-            )
+            _export_investment_from_row(inv, "Separat, nicht im Stückpreis enthalten")
         )
     for inv in overview["investitionen"]:
         if inv["id"] in seen:
             continue
         seen.add(inv["id"])
         investitionen.append(
-            ExportInvestment(
-                bezeichnung=inv["bezeichnung"],
-                typ=inv["typ"],
-                betrag=float(inv["betrag"]),
-                status=inv["status"],
-                hinweis="Separat, nicht im Stückpreis enthalten",
-            )
+            _export_investment_from_dict(inv, "Separat, nicht im Stückpreis enthalten")
         )
 
     skonto = overview["skonto"]

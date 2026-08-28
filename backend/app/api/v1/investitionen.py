@@ -25,6 +25,7 @@ from app.services.investition_assignment_service import (
     list_investment_targets,
     validate_assignment_payload,
 )
+from app.services.investition_financials import build_investment_financial_view
 from app.services.investition_service import EINMALZAHLUNG_HINWEIS, validate_investition_input, zuordnung_label
 
 router = APIRouter(prefix="/investitionen", tags=["Investitionen"])
@@ -70,12 +71,25 @@ def _to_read(
         baugruppe_id=row.baugruppe_id,
         kaufteil_id=row.kaufteil_id,
     )
+    financials = build_investment_financial_view(
+        cost_amount=getattr(row, "cost_amount", row.amount),
+        bottom_price=getattr(row, "bottom_price", None),
+        revenue_amount=getattr(row, "revenue_amount", None),
+        legacy_amount=row.amount,
+    )
     return InvestitionRead(
         id=row.id,
         name=row.name or row.description or row.part_name,
         investment_type=row.investment_type,
         payment_type=row.payment_type,
-        amount=float(row.amount),
+        cost_amount=financials["cost_amount"],
+        bottom_price=financials["bottom_price"],
+        revenue_amount=financials["revenue_amount"],
+        amount=financials["cost_amount"],
+        margin_revenue_minus_cost=financials["margin_revenue_minus_cost"],
+        margin_revenue_minus_bottom_price=financials["margin_revenue_minus_bottom_price"],
+        margin_bottom_price_minus_cost=financials["margin_bottom_price_minus_cost"],
+        amount_warnings=financials["warnings"],
         amortization_volume=row.amortization_volume,
         cost_per_piece=row.cost_per_piece,
         project=project.name if project else (row.project_id or ""),
@@ -144,6 +158,9 @@ def _build_payload(
                 "name": existing.name,
                 "investment_type": existing.investment_type,
                 "payment_type": existing.payment_type,
+                "cost_amount": getattr(existing, "cost_amount", existing.amount),
+                "bottom_price": getattr(existing, "bottom_price", None),
+                "revenue_amount": getattr(existing, "revenue_amount", None),
                 "amount": existing.amount,
                 "amortization_volume": existing.amortization_volume,
                 "project": existing.project_id,
@@ -186,11 +203,19 @@ def _build_payload(
         if project:
             project_name = project.name
 
+    cost_amount = data.get("cost_amount")
+    if cost_amount is None and data.get("amount") is not None:
+        cost_amount = data.get("amount")
+    if cost_amount is None and existing is not None:
+        cost_amount = getattr(existing, "cost_amount", existing.amount)
+
     computed = validate_investition_input(
         name=data["name"],
         investment_type=data["investment_type"],
         payment_type=data["payment_type"],
-        amount=float(data["amount"]),
+        cost_amount=float(cost_amount or 0),
+        bottom_price=data.get("bottom_price"),
+        revenue_amount=data.get("revenue_amount"),
         amortization_volume=data.get("amortization_volume"),
         project=str(project_name),
         calculation_id=data.get("calculation_id"),
@@ -202,7 +227,7 @@ def _build_payload(
         "name": data["name"].strip(),
         "investment_type": data["investment_type"],
         "payment_type": data["payment_type"],
-        "amount": float(data["amount"]),
+        "amount": computed["amount"],
         "project_id": str(project_name).strip(),
         "customer": data.get("customer", "") or "",
         "part_name": data.get("part_name", "") or "",

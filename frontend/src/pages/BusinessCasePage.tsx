@@ -19,9 +19,51 @@ function euro(value: number | null | undefined): string {
   return `${value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 }
 
+function marginClass(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "";
+  return value < 0 ? "text-red-700" : "";
+}
+
 function int(value: number | null | undefined): string {
   if (value == null) return "–";
   return value.toLocaleString("de-DE");
+}
+
+function FinancialSummaryBlock({
+  title,
+  block,
+}: {
+  title: string;
+  block: {
+    count: number;
+    cost_amount_total: number;
+    bottom_price_total: number;
+    revenue_amount_total: number;
+    margin_revenue_minus_cost_total: number | null;
+    margin_revenue_minus_bottom_price_total: number | null;
+    margin_bottom_price_minus_cost_total: number | null;
+  };
+}) {
+  return (
+    <div className="rounded border border-gray-200 p-3 text-sm">
+      <h4 className="mb-2 font-semibold">{title}</h4>
+      <div className="grid gap-1 sm:grid-cols-2">
+        <div>Anzahl: {block.count}</div>
+        <div>Kosten: {euro(block.cost_amount_total)}</div>
+        <div>Bottom Price: {euro(block.bottom_price_total)}</div>
+        <div>Erlös: {euro(block.revenue_amount_total)}</div>
+        <div className={marginClass(block.margin_revenue_minus_cost_total)}>
+          Erlös − Kosten: {euro(block.margin_revenue_minus_cost_total)}
+        </div>
+        <div className={marginClass(block.margin_revenue_minus_bottom_price_total)}>
+          Erlös − Bottom Price: {euro(block.margin_revenue_minus_bottom_price_total)}
+        </div>
+        <div className={marginClass(block.margin_bottom_price_minus_cost_total)}>
+          Bottom Price − Kosten: {euro(block.margin_bottom_price_minus_cost_total)}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function BusinessCasePage() {
@@ -368,13 +410,30 @@ export function BusinessCasePage() {
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 font-semibold">Investitionen</h3>
             <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-              <div>Gesamt: {euro(data.kpis.investitionen_gesamt)}</div>
+              <div>Kosten gesamt: {euro(data.kpis.investition_cost_total ?? data.kpis.investitionen_gesamt)}</div>
+              <div>Bottom Price gesamt: {euro(data.kpis.investition_bottom_price_total)}</div>
+              <div>Erlös gesamt: {euro(data.kpis.investition_revenue_total)}</div>
+              <div className={marginClass(data.kpis.margin_revenue_minus_cost_total)}>
+                Erlös − Kosten: {euro(data.kpis.margin_revenue_minus_cost_total)}
+              </div>
               <div>Amortisation: {euro(data.kpis.amortisationsinvestitionen_gesamt)}</div>
               <div className="text-amber-900">
                 Einmalzahlungen: {euro(data.kpis.einmalinvestitionen_gesamt)}
               </div>
               <div>Anteil/Stück: {euro(data.kpis.amortisationsanteil_je_stueck)}</div>
             </div>
+            {data.investment_financial_summary && (
+              <div className="mb-4 grid gap-3 lg:grid-cols-2">
+                <FinancialSummaryBlock
+                  title="Materialnummernbezogen"
+                  block={data.investment_financial_summary.material_assignments}
+                />
+                <FinancialSummaryBlock
+                  title="Gesamtprojekt"
+                  block={data.investment_financial_summary.project_assignments}
+                />
+              </div>
+            )}
             {data.investments.length === 0 ? (
               <p className="text-sm text-gray-600">Keine Investitionen für dieses Projekt.</p>
             ) : (
@@ -385,7 +444,10 @@ export function BusinessCasePage() {
                       <th className="py-2 pr-3">Bezeichnung</th>
                       <th className="py-2 pr-3">Art</th>
                       <th className="py-2 pr-3">Zahlungsart</th>
-                      <th className="py-2 pr-3">Betrag</th>
+                      <th className="py-2 pr-3">Kosten</th>
+                      <th className="py-2 pr-3">Bottom Price</th>
+                      <th className="py-2 pr-3">Erlös</th>
+                      <th className="py-2 pr-3">Erlös − Kosten</th>
                       <th className="py-2 pr-3">Kosten/Stück</th>
                       <th className="py-2 pr-3">Zuordnung</th>
                       <th className="py-2">Hinweis</th>
@@ -397,12 +459,19 @@ export function BusinessCasePage() {
                         <td className="py-2 pr-3">{inv.bezeichnung}</td>
                         <td className="py-2 pr-3">{inv.investment_type}</td>
                         <td className="py-2 pr-3">{inv.payment_type}</td>
-                        <td className="py-2 pr-3">{euro(inv.amount)}</td>
+                        <td className="py-2 pr-3">{euro(inv.cost_amount ?? inv.amount)}</td>
+                        <td className="py-2 pr-3">{euro(inv.bottom_price)}</td>
+                        <td className="py-2 pr-3">{euro(inv.revenue_amount)}</td>
+                        <td className={`py-2 pr-3 ${marginClass(inv.margin_revenue_minus_cost)}`}>
+                          {euro(inv.margin_revenue_minus_cost)}
+                        </td>
                         <td className="py-2 pr-3">
                           {inv.payment_type === "Amortisation" ? euro(inv.cost_per_piece) : "–"}
                         </td>
                         <td className="py-2 pr-3">{inv.zuordnung}</td>
-                        <td className="py-2 text-amber-800">{inv.hinweis}</td>
+                        <td className="py-2 text-amber-800">
+                          {[inv.hinweis, ...(inv.amount_warnings ?? [])].filter(Boolean).join(" · ")}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

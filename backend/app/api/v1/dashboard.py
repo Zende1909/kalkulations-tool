@@ -18,6 +18,7 @@ from app.services.dashboard import (
     build_dashboard_summary,
     parse_json_dict,
 )
+from app.services.investition_financials import effective_cost_amount
 from app.services.dashboard_assembly import build_assembly_overview
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -82,6 +83,10 @@ def _load_investition_records(db: Session) -> list[InvestitionRecord]:
             bg = bg_map[row.baugruppe_id]
             kunde = bg.kunde
             projekt = bg.projekt or projekt
+        cost = effective_cost_amount(
+            cost_amount=getattr(row, "cost_amount", None),
+            amount=row.amount,
+        )
         result.append(
             InvestitionRecord(
                 id=row.id,
@@ -90,7 +95,10 @@ def _load_investition_records(db: Session) -> list[InvestitionRecord]:
                 baugruppe_id=row.baugruppe_id,
                 part_name=row.part_name,
                 description=row.description,
-                amount=float(row.amount),
+                amount=float(cost),
+                cost_amount=float(cost),
+                bottom_price=getattr(row, "bottom_price", None),
+                revenue_amount=getattr(row, "revenue_amount", None),
                 investment_type=row.investment_type,
                 payment_type=row.payment_type,
                 status=row.status,

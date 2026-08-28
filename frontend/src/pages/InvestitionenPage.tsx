@@ -70,7 +70,13 @@ function validateForm(
   if (!assignmentType) return "Zuordnungstyp ist erforderlich.";
   if (!form.name.trim()) return "Bezeichnung ist erforderlich.";
   if (!form.payment_type) return "Zahlungsart ist erforderlich.";
-  if (form.amount < 0) return "Betrag darf nicht negativ sein.";
+  if (form.cost_amount < 0) return "Kosten dürfen nicht negativ sein.";
+  if (form.bottom_price != null && form.bottom_price < 0) {
+    return "Bottom Price darf nicht negativ sein.";
+  }
+  if (form.revenue_amount != null && form.revenue_amount < 0) {
+    return "Erlös darf nicht negativ sein.";
+  }
   if (form.payment_type === "Amortisation") {
     const vol = form.amortization_volume;
     if (vol == null || !Number.isInteger(vol) || vol < 1) {
@@ -111,7 +117,10 @@ export function InvestitionenPage() {
   const [formMode, setFormMode] = useState<FormMode>("create");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<InvestitionPayload>(emptyInvestitionForm());
-  const [amountRaw, setAmountRaw] = useState("0");
+  const [costRaw, setCostRaw] = useState("0");
+  const [bottomPriceRaw, setBottomPriceRaw] = useState("");
+  const [revenueRaw, setRevenueRaw] = useState("");
+  const [formWarnings, setFormWarnings] = useState<string[]>([]);
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
@@ -292,7 +301,10 @@ export function InvestitionenPage() {
       customer: filterLabels.customer,
       project: filterLabels.project,
     });
-    setAmountRaw("0");
+    setCostRaw("0");
+    setBottomPriceRaw("");
+    setRevenueRaw("");
+    setFormWarnings([]);
     setShowForm(true);
     setError(null);
   };
@@ -320,7 +332,9 @@ export function InvestitionenPage() {
       name: item.name,
       investment_type: item.investment_type,
       payment_type: item.payment_type,
-      amount: item.amount,
+      cost_amount: item.cost_amount,
+      bottom_price: item.bottom_price,
+      revenue_amount: item.revenue_amount,
       amortization_volume: item.amortization_volume,
       project: item.project,
       customer: item.customer,
@@ -333,20 +347,40 @@ export function InvestitionenPage() {
       kaufteil_id: item.kaufteil_id,
       description: item.description,
     });
-    setAmountRaw(formatDecimalForInputDe(item.amount));
+    setCostRaw(formatDecimalForInputDe(item.cost_amount));
+    setBottomPriceRaw(
+      item.bottom_price != null ? formatDecimalForInputDe(item.bottom_price) : "",
+    );
+    setRevenueRaw(
+      item.revenue_amount != null ? formatDecimalForInputDe(item.revenue_amount) : "",
+    );
+    setFormWarnings(item.amount_warnings ?? []);
     setShowForm(true);
   };
 
   const handleSave = async () => {
-    let amount: number;
+    let costAmount: number;
+    let bottomPrice: number | null;
+    let revenueAmount: number | null;
     try {
-      amount = coerceFormDecimal(amountRaw, "0,10 oder 0.10") ?? 0;
+      costAmount = coerceFormDecimal(costRaw, "0,10 oder 0.10") ?? 0;
+      bottomPrice = bottomPriceRaw.trim()
+        ? coerceFormDecimal(bottomPriceRaw, "0,10 oder 0.10")
+        : null;
+      revenueAmount = revenueRaw.trim()
+        ? coerceFormDecimal(revenueRaw, "0,10 oder 0.10")
+        : null;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ungültiger Betrag.");
       return;
     }
-    const formWithAmount = { ...form, amount };
-    const validationError = validateForm(formWithAmount, formHierarchy, assignmentType);
+    const formWithAmounts = {
+      ...form,
+      cost_amount: costAmount,
+      bottom_price: bottomPrice,
+      revenue_amount: revenueAmount,
+    };
+    const validationError = validateForm(formWithAmounts, formHierarchy, assignmentType);
     if (validationError) {
       setError(validationError);
       return;
@@ -355,7 +389,7 @@ export function InvestitionenPage() {
     setError(null);
     try {
       const payload: InvestitionPayload = {
-        ...formWithAmount,
+        ...formWithAmounts,
         customer_id: formHierarchy.customer_id,
         program_id: formHierarchy.program_id,
         linked_project_id: formHierarchy.project_id,
@@ -399,7 +433,25 @@ export function InvestitionenPage() {
       { field: "name", headerName: "Bezeichnung", flex: 1, minWidth: 160 },
       { field: "investment_type", headerName: "Art", width: 120 },
       { field: "payment_type", headerName: "Zahlungsart", width: 130 },
-      { field: "amount", headerName: "Betrag", width: 110, valueFormatter: (p) => euro(p.value as number) },
+      { field: "cost_amount", headerName: "Kosten (€)", width: 110, valueFormatter: (p) => euro(p.value as number) },
+      {
+        field: "bottom_price",
+        headerName: "Bottom Price (€)",
+        width: 130,
+        valueFormatter: (p) => euro(p.value as number | null),
+      },
+      {
+        field: "revenue_amount",
+        headerName: "Erlös (€)",
+        width: 110,
+        valueFormatter: (p) => euro(p.value as number | null),
+      },
+      {
+        field: "margin_revenue_minus_cost",
+        headerName: "Erlös − Kosten",
+        width: 120,
+        valueFormatter: (p) => euro(p.value as number | null),
+      },
       {
         field: "cost_per_piece",
         headerName: "Kosten/Stück",
@@ -654,11 +706,32 @@ export function InvestitionenPage() {
               </div>
             </fieldset>
             <DecimalInputField
-              label="Betrag (€) *"
-              rawValue={amountRaw}
-              onRawChange={setAmountRaw}
+              label="Kosten (€) *"
+              rawValue={costRaw}
+              onRawChange={setCostRaw}
               className="mt-1 block w-full rounded border px-2 py-1.5"
             />
+            <DecimalInputField
+              label="Bottom Price (€)"
+              rawValue={bottomPriceRaw}
+              onRawChange={setBottomPriceRaw}
+              className="mt-1 block w-full rounded border px-2 py-1.5"
+            />
+            <DecimalInputField
+              label="Erlös (€)"
+              rawValue={revenueRaw}
+              onRawChange={setRevenueRaw}
+              className="mt-1 block w-full rounded border px-2 py-1.5"
+            />
+            {formWarnings.length > 0 && (
+              <div className="md:col-span-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <ul className="list-disc pl-5">
+                  {formWarnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {form.payment_type === "Amortisation" && (
               <label className="block text-sm">
                 <span className="text-gray-600">Amortisationsvolumen *</span>

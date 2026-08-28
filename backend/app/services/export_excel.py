@@ -21,6 +21,44 @@ EUR_FORMAT = '#,##0.00 "€"'
 HEADER_FILL = PatternFill("solid", fgColor="E2E8F0")
 BOLD = Font(bold=True)
 
+INVESTMENT_SHEET_HEADERS = [
+    "Bezeichnung",
+    "Typ",
+    "Kosten (€)",
+    "Bottom Price (€)",
+    "Erlös (€)",
+    "Erlös − Kosten",
+    "Erlös − Bottom Price",
+    "Bottom Price − Kosten",
+    "Status",
+    "Hinweis",
+]
+
+
+def _write_investition_sheet(ws, investitionen) -> None:
+    if not investitionen:
+        ws["A1"] = "Keine Investitionen"
+        return
+    for c, h in enumerate(INVESTMENT_SHEET_HEADERS, 1):
+        ws.cell(row=1, column=c, value=h).font = BOLD
+    for i, inv in enumerate(investitionen, start=2):
+        cost = inv.cost_amount if inv.cost_amount is not None else inv.betrag
+        ws.cell(row=i, column=1, value=inv.bezeichnung)
+        ws.cell(row=i, column=2, value=inv.typ)
+        money_values = [
+            cost,
+            inv.bottom_price,
+            inv.revenue_amount,
+            inv.margin_revenue_minus_cost,
+            inv.margin_revenue_minus_bottom_price,
+            inv.margin_bottom_price_minus_cost,
+        ]
+        for offset, val in enumerate(money_values):
+            cell = ws.cell(row=i, column=3 + offset, value=val)
+            cell.number_format = EUR_FORMAT
+        ws.cell(row=i, column=9, value=inv.status)
+        ws.cell(row=i, column=10, value=inv.hinweis)
+
 
 def _cell_value(value):
     if isinstance(value, datetime) and value.tzinfo is not None:
@@ -138,18 +176,7 @@ def render_spritzguss_excel(data: SpritzgussExportData) -> bytes:
     _autosize(ws_v)
 
     ws_i = wb.create_sheet("Investitionen")
-    if data.investitionen:
-        headers = ["Bezeichnung", "Typ", "Betrag", "Status", "Hinweis"]
-        for c, h in enumerate(headers, 1):
-            ws_i.cell(row=1, column=c, value=h).font = BOLD
-        for i, inv in enumerate(data.investitionen, start=2):
-            ws_i.cell(row=i, column=1, value=inv.bezeichnung)
-            ws_i.cell(row=i, column=2, value=inv.typ)
-            ws_i.cell(row=i, column=3, value=inv.betrag).number_format = EUR_FORMAT
-            ws_i.cell(row=i, column=4, value=inv.status)
-            ws_i.cell(row=i, column=5, value=inv.hinweis)
-    else:
-        ws_i["A1"] = "Keine Investitionen"
+    _write_investition_sheet(ws_i, data.investitionen)
     _autosize(ws_i)
 
     ws_h = wb.create_sheet("Rechenhinweise")
@@ -420,15 +447,7 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
 
     ws_i = wb.create_sheet("Investitionen")
     if data.investitionen:
-        headers = ["Bezeichnung", "Typ", "Betrag", "Status", "Hinweis"]
-        for c, h in enumerate(headers, 1):
-            ws_i.cell(row=1, column=c, value=h).font = BOLD
-        for i, inv in enumerate(data.investitionen, start=2):
-            ws_i.cell(row=i, column=1, value=inv.bezeichnung)
-            ws_i.cell(row=i, column=2, value=inv.typ)
-            ws_i.cell(row=i, column=3, value=inv.betrag).number_format = EUR_FORMAT
-            ws_i.cell(row=i, column=4, value=inv.status)
-            ws_i.cell(row=i, column=5, value=inv.hinweis or "Separat, nicht im Stückpreis enthalten")
+        _write_investition_sheet(ws_i, data.investitionen)
     else:
         ws_i["A1"] = "Keine Investitionen – separat, nicht im Stückpreis enthalten"
     _autosize(ws_i)

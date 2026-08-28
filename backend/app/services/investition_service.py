@@ -65,12 +65,25 @@ def resolve_included_in_unit_price(
     return False
 
 
+def validate_non_negative_amount(value: float | None, label: str) -> float | None:
+    if value is None:
+        return None
+    if value < 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{label} darf nicht negativ sein.",
+        )
+    return float(value)
+
+
 def validate_investition_input(
     *,
     name: str,
     investment_type: str,
     payment_type: str,
-    amount: float,
+    cost_amount: float,
+    bottom_price: float | None = None,
+    revenue_amount: float | None = None,
     amortization_volume: int | float | None,
     project: str,
     calculation_id: int | None = None,
@@ -98,11 +111,9 @@ def validate_investition_input(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Ungültige Zahlungsart: {payment_type}",
         )
-    if amount < 0:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Investitionsbetrag darf nicht negativ sein.",
-        )
+    cost = validate_non_negative_amount(cost_amount, "Kosten") or 0.0
+    bottom = validate_non_negative_amount(bottom_price, "Bottom Price")
+    revenue = validate_non_negative_amount(revenue_amount, "Erlös")
     if planning_status and planning_status not in PLANNING_STATUS_VALUES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -120,14 +131,18 @@ def validate_investition_input(
             )
         volume = validate_amortization_volume(amortization_volume)
 
-    cost = compute_cost_per_piece(amount, payment_type, volume)
+    cost_piece = compute_cost_per_piece(cost, payment_type, volume)
     included = resolve_included_in_unit_price(
         payment_type, calculation_id, baugruppe_id, included_in_unit_price
     )
 
     return {
+        "cost_amount": cost,
+        "amount": cost,
+        "bottom_price": bottom,
+        "revenue_amount": revenue,
         "amortization_volume": volume,
-        "cost_per_piece": cost,
+        "cost_per_piece": cost_piece,
         "included_in_unit_price": included,
         "status": planning_status or "",
     }

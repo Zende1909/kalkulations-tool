@@ -20,6 +20,7 @@ from reportlab.platypus import (
 from app.services.export_models import (
     BaugruppeExportData,
     DashboardExportData,
+    ExportInvestment,
     ExportMoneyRow,
     ExportTable,
     SpritzgussExportData,
@@ -36,6 +37,41 @@ def _money(amount: float | None) -> str:
     if amount is None:
         return "Keine Daten"
     return f"{amount:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _investition_export_table(
+    investitionen: list[ExportInvestment],
+    *,
+    title: str,
+) -> list:
+    headers = [
+        "Bezeichnung",
+        "Typ",
+        "Kosten",
+        "Bottom Price",
+        "Erlös",
+        "Erlös−Kosten",
+        "Erlös−Bottom",
+        "Bottom−Kosten",
+        "Hinweis",
+    ]
+    rows: list[list[str]] = []
+    for inv in investitionen:
+        cost = inv.cost_amount if inv.cost_amount is not None else inv.betrag
+        rows.append(
+            [
+                inv.bezeichnung,
+                inv.typ,
+                _money(cost),
+                _money(inv.bottom_price),
+                _money(inv.revenue_amount),
+                _money(inv.margin_revenue_minus_cost),
+                _money(inv.margin_revenue_minus_bottom_price),
+                _money(inv.margin_bottom_price_minus_cost),
+                inv.hinweis,
+            ]
+        )
+    return _export_table_block(ExportTable(title=title, headers=headers, rows=rows))
 
 
 def _build_doc(buffer: io.BytesIO, title: str):
@@ -205,13 +241,10 @@ def render_spritzguss_pdf(data: SpritzgussExportData) -> bytes:
         )
         story.append(Spacer(1, 8))
     if data.investitionen:
-        inv_rows = [
-            (i.bezeichnung, i.typ, _money(i.betrag), i.hinweis) for i in data.investitionen
-        ]
         story.extend(
-            _kv_table(
-                "Investitionen (separat)",
-                [(" / ".join(r[:3]), r[3]) for r in inv_rows],
+            _investition_export_table(
+                data.investitionen,
+                title="Investitionen (separat)",
             )
         )
     doc.build(story, onFirstPage=_page_footer, onLaterPages=_page_footer)
@@ -466,12 +499,9 @@ def render_baugruppe_pdf(data: BaugruppeExportData) -> bytes:
     # 9. Investitionen
     if data.investitionen:
         story.extend(
-            _kv_table(
-                "Investitionen (separat, nicht im Stückpreis)",
-                [
-                    (i.bezeichnung, f"{_money(i.betrag)} – {i.hinweis}")
-                    for i in data.investitionen
-                ],
+            _investition_export_table(
+                data.investitionen,
+                title="Investitionen (separat, nicht im Stückpreis)",
             )
         )
     else:

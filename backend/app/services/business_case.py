@@ -9,6 +9,11 @@ from app.services.dashboard import (
     jahresumsatz_aus_baugruppe,
     preis_aus_baugruppe,
 )
+from app.services.investition_financials import (
+    aggregate_investment_financials,
+    build_investment_financial_view,
+    effective_cost_amount,
+)
 from app.services.investition_service import EINMALZAHLUNG_HINWEIS, compute_cost_per_piece
 
 
@@ -31,6 +36,9 @@ class InvestitionSnapshot:
     assignment_type: str | None = None
     linked_project_id: int | None = None
     part_number: str = ""
+    cost_amount: float | None = None
+    bottom_price: float | None = None
+    revenue_amount: float | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +118,32 @@ def _investition_applies_to_scope(
     return inv.calculation_id is None and inv.baugruppe_id is None and inv.kaufteil_id is None
 
 
+def _inv_cost(inv: InvestitionSnapshot) -> float:
+    return effective_cost_amount(cost_amount=inv.cost_amount, amount=inv.amount)
+
+
+def _scoped_financial_rows(scoped: list[InvestitionSnapshot]) -> list[dict]:
+    rows: list[dict] = []
+    for inv in scoped:
+        financials = build_investment_financial_view(
+            cost_amount=inv.cost_amount,
+            bottom_price=inv.bottom_price,
+            revenue_amount=inv.revenue_amount,
+            legacy_amount=inv.amount,
+        )
+        rows.append(
+            {
+                **financials,
+                "id": inv.id,
+                "assignment_type": inv.assignment_type,
+                "calculation_id": inv.calculation_id,
+                "baugruppe_id": inv.baugruppe_id,
+                "kaufteil_id": inv.kaufteil_id,
+            }
+        )
+    return rows
+
+
 def build_business_case(
     investitionen: list[InvestitionSnapshot],
     *,
@@ -145,15 +179,17 @@ def build_business_case(
     elif calc is not None and teilepreis is not None and calc.jahresstueckzahl > 0:
         jahresumsatz = round(teilepreis * calc.jahresstueckzahl, 2)
 
-    investitionen_gesamt = round(sum(r.amount for r in scoped), 2)
+    investitionen_gesamt = round(sum(_inv_cost(r) for r in scoped), 2)
     amort_gesamt = round(
-        sum(r.amount for r in scoped if r.payment_type == "Amortisation"),
+        sum(_inv_cost(r) for r in scoped if r.payment_type == "Amortisation"),
         2,
     )
     einmal_gesamt = round(
-        sum(r.amount for r in scoped if r.payment_type == "Einmalzahlung"),
+        sum(_inv_cost(r) for r in scoped if r.payment_type == "Einmalzahlung"),
         2,
     )
+    financial_rows = _scoped_financial_rows(scoped)
+    financial_summary = aggregate_investment_financials(financial_rows)
 
     amort_anteil = 0.0
     if calculation_id is not None or baugruppe_id is not None:
@@ -166,7 +202,9 @@ def build_business_case(
                 continue
             piece = inv.cost_per_piece
             if piece is None and inv.amortization_volume:
-                piece = compute_cost_per_piece(inv.amount, inv.payment_type, inv.amortization_volume)
+                piece = compute_cost_per_piece(
+                    _inv_cost(inv), inv.payment_type, inv.amortization_volume
+                )
             if piece is not None:
                 amort_anteil += piece
     amort_anteil = round(amort_anteil, 2)
@@ -179,13 +217,17 @@ def build_business_case(
         {
             "id": r.id,
             "name": r.name,
-            "amount": r.amount,
+            "amount": _inv_cost(r),
+            "cost_amount": _inv_cost(r),
+            "bottom_price": r.bottom_price,
+            "revenue_amount": r.revenue_amount,
             "hinweis": EINMALZAHLUNG_HINWEIS,
         }
         for r in scoped
         if r.payment_type == "Einmalzahlung"
     ]
 
+    totals = financial_summary["totals"]
     return {
         "filter": {
             "project": project,
@@ -200,6 +242,13 @@ def build_business_case(
         "investitionen_gesamt": investitionen_gesamt,
         "amortisationsinvestitionen_gesamt": amort_gesamt,
         "einmalinvestitionen_gesamt": einmal_gesamt,
+        "investition_cost_total": totals["cost_amount_total"],
+        "investition_bottom_price_total": totals["bottom_price_total"],
+        "investition_revenue_total": totals["revenue_amount_total"],
+        "margin_revenue_minus_cost_total": totals["margin_revenue_minus_cost_total"],
+        "margin_revenue_minus_bottom_price_total": totals["margin_revenue_minus_bottom_price_total"],
+        "margin_bottom_price_minus_cost_total": totals["margin_bottom_price_minus_cost_total"],
+        "investition_financial_summary": financial_summary,
         "amortisationsanteil_je_stueck": amort_anteil if (calculation_id or baugruppe_id) else None,
         "preis_inkl_amortisation_je_stueck": preis_inkl_amort,
         "einmalinvestitionen": einmal_positionen,

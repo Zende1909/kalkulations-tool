@@ -154,6 +154,16 @@ def ensure_investition_assignment_schema(engine: Engine) -> None:
     _execute_ddl(engine, statements, label="ensure_investition_assignment_schema")
 
 
+def ensure_investition_financial_schema(engine: Engine) -> None:
+    """Kosten, Bottom Price und Erlös (additiv)."""
+    statements = [
+        "ALTER TABLE investitionen ADD COLUMN IF NOT EXISTS cost_amount DOUBLE PRECISION NOT NULL DEFAULT 0",
+        "ALTER TABLE investitionen ADD COLUMN IF NOT EXISTS bottom_price DOUBLE PRECISION",
+        "ALTER TABLE investitionen ADD COLUMN IF NOT EXISTS revenue_amount DOUBLE PRECISION",
+    ]
+    _execute_ddl(engine, statements, label="ensure_investition_financial_schema")
+
+
 def ensure_assembly_structure_schema(engine: Engine) -> None:
     """Phase A: assembly_positions + erweiterte baugruppen-Spalten (additiv).
 

@@ -11,6 +11,12 @@ from app.models.project import Project
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.spritzguss_veredelung_zuordnung import SpritzgussVeredelungZuordnung
 from app.services.dashboard import endpreis_aus_spritzguss, jahresumsatz_aus_baugruppe, preis_aus_baugruppe
+from app.services.investition_assignment_service import infer_assignment_type
+from app.services.investition_financials import (
+    aggregate_investment_financials,
+    build_investment_financial_view,
+    effective_cost_amount,
+)
 from app.services.investition_service import EINMALZAHLUNG_HINWEIS, zuordnung_label
 from app.services.project_volume_service import build_project_volume_profile
 
@@ -202,6 +208,7 @@ def build_project_business_case(
         )
 
     investments: list[dict] = []
+    financial_rows: list[dict] = []
     amort_gesamt = 0.0
     einmal_gesamt = 0.0
     amort_anteil_summe = 0.0
@@ -209,39 +216,75 @@ def build_project_business_case(
         calc = sg_map.get(inv.calculation_id) if inv.calculation_id else None
         bg = bg_map.get(inv.baugruppe_id) if inv.baugruppe_id else None
         piece = float(inv.cost_per_piece) if inv.cost_per_piece is not None else None
+        cost = effective_cost_amount(
+            cost_amount=getattr(inv, "cost_amount", None),
+            amount=inv.amount,
+        )
+        financials = build_investment_financial_view(
+            cost_amount=getattr(inv, "cost_amount", cost),
+            bottom_price=getattr(inv, "bottom_price", None),
+            revenue_amount=getattr(inv, "revenue_amount", None),
+            legacy_amount=inv.amount,
+        )
+        atype = infer_assignment_type(
+            assignment_type=getattr(inv, "assignment_type", None),
+            calculation_id=inv.calculation_id,
+            baugruppe_id=inv.baugruppe_id,
+            kaufteil_id=getattr(inv, "kaufteil_id", None),
+        )
         if inv.payment_type == "Amortisation":
-            amort_gesamt += float(inv.amount)
+            amort_gesamt += cost
             if piece is not None:
                 amort_anteil_summe += piece
         else:
-            einmal_gesamt += float(inv.amount)
+            einmal_gesamt += cost
         hint = EINMALZAHLUNG_HINWEIS if inv.payment_type == "Einmalzahlung" else ""
-        investments.append(
+        row = {
+            "id": inv.id,
+            "bezeichnung": inv.name or inv.description or inv.part_name,
+            "investment_type": inv.investment_type,
+            "payment_type": inv.payment_type,
+            "amount": cost,
+            "cost_amount": financials["cost_amount"],
+            "bottom_price": financials["bottom_price"],
+            "revenue_amount": financials["revenue_amount"],
+            "margin_revenue_minus_cost": financials["margin_revenue_minus_cost"],
+            "margin_revenue_minus_bottom_price": financials["margin_revenue_minus_bottom_price"],
+            "margin_bottom_price_minus_cost": financials["margin_bottom_price_minus_cost"],
+            "amount_warnings": financials["warnings"],
+            "assignment_type": atype,
+            "amortization_volume": inv.amortization_volume,
+            "cost_per_piece": piece,
+            "zuordnung": zuordnung_label(
+                calculation_id=inv.calculation_id,
+                baugruppe_id=inv.baugruppe_id,
+                kaufteil_id=getattr(inv, "kaufteil_id", None),
+                assignment_type=atype,
+                part_number=inv.part_number or "",
+                part_name=inv.part_name or "",
+                project_id=inv.project_id or "",
+                calc_teilenummer=calc.teilenummer if calc else None,
+                calc_bezeichnung=calc.teilebezeichnung if calc else None,
+                bg_name=bg.name if bg else None,
+                bg_teilenummer=bg.teilenummer if bg else None,
+            ),
+            "hinweis": hint,
+            "bemerkung": inv.description or "",
+        }
+        investments.append(row)
+        financial_rows.append(
             {
-                "id": inv.id,
-                "bezeichnung": inv.name or inv.description or inv.part_name,
-                "investment_type": inv.investment_type,
-                "payment_type": inv.payment_type,
-                "amount": float(inv.amount),
-                "amortization_volume": inv.amortization_volume,
-                "cost_per_piece": piece,
-                "zuordnung": zuordnung_label(
-                    calculation_id=inv.calculation_id,
-                    baugruppe_id=inv.baugruppe_id,
-                    part_number=inv.part_number or "",
-                    part_name=inv.part_name or "",
-                    project_id=inv.project_id or "",
-                    calc_teilenummer=calc.teilenummer if calc else None,
-                    calc_bezeichnung=calc.teilebezeichnung if calc else None,
-                    bg_name=bg.name if bg else None,
-                    bg_teilenummer=bg.teilenummer if bg else None,
-                ),
-                "hinweis": hint,
-                "bemerkung": inv.description or "",
+                **financials,
+                "assignment_type": atype,
+                "calculation_id": inv.calculation_id,
+                "baugruppe_id": inv.baugruppe_id,
+                "kaufteil_id": getattr(inv, "kaufteil_id", None),
             }
         )
 
     investitionen_gesamt = round(amort_gesamt + einmal_gesamt, 2)
+    investment_financial_summary = aggregate_investment_financials(financial_rows)
+    fin_totals = investment_financial_summary["totals"]
     jahresstueckzahl_gesamt = sum(r.jahresstueckzahl for r in sg_rows) + sum(
         r.jahresstueckzahl for r in bg_rows
     )
@@ -304,6 +347,14 @@ def build_project_business_case(
             "amortisationsanteil_je_stueck": round(amort_anteil_summe, 2) if amort_anteil_summe else None,
             "teilepreis_je_stueck": avg_teilepreis,
             "baugruppenpreis_je_stueck": avg_baugruppenpreis,
+            "investition_cost_total": fin_totals["cost_amount_total"],
+            "investition_bottom_price_total": fin_totals["bottom_price_total"],
+            "investition_revenue_total": fin_totals["revenue_amount_total"],
+            "margin_revenue_minus_cost_total": fin_totals["margin_revenue_minus_cost_total"],
+            "margin_revenue_minus_bottom_price_total": fin_totals[
+                "margin_revenue_minus_bottom_price_total"
+            ],
+            "margin_bottom_price_minus_cost_total": fin_totals["margin_bottom_price_minus_cost_total"],
         },
         "parts": parts,
         "assemblies": assemblies,
@@ -313,12 +364,31 @@ def build_project_business_case(
             "amortisationsinvestitionen_gesamt": round(amort_gesamt, 2),
             "einmalinvestitionen_gesamt": round(einmal_gesamt, 2),
             "amortisationsanteil_je_stueck": round(amort_anteil_summe, 2) if amort_anteil_summe else None,
+            "investition_cost_total": fin_totals["cost_amount_total"],
+            "investition_bottom_price_total": fin_totals["bottom_price_total"],
+            "investition_revenue_total": fin_totals["revenue_amount_total"],
+            "margin_revenue_minus_cost_total": fin_totals["margin_revenue_minus_cost_total"],
+            "margin_revenue_minus_bottom_price_total": fin_totals[
+                "margin_revenue_minus_bottom_price_total"
+            ],
+            "margin_bottom_price_minus_cost_total": fin_totals["margin_bottom_price_minus_cost_total"],
+            "material_assignments": investment_financial_summary["material_assignments"],
+            "project_assignments": investment_financial_summary["project_assignments"],
             "einmalinvestitionen": [
-                {"id": i["id"], "bezeichnung": i["bezeichnung"], "amount": i["amount"], "hinweis": i["hinweis"]}
+                {
+                    "id": i["id"],
+                    "bezeichnung": i["bezeichnung"],
+                    "amount": i["amount"],
+                    "cost_amount": i["cost_amount"],
+                    "bottom_price": i["bottom_price"],
+                    "revenue_amount": i["revenue_amount"],
+                    "hinweis": i["hinweis"],
+                }
                 for i in investments
                 if i["payment_type"] == "Einmalzahlung"
             ],
         },
+        "investment_financial_summary": investment_financial_summary,
         "revenue_summary": {
             "umsatzpotenzial_einzelteile": round(umsatz_einzelteile, 2),
             "umsatzpotenzial_baugruppen": round(umsatz_baugruppen, 2),
