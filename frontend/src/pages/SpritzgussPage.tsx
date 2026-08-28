@@ -15,6 +15,7 @@ import {
   spritzgussXlsxUrl,
 } from "../api/reports";
 import { listVeredelungsschritte } from "../api/veredelung";
+import { getAverageJahresstueckzahl } from "../api/hierarchy";
 import { ExportButtons } from "../components/ExportButtons";
 import {
   HierarchySelector,
@@ -33,6 +34,11 @@ import {
   type WerkzeugAbrechnungsart,
 } from "../types/spritzguss";
 import { formatPercentPoints, parseDecimalInput } from "../utils/decimalInput";
+import {
+  berechneAutomatischeLosgroesse,
+  inferLegacyLosgroesseModus,
+  werkProduktionsintervall,
+} from "../utils/losgroesseBerechnung";
 
 interface SelectedVeredelung extends VeredelungZuordnungInput {
   bezeichnung: string;
@@ -167,7 +173,15 @@ const FIELD_LABELS: Record<string, string> = {
   nettokapazitaet: "Nettokapazität nach Ausschuss (Stück/h)",
   setup_maschinenkosten_je_teil: "Setup-Maschinenkosten je Teil (€)",
   setup_lohnkosten_je_teil: "Setup-Lohnkosten je Teil (€)",
-  setup_kosten_je_teil: "Setup-Kosten je Teil (€)",
+  setup_kosten_je_teil: "Setup-Gesamtkosten je Teil (€)",
+  losgroesse: "Aktive Losgröße (Stück)",
+  losgroesse_modus: "Losgrößen-Quelle",
+  losgroesse_automatisch: "Automatische Losgröße (Stück)",
+  losgroesse_aktiv: "Aktive Losgröße (Stück)",
+  losgroesse_jahresbedarf: "Durchschnittlicher Jahresbedarf (Stück)",
+  produktionsintervall_arbeitstage: "Produktionsintervall (Arbeitstage)",
+  arbeitstage_pro_jahr: "Arbeitstage pro Jahr",
+  losgroesse_hinweis: "Losgrößen-Hinweis",
   vvgk_pct: "VVGK-Satz (%)",
   gewinn_pct: "Gewinn-Satz (%)",
   skonto_pct: "Skonto-Satz (%)",
@@ -284,6 +298,9 @@ export function SpritzgussPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
+  const [jahresbedarf, setJahresbedarf] = useState<number | null>(null);
+  const [jahresbedarfHint, setJahresbedarfHint] = useState<string | null>(null);
+  const [jahresbedarfLoading, setJahresbedarfLoading] = useState(false);
 
   const setField = <K extends keyof SpritzgussFormData>(key: K, value: SpritzgussFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -328,6 +345,82 @@ export function SpritzgussPage() {
     [selectedVeredelung],
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    const projectId = hierarchy.project_id ?? form.project_id;
+    if (projectId == null) {
+      setJahresbedarf(null);
+      setJahresbedarfHint(
+        hierarchy.customer_id != null || hierarchy.program_id != null
+          ? "Jahresbedarf wird nach Projektauswahl aus den Projektstückzahlen berechnet."
+          : null,
+      );
+      setJahresbedarfLoading(false);
+      return;
+    }
+    setJahresbedarfLoading(true);
+    setJahresbedarfHint(null);
+    getAverageJahresstueckzahl(projectId)
+      .then((avg) => {
+        if (cancelled) return;
+        if (!avg.has_volumes || avg.jahresstueckzahl == null) {
+          setJahresbedarf(null);
+          setJahresbedarfHint(
+            "Für dieses Projekt sind keine Jahresstückzahlen hinterlegt – automatische Losgröße nicht berechenbar.",
+          );
+          return;
+        }
+        setJahresbedarf(avg.jahresstueckzahl);
+        setJahresbedarfHint(
+          `Durchschnittlicher Jahresbedarf: ⌈Summe / ${avg.year_count} Jahre⌉ = ${avg.jahresstueckzahl.toLocaleString("de-DE")} Stück`,
+        );
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setJahresbedarf(null);
+          setJahresbedarfHint(
+            err instanceof Error ? err.message : "Jahresbedarf konnte nicht geladen werden.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setJahresbedarfLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hierarchy.project_id, hierarchy.customer_id, hierarchy.program_id, form.project_id]);
+
+  const selectedWerk = useMemo(
+    () => werke.find((w) => w.id === form.werk_id) ?? null,
+    [werke, form.werk_id],
+  );
+
+  const losgroessePreview = useMemo(() => {
+    const arbeitstage = selectedWerk?.arbeitstage_pro_jahr ?? null;
+    const intervall = werkProduktionsintervall(selectedWerk);
+    const auto =
+      jahresbedarf != null && arbeitstage != null
+        ? berechneAutomatischeLosgroesse(jahresbedarf, intervall, arbeitstage)
+        : null;
+    if (form.losgroesse_modus === "manuell") {
+      return {
+        auto,
+        aktiv: form.losgroesse_manuell,
+        quelle: "manuell" as const,
+        intervall,
+        arbeitstage,
+      };
+    }
+    return {
+      auto,
+      aktiv: auto,
+      quelle: "automatisch" as const,
+      intervall,
+      arbeitstage,
+    };
+  }, [selectedWerk, jahresbedarf, form.losgroesse_modus, form.losgroesse_manuell]);
+
   const calcPayload = useMemo(
     () => ({
       teilegewicht_netto_g: form.teilegewicht_netto_g,
@@ -349,14 +442,17 @@ export function SpritzgussPage() {
       skonto_pct: form.skonto_pct,
       veredelung_zuordnungen: veredelungZuordnungen,
       werk_id: form.werk_id,
-      losgroesse: form.losgroesse,
+      project_id: hierarchy.project_id ?? form.project_id,
+      losgroesse_modus: form.losgroesse_modus,
+      losgroesse_manuell:
+        form.losgroesse_modus === "manuell" ? form.losgroesse_manuell : null,
       setup_zeit_min: form.setup_zeit_min,
       setup_maschinenstundensatz: form.setup_maschinenstundensatz || form.maschinenstundensatz,
       setup_lohnstundensatz: form.setup_lohnstundensatz,
       setup_mitarbeiter: form.setup_mitarbeiter,
       setup_aktiv: form.setup_aktiv || form.setup_zeit_min > 0,
     }),
-    [form, veredelungZuordnungen],
+    [form, veredelungZuordnungen, hierarchy.project_id],
   );
 
   const filteredWerke = useMemo(
@@ -641,6 +737,12 @@ export function SpritzgussPage() {
         material_nominierung: item.material_nominierung ?? null,
         werk_id: item.werk_id ?? null,
         losgroesse: item.losgroesse ?? null,
+        losgroesse_modus: inferLegacyLosgroesseModus(item.losgroesse_modus, item.losgroesse),
+        losgroesse_manuell:
+          item.losgroesse_manuell ??
+          (inferLegacyLosgroesseModus(item.losgroesse_modus, item.losgroesse) === "manuell"
+            ? item.losgroesse
+            : null),
         setup_zeit_min: item.setup_zeit_min ?? 0,
         setup_maschinenstundensatz: item.setup_maschinenstundensatz ?? 0,
         setup_lohnstundensatz: item.setup_lohnstundensatz ?? 0,
@@ -1033,13 +1135,101 @@ export function SpritzgussPage() {
                 min={0}
                 onChange={(v) => setField("setup_mitarbeiter", v)}
               />
-              <NumberInput
-                label="Losgröße (für Setup-Umlage)"
-                value={form.losgroesse ?? 0}
-                min={0}
-                step="1"
-                onChange={(v) => setField("losgroesse", v > 0 ? Math.round(v) : null)}
-              />
+              <div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium text-slate-900">Losgröße für Setup-Umlage</span>
+                  <label className="inline-flex items-center gap-2 text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={form.losgroesse_modus === "manuell"}
+                      onChange={(e) =>
+                        setForm((current) => ({
+                          ...current,
+                          losgroesse_modus: e.target.checked ? "manuell" : "automatisch",
+                          losgroesse_manuell:
+                            e.target.checked && current.losgroesse_manuell == null
+                              ? current.losgroesse
+                              : current.losgroesse_manuell,
+                        }))
+                      }
+                    />
+                    Losgröße manuell überschreiben
+                  </label>
+                </div>
+                {form.losgroesse_modus === "automatisch" ? (
+                  <p className="text-slate-600">
+                    Modus: <span className="font-medium">automatisch</span>
+                    {losgroessePreview.aktiv != null ? (
+                      <>
+                        {" "}
+                        – berechnete Losgröße:{" "}
+                        <span className="font-semibold tabular-nums">
+                          {losgroessePreview.aktiv.toLocaleString("de-DE")} Stück
+                        </span>
+                      </>
+                    ) : (
+                      " – noch nicht berechenbar"
+                    )}
+                  </p>
+                ) : (
+                  <NumberInput
+                    label="Manuelle Losgröße (Stück)"
+                    value={form.losgroesse_manuell ?? 0}
+                    min={1}
+                    step="1"
+                    onChange={(v) =>
+                      setField("losgroesse_manuell", v >= 1 ? Math.round(v) : null)
+                    }
+                  />
+                )}
+                <dl className="mt-2 space-y-1 text-xs text-slate-600">
+                  <div className="flex justify-between gap-3">
+                    <dt>Durchschnittlicher Jahresbedarf</dt>
+                    <dd className="tabular-nums font-medium text-slate-800">
+                      {jahresbedarfLoading
+                        ? "…"
+                        : jahresbedarf != null
+                          ? jahresbedarf.toLocaleString("de-DE")
+                          : "–"}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt>Produktionsintervall</dt>
+                    <dd className="tabular-nums font-medium text-slate-800">
+                      {losgroessePreview.intervall} Arbeitstage
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt>Arbeitstage pro Jahr</dt>
+                    <dd className="tabular-nums font-medium text-slate-800">
+                      {losgroessePreview.arbeitstage ?? "–"}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt>Automatische Losgröße</dt>
+                    <dd className="tabular-nums font-medium text-slate-800">
+                      {losgroessePreview.auto != null
+                        ? losgroessePreview.auto.toLocaleString("de-DE")
+                        : "–"}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt>Aktive Losgröße</dt>
+                    <dd className="tabular-nums font-semibold text-slate-900">
+                      {losgroessePreview.aktiv != null
+                        ? losgroessePreview.aktiv.toLocaleString("de-DE")
+                        : "–"}{" "}
+                      ({losgroessePreview.quelle})
+                    </dd>
+                  </div>
+                </dl>
+                {jahresbedarfHint ? (
+                  <p className="mt-2 text-xs text-slate-500">{jahresbedarfHint}</p>
+                ) : null}
+                <p className="mt-2 text-xs text-slate-500">
+                  Keine EOQ-/Andler-Losgröße – basiert auf Produktionsintervall am Werk.
+                </p>
+              </div>
               <NumberInput
                 label="Setup-Maschinenstundensatz (€/h)"
                 value={form.setup_maschinenstundensatz}

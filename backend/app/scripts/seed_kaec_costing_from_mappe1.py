@@ -145,6 +145,8 @@ def seed_kaec_from_mappe1(db: Session, xlsx_path: Path | None = None) -> list[st
     water_price = _num(_cell(ws_d, 3, 37), 0.03)
 
     werk.arbeitstage_pro_jahr = days
+    if werk.produktionsintervall_arbeitstage is None:
+        werk.produktionsintervall_arbeitstage = 30
     werk.schichten_pro_tag = shifts
     werk.stunden_pro_schicht = hours
     werk.oee = oee

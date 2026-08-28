@@ -51,6 +51,7 @@ def _schema(engine) -> None:
                     fx_to_eur FLOAT NOT NULL DEFAULT 0.92,
                     aktiv BOOLEAN NOT NULL DEFAULT 1,
                     arbeitstage_pro_jahr FLOAT,
+                    produktionsintervall_arbeitstage FLOAT,
                     schichten_pro_tag FLOAT,
                     stunden_pro_schicht FLOAT,
                     oee FLOAT,

@@ -180,7 +180,7 @@ def _session() -> Session:
                     calculation_year INTEGER,
                     project_volume FLOAT,
                     werk_id INTEGER,
-                    losgroesse INTEGER,
+                    losgroesse INTEGER, losgroesse_modus VARCHAR(16), losgroesse_manuell INTEGER,
                     material_id INTEGER,
                     schussgewicht_g FLOAT NOT NULL DEFAULT 0,
                     teilegewicht_netto_g FLOAT NOT NULL DEFAULT 0,

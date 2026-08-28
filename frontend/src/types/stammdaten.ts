@@ -28,6 +28,7 @@ export interface Werk {
   fx_to_eur: number;
   aktiv: boolean;
   arbeitstage_pro_jahr?: number | null;
+  produktionsintervall_arbeitstage?: number | null;
   schichten_pro_tag?: number | null;
   stunden_pro_schicht?: number | null;
   oee?: number | null;

@@ -17,6 +17,7 @@ const columnDefs: ColDef<Werk>[] = [
   { field: "currency", headerName: "Währung" },
   { field: "fx_to_eur", headerName: "FX → EUR" },
   { field: "arbeitstage_pro_jahr", headerName: "Tage/Jahr" },
+  { field: "produktionsintervall_arbeitstage", headerName: "Prod.-Intervall" },
   { field: "oee", headerName: "OEE (0–1)" },
   { field: "aktiv", headerName: "Aktiv" },
 ];
@@ -96,6 +97,13 @@ export function WerkePage() {
         label: "Arbeitstage/Jahr",
         type: "number",
         step: "1",
+      },
+      {
+        name: "produktionsintervall_arbeitstage",
+        label: "Produktionsintervall (Arbeitstage)",
+        type: "number",
+        step: "1",
+        hint: "Standard 30 Arbeitstage für automatische Losgröße – keine EOQ/Andler-Formel.",
       },
       { name: "schichten_pro_tag", label: "Schichten/Tag", type: "number", step: "1" },
       {
@@ -199,6 +207,7 @@ export function WerkePage() {
         fx_to_eur: 0.92,
         aktiv: true,
         arbeitstage_pro_jahr: 254,
+        produktionsintervall_arbeitstage: 30,
         schichten_pro_tag: 2,
         stunden_pro_schicht: 8,
         oee: 0.9,

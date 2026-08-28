@@ -37,6 +37,8 @@ class Werk(Base, TimestampMixin):
 
     # Kapazitätsmodell (Mappe1 Globals)
     arbeitstage_pro_jahr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Produktionsintervall für automatische Losgröße (Arbeitstage, Standard 30 in der Anwendung)
+    produktionsintervall_arbeitstage: Mapped[float | None] = mapped_column(Float, nullable=True)
     schichten_pro_tag: Mapped[float | None] = mapped_column(Float, nullable=True)
     stunden_pro_schicht: Mapped[float | None] = mapped_column(Float, nullable=True)
     oee: Mapped[float | None] = mapped_column(Float, nullable=True)

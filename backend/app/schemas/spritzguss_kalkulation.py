@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.schemas.spritzguss_veredelung import VeredelungZuordnungInput, VeredelungZuordnungRead
 
 WerkzeugAbrechnungsart = Literal["amortisation", "einmalzahlung"]
+LosgroesseModus = Literal["automatisch", "manuell"]
 
 
 def _require_positive_int_volume(value: Any) -> int:
@@ -82,6 +83,9 @@ class SpritzgussCalcRequest(BaseModel):
     skonto_pct: float = Field(ge=0, default=0)
     veredelung_zuordnungen: list[VeredelungZuordnungInput] = Field(default_factory=list)
     werk_id: int | None = None
+    project_id: int | None = None
+    losgroesse_modus: LosgroesseModus = "automatisch"
+    losgroesse_manuell: int | None = Field(default=None, ge=1)
     losgroesse: int | None = Field(default=None, ge=1)
     setup_zeit_min: float = Field(ge=0, default=0)
     setup_maschinenstundensatz: float = Field(ge=0, default=0)
@@ -92,6 +96,13 @@ class SpritzgussCalcRequest(BaseModel):
     @field_validator("amortisationsvolumen", mode="before")
     @classmethod
     def validate_volume_type(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return None
+        return _require_positive_int_volume(value)
+
+    @field_validator("losgroesse_manuell", mode="before")
+    @classmethod
+    def validate_losgroesse_manuell(cls, value: Any) -> Any:
         if value is None or value == "":
             return None
         return _require_positive_int_volume(value)
@@ -146,6 +157,14 @@ class SpritzgussErgebnisSchema(BaseModel):
     setup_maschinenkosten_je_teil: float | None = None
     setup_lohnkosten_je_teil: float | None = None
     losgroesse: int | None = None
+    losgroesse_modus: LosgroesseModus | None = None
+    losgroesse_manuell: int | None = None
+    losgroesse_automatisch: int | None = None
+    losgroesse_aktiv: int | None = None
+    losgroesse_jahresbedarf: int | None = None
+    produktionsintervall_arbeitstage: float | None = None
+    arbeitstage_pro_jahr: float | None = None
+    losgroesse_hinweis: str | None = None
     setup_aktiv: bool | None = None
     schussgewicht_g: float | None = None
     teilegewicht_netto_g: float | None = None
@@ -175,6 +194,8 @@ class SpritzgussKalkulationBase(BaseModel):
 
     werk_id: int | None = None
     losgroesse: int | None = Field(default=None, ge=1)
+    losgroesse_modus: LosgroesseModus | None = "automatisch"
+    losgroesse_manuell: int | None = Field(default=None, ge=1)
 
     material_id: int | None = None
     schussgewicht_g: float = Field(ge=0, default=0)
@@ -207,6 +228,13 @@ class SpritzgussKalkulationBase(BaseModel):
     @field_validator("amortisationsvolumen", mode="before")
     @classmethod
     def validate_volume_type(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return None
+        return _require_positive_int_volume(value)
+
+    @field_validator("losgroesse_manuell", mode="before")
+    @classmethod
+    def validate_losgroesse_manuell_base(cls, value: Any) -> Any:
         if value is None or value == "":
             return None
         return _require_positive_int_volume(value)
@@ -265,6 +293,8 @@ class SpritzgussKalkulationUpdate(BaseModel):
 
     werk_id: int | None = None
     losgroesse: int | None = Field(default=None, ge=1)
+    losgroesse_modus: LosgroesseModus | None = None
+    losgroesse_manuell: int | None = Field(default=None, ge=1)
 
     material_id: int | None = None
     schussgewicht_g: float | None = Field(default=None, ge=0)
@@ -304,6 +334,13 @@ class SpritzgussKalkulationUpdate(BaseModel):
     @field_validator("amortisationsvolumen", mode="before")
     @classmethod
     def validate_volume_type(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return None
+        return _require_positive_int_volume(value)
+
+    @field_validator("losgroesse_manuell", mode="before")
+    @classmethod
+    def validate_losgroesse_manuell_update(cls, value: Any) -> Any:
         if value is None or value == "":
             return None
         return _require_positive_int_volume(value)

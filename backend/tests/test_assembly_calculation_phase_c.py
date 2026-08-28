@@ -66,7 +66,7 @@ def _create_phase_c_schema(engine) -> None:
             jahresstueckzahl INTEGER NOT NULL DEFAULT 0,
             project_id INTEGER,
             werk_id INTEGER,
-            losgroesse INTEGER,
+            losgroesse INTEGER, losgroesse_modus VARCHAR(16), losgroesse_manuell INTEGER,
             schussgewicht_g FLOAT NOT NULL DEFAULT 0,
             teilegewicht_netto_g FLOAT NOT NULL DEFAULT 100,
             ausschussquote_pct FLOAT NOT NULL DEFAULT 10,

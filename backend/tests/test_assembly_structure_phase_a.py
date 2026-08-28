@@ -59,7 +59,7 @@ def _create_sqlite_phase_a_schema(engine) -> None:
             lohnstundensatz FLOAT NOT NULL DEFAULT 0,
             werkzeugkosten_eur FLOAT NOT NULL DEFAULT 0,
             werk_id INTEGER,
-            losgroesse INTEGER
+            losgroesse INTEGER, losgroesse_modus VARCHAR(16), losgroesse_manuell INTEGER
         )
         """,
         """

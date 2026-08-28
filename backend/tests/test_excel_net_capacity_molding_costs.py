@@ -286,7 +286,7 @@ def _session() -> Session:
                     jahresstueckzahl INTEGER NOT NULL DEFAULT 0,
                     customer_id INTEGER, program_id INTEGER, project_id INTEGER,
                     calculation_year INTEGER, project_volume FLOAT, werk_id INTEGER,
-                    losgroesse INTEGER, material_id INTEGER,
+                    losgroesse INTEGER, losgroesse_modus VARCHAR(16), losgroesse_manuell INTEGER, material_id INTEGER,
                     schussgewicht_g FLOAT NOT NULL DEFAULT 0,
                     teilegewicht_netto_g FLOAT NOT NULL DEFAULT 0,
                     ausschussquote_pct FLOAT NOT NULL DEFAULT 0,

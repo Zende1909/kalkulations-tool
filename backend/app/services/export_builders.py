@@ -142,8 +142,42 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
             ),
         ),
         ExportRow(
-            "Losgröße",
-            str(getattr(obj, "losgroesse", None) or ergebnis.get("losgroesse") or "–"),
+            "Losgröße (aktiv)",
+            str(
+                ergebnis.get("losgroesse_aktiv")
+                or getattr(obj, "losgroesse", None)
+                or ergebnis.get("losgroesse")
+                or "–"
+            ),
+        ),
+        ExportRow(
+            "Losgrößen-Modus",
+            str(ergebnis.get("losgroesse_modus") or "–"),
+        ),
+        ExportRow(
+            "Durchschnittlicher Jahresbedarf",
+            str(ergebnis.get("losgroesse_jahresbedarf") or obj.jahresstueckzahl or "–"),
+        ),
+        ExportRow(
+            "Arbeitstage pro Jahr",
+            str(ergebnis.get("arbeitstage_pro_jahr") or "–"),
+        ),
+        ExportRow(
+            "Produktionsintervall (Arbeitstage)",
+            str(ergebnis.get("produktionsintervall_arbeitstage") or "–"),
+        ),
+        ExportRow(
+            "Automatische Losgröße",
+            str(ergebnis.get("losgroesse_automatisch") or "–"),
+        ),
+        ExportRow(
+            "Manuelle Losgröße",
+            str(ergebnis.get("losgroesse_manuell") or getattr(obj, "losgroesse_manuell", None) or "–"),
+        ),
+        ExportRow(
+            "Losgrößen-Hinweis",
+            "Die automatische Losgröße basiert auf einem Produktionsintervall "
+            "und ist keine lagerkostenoptimierte EOQ-/Andler-Losgröße.",
         ),
         ExportRow(
             "Setup aktiv",

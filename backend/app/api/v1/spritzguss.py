@@ -1,5 +1,7 @@
 from typing import Any
 
+from dataclasses import replace
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
 from sqlalchemy import func, select
@@ -35,6 +37,12 @@ from app.schemas.spritzguss_veredelung import (
 from app.services.central_markup_rates import (
     CentralMarkupRatesError,
     load_central_markup_rates,
+)
+from app.services.losgroesse_berechnung import (
+    LosgroesseKontext,
+    LosgroesseValidationError,
+    losgroesse_metadata_dict,
+    resolve_losgroesse,
 )
 from app.services.spritzguss_gesamt_kalkulation import (
     GesamtValidationError,
@@ -183,9 +191,60 @@ def _normalize_veredelung_zuordnungen(
     return normalized
 
 
+def _prepare_calc_input_with_losgroesse(
+    db: Session,
+    calc_input: SpritzgussInput,
+    *,
+    project_id: int | None,
+    werk_id: int | None,
+    losgroesse_modus: str | None,
+    losgroesse_manuell: int | None,
+    losgroesse_gespeichert: int | None,
+) -> tuple[SpritzgussInput, LosgroesseKontext]:
+    setup_aktiv = bool(calc_input.setup_aktiv) or float(calc_input.setup_zeit_min or 0) > 0
+    gespeichert = (
+        losgroesse_gespeichert
+        if losgroesse_gespeichert is not None
+        else calc_input.losgroesse
+    )
+    effective_modus = losgroesse_modus
+    effective_manuell = losgroesse_manuell
+    # Legacy: explizite Losgröße ohne Projekt → manuell (kein erzwungenes Auto)
+    if (
+        effective_modus in (None, "automatisch")
+        and project_id is None
+        and gespeichert is not None
+        and effective_manuell is None
+    ):
+        effective_modus = "manuell"
+        effective_manuell = int(gespeichert)
+    try:
+        ctx = resolve_losgroesse(
+            db,
+            modus=effective_modus,
+            losgroesse_manuell=effective_manuell,
+            losgroesse_gespeichert=gespeichert,
+            project_id=project_id,
+            werk_id=werk_id,
+            setup_aktiv=setup_aktiv,
+        )
+    except LosgroesseValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    return replace(calc_input, losgroesse=ctx.losgroesse_aktiv), ctx
+
+
 def _to_calc_input_from_request(body: SpritzgussCalcRequest) -> SpritzgussInput:
     data = body.model_dump(
-        exclude={"veredelung_zuordnungen", "werk_id"},
+        exclude={
+            "veredelung_zuordnungen",
+            "werk_id",
+            "project_id",
+            "losgroesse_modus",
+            "losgroesse_manuell",
+            "losgroesse",
+        },
     )
     return SpritzgussInput(**data)
 
@@ -448,8 +507,21 @@ def _build_calc_response(
     kalkulation_id: int | None = None,
     saved_rows: list[SpritzgussVeredelungZuordnung] | None = None,
     werk_id: int | None = None,
+    project_id: int | None = None,
+    losgroesse_modus: str | None = None,
+    losgroesse_manuell: int | None = None,
+    losgroesse_gespeichert: int | None = None,
 ) -> SpritzgussCalcResponse:
     zuordnungen = _normalize_veredelung_zuordnungen(zuordnungen)
+    calc_input, losgroesse_ctx = _prepare_calc_input_with_losgroesse(
+        db,
+        calc_input,
+        project_id=project_id,
+        werk_id=werk_id,
+        losgroesse_modus=losgroesse_modus,
+        losgroesse_manuell=losgroesse_manuell,
+        losgroesse_gespeichert=losgroesse_gespeichert,
+    )
     calc_input = _apply_central_rates(db, calc_input, werk_id=werk_id)
     try:
         spritzguss = berechne_spritzguss(calc_input)
@@ -498,6 +570,8 @@ def _build_calc_response(
         "materialkosten_gesamt": spritzguss.materialkosten_gesamt,
         "applied_mgk_pct": spritzguss.applied_mgk_pct,
     }
+    ergebnis_dict.update(losgroesse_metadata_dict(losgroesse_ctx))
+    ergebnis_dict["losgroesse"] = losgroesse_ctx.losgroesse_aktiv
 
     # FGK genau einmal und konsistent anzeigen (Basis inkl. Veredelung)
     bloecke["fertigung"] = {
@@ -513,6 +587,10 @@ def _build_calc_response(
         "fgk_basis": gesamt.fgk_basis,
         "fertigungsgemeinkosten": gesamt.fertigungsgemeinkosten,
         "fgk_pct": gesamt.applied_fgk_pct,
+        "losgroesse": losgroesse_ctx.losgroesse_aktiv,
+        "losgroesse_modus": losgroesse_ctx.modus,
+        "losgroesse_automatisch": losgroesse_ctx.losgroesse_automatisch,
+        "losgroesse_aktiv": losgroesse_ctx.losgroesse_aktiv,
     }
 
     # FGK nur im Fertigungsblock (nicht nochmals unter Gemeinkosten) –
@@ -602,6 +680,10 @@ def _apply_calculation(
         kalkulation_id=obj.id,
         saved_rows=_load_zuordnungen(db, obj.id) if obj.id else None,
         werk_id=getattr(obj, "werk_id", None),
+        project_id=getattr(obj, "project_id", None),
+        losgroesse_modus=getattr(obj, "losgroesse_modus", None),
+        losgroesse_manuell=getattr(obj, "losgroesse_manuell", None),
+        losgroesse_gespeichert=getattr(obj, "losgroesse", None),
     )
     # Angewandte zentrale Sätze am Datensatz spiegeln (Export/Transparenz)
     ergebnis = response.ergebnis
@@ -617,6 +699,14 @@ def _apply_calculation(
         obj.skonto_pct = float(ergebnis.applied_skonto_pct)
     if ergebnis.material_nominierung is not None:
         obj.material_nominierung = ergebnis.material_nominierung
+    obj.losgroesse = ergebnis.losgroesse_aktiv or ergebnis.losgroesse
+    if ergebnis.losgroesse_modus is not None:
+        obj.losgroesse_modus = ergebnis.losgroesse_modus
+    obj.losgroesse_manuell = (
+        ergebnis.losgroesse_manuell
+        if ergebnis.losgroesse_modus == "manuell"
+        else None
+    )
     previous = obj.ergebnis if isinstance(obj.ergebnis, dict) else {}
     dumped = ergebnis.model_dump()
     # Setup-Eingabeparameter beibehalten / aus calc_input spiegeln
@@ -710,9 +800,21 @@ def _run_calculation(
     zuordnungen: list[VeredelungZuordnungInput],
     *,
     werk_id: int | None = None,
+    project_id: int | None = None,
+    losgroesse_modus: str | None = None,
+    losgroesse_manuell: int | None = None,
+    losgroesse_gespeichert: int | None = None,
 ) -> SpritzgussCalcResponse:
     return _build_calc_response(
-        db, calc_input, zuordnungen, use_snapshots=False, werk_id=werk_id
+        db,
+        calc_input,
+        zuordnungen,
+        use_snapshots=False,
+        werk_id=werk_id,
+        project_id=project_id,
+        losgroesse_modus=losgroesse_modus,
+        losgroesse_manuell=losgroesse_manuell,
+        losgroesse_gespeichert=losgroesse_gespeichert,
     )
 
 
@@ -778,6 +880,10 @@ def berechnen(
         _to_calc_input_from_request(body),
         body.veredelung_zuordnungen,
         werk_id=body.werk_id,
+        project_id=body.project_id,
+        losgroesse_modus=body.losgroesse_modus,
+        losgroesse_manuell=body.losgroesse_manuell,
+        losgroesse_gespeichert=body.losgroesse,
     )
 
 

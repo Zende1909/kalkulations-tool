@@ -112,10 +112,13 @@ def test_baseline_revision_is_discoverable():
 def test_alembic_head_is_plant_costing_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0009_werk_operating_params"]
-    rev = scripts.get_revision("e1a0009_werk_operating_params")
+    assert scripts.get_heads() == ["e1a0010_produktionsintervall_losgroesse_modus"]
+    rev = scripts.get_revision("e1a0010_produktionsintervall_losgroesse_modus")
     assert rev is not None
-    assert rev.down_revision == "e1a0008_plant_costing"
+    assert rev.down_revision == "e1a0009_werk_operating_params"
+    rev9 = scripts.get_revision("e1a0009_werk_operating_params")
+    assert rev9 is not None
+    assert rev9.down_revision == "e1a0008_plant_costing"
     e8 = scripts.get_revision("e1a0008_plant_costing")
     assert e8 is not None
     assert e8.down_revision == "e1a0007_veredelung_snapshot_yield"

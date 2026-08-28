@@ -36,6 +36,8 @@ class SpritzgussKalkulation(Base, TimestampMixin):
     )
     # Losgröße für Setup-Umlage (Pflicht wenn Setup aktiv)
     losgroesse: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    losgroesse_modus: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    losgroesse_manuell: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Material
     material_id: Mapped[int | None] = mapped_column(ForeignKey("materialien.id"), nullable=True)

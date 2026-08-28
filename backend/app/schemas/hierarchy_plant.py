@@ -6,9 +6,11 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from app.schemas.numbers import parse_de_float as _parse_de_float
+from app.services.losgroesse_berechnung import DEFAULT_PRODUKTIONSINTERVALL_ARBEITSTAGE
 
 _OPT_FLOAT_LABELS = {
     "arbeitstage_pro_jahr": "Arbeitstage/Jahr",
+    "produktionsintervall_arbeitstage": "Produktionsintervall (Arbeitstage)",
     "schichten_pro_tag": "Schichten/Tag",
     "stunden_pro_schicht": "Stunden/Schicht",
     "oee": "OEE",
@@ -66,6 +68,7 @@ class WerkBase(BaseModel):
     aktiv: bool = True
     # Standortparameter für Maschinenstundensatz (Mappe1 Globals)
     arbeitstage_pro_jahr: float | None = None
+    produktionsintervall_arbeitstage: float | None = None
     schichten_pro_tag: float | None = None
     stunden_pro_schicht: float | None = None
     oee: float | None = None
@@ -113,6 +116,22 @@ class WerkBase(BaseModel):
 
 
 class WerkCreate(WerkBase):
+    produktionsintervall_arbeitstage: float | None = Field(
+        default=DEFAULT_PRODUKTIONSINTERVALL_ARBEITSTAGE
+    )
+
+    @field_validator("produktionsintervall_arbeitstage")
+    @classmethod
+    def validate_produktionsintervall(cls, value: float | None) -> float | None:
+        if value is None:
+            return DEFAULT_PRODUKTIONSINTERVALL_ARBEITSTAGE
+        if value <= 0:
+            raise ValueError(
+                "Produktionsintervall muss eine positive Zahl Arbeitstage sein "
+                f"(Standard: {DEFAULT_PRODUKTIONSINTERVALL_ARBEITSTAGE})."
+            )
+        return value
+
     @field_validator("oee")
     @classmethod
     def validate_oee(cls, value: float | None) -> float | None:
@@ -146,6 +165,7 @@ class WerkUpdate(BaseModel):
     fx_to_eur: float | None = Field(default=None)
     aktiv: bool | None = None
     arbeitstage_pro_jahr: float | None = None
+    produktionsintervall_arbeitstage: float | None = None
     schichten_pro_tag: float | None = None
     stunden_pro_schicht: float | None = None
     oee: float | None = None
@@ -185,6 +205,16 @@ class WerkUpdate(BaseModel):
     def coerce_optional_floats(cls, value: Any, info: ValidationInfo) -> float | None:
         label = _OPT_FLOAT_LABELS.get(info.field_name or "", info.field_name or "Wert")
         return _parse_de_float(value, field_label=label, allow_none=True)
+
+    @field_validator("produktionsintervall_arbeitstage")
+    @classmethod
+    def validate_produktionsintervall_update(cls, value: float | None) -> float | None:
+        if value is not None and value <= 0:
+            raise ValueError(
+                "Produktionsintervall muss eine positive Zahl Arbeitstage sein "
+                f"(Standard: {DEFAULT_PRODUKTIONSINTERVALL_ARBEITSTAGE})."
+            )
+        return value
 
     @field_validator("oee")
     @classmethod

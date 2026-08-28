@@ -45,6 +45,17 @@ export interface SpritzgussErgebnis {
   bruttokapazitaet_exakt?: number;
   bruttokapazitaet?: number;
   nettokapazitaet?: number;
+  losgroesse_modus?: "automatisch" | "manuell";
+  losgroesse_automatisch?: number | null;
+  losgroesse_aktiv?: number | null;
+  losgroesse_manuell?: number | null;
+  losgroesse_jahresbedarf?: number | null;
+  produktionsintervall_arbeitstage?: number | null;
+  arbeitstage_pro_jahr?: number | null;
+  losgroesse_hinweis?: string | null;
+  setup_kosten_je_teil?: number;
+  setup_maschinenkosten_je_teil?: number;
+  setup_lohnkosten_je_teil?: number;
   spritzguss_gesamt?: number;
   veredelung_gesamt?: number;
   endpreis_je_stueck?: number;
@@ -101,6 +112,8 @@ export interface SpritzgussFormData {
 
   werk_id: number | null;
   losgroesse: number | null;
+  losgroesse_modus: "automatisch" | "manuell";
+  losgroesse_manuell: number | null;
   setup_zeit_min: number;
   setup_maschinenstundensatz: number;
   setup_lohnstundensatz: number;
@@ -169,6 +182,8 @@ export const emptySpritzgussForm = (): SpritzgussFormData => ({
   material_nominierung: null,
   werk_id: null,
   losgroesse: null,
+  losgroesse_modus: "automatisch",
+  losgroesse_manuell: null,
   setup_zeit_min: 0,
   setup_maschinenstundensatz: 0,
   setup_lohnstundensatz: 0,
