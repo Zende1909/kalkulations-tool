@@ -21,6 +21,8 @@ class KaufteilBase(BaseModel):
     customer_id: int | None = None
     program_id: int | None = None
     project_id: int | None = None
+    sga_override_aktiv: bool = False
+    sga_satz_manuell: float | None = Field(default=None, ge=0)
 
     @field_validator("preis", mode="before")
     @classmethod
@@ -62,6 +64,8 @@ class KaufteilUpdate(BaseModel):
     customer_id: int | None = None
     program_id: int | None = None
     project_id: int | None = None
+    sga_override_aktiv: bool | None = None
+    sga_satz_manuell: float | None = Field(default=None, ge=0)
 
     @field_validator("preis", mode="before")
     @classmethod
@@ -170,6 +174,14 @@ class BaugruppeErgebnisSchema(BaseModel):
     investitionen_gesamt: float = 0
     vorprodukt_gesamt: float | None = None
     assembly_direkt_gesamt: float | None = None
+    assembly_fgk_basis: float | None = None
+    assembly_fgk_satz_pct: float | None = None
+    assembly_fgk_betrag: float | None = None
+    kaufteile_einkauf_gesamt: float | None = None
+    kaufteile_mgk_gesamt: float | None = None
+    kaufteile_oem_handling_gesamt: float | None = None
+    kaufteile_sga_gesamt: float | None = None
+    kostenbasis_vor_ausschuss: float | None = None
     assembly_ausschuss_zuschlag: float | None = None
     kostenbasis_nach_assembly: float | None = None
     gewinn_pct: float | None = None

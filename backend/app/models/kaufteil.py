@@ -33,3 +33,5 @@ class Kaufteil(Base, TimestampMixin):
     project_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    sga_override_aktiv: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sga_satz_manuell: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -58,6 +58,14 @@ export interface BaugruppeErgebnis {
   veredelung_gesamt: number;
   vorprodukt_gesamt?: number;
   assembly_direkt_gesamt?: number;
+  assembly_fgk_basis?: number;
+  assembly_fgk_satz_pct?: number;
+  assembly_fgk_betrag?: number;
+  kaufteile_einkauf_gesamt?: number;
+  kaufteile_mgk_gesamt?: number;
+  kaufteile_oem_handling_gesamt?: number;
+  kaufteile_sga_gesamt?: number;
+  kostenbasis_vor_ausschuss?: number;
   assembly_ausschuss_zuschlag?: number;
   kostenbasis_nach_assembly?: number;
   gewinn_pct?: number;
@@ -159,6 +167,8 @@ export interface Kaufteil {
   gueltig_ab: string | null;
   aktiv: boolean;
   nominierung: "selbstnominiert" | "oem_nominiert" | null;
+  sga_override_aktiv?: boolean;
+  sga_satz_manuell?: number | null;
   customer_id: number | null;
   program_id: number | null;
   project_id: number | null;

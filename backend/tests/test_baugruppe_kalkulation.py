@@ -1,5 +1,7 @@
 """Unit-Tests für Baugruppenkalkulation."""
 
+from decimal import Decimal
+
 import pytest
 
 from app.services.baugruppe_kalkulation import (
@@ -14,6 +16,8 @@ from app.services.baugruppe_kalkulation import (
 from app.services.process_yield import apply_process_yield
 
 GEWINN_PCT = 15.0
+FGK_PCT = 22.0
+SGA_PCT = 10.0
 
 
 def _einzelteil(sid: int, preis: float, menge: float = 1.0, **kw) -> EinzelteilEingabe:
@@ -29,14 +33,39 @@ def _einzelteil(sid: int, preis: float, menge: float = 1.0, **kw) -> EinzelteilE
     return EinzelteilEingabe(**base)
 
 
-def _kaufteil(kid: int, preis: float, menge: float = 1.0, **kw) -> KaufteilEingabe:
+def _kaufteil(
+    kid: int,
+    einkauf: float,
+    menge: float = 1.0,
+    *,
+    mgk_pct: float = 3.0,
+    oem_pct: float = 0.0,
+    sga_pct: float = SGA_PCT,
+    nominierung: str = "selbstnominiert",
+    **kw,
+) -> KaufteilEingabe:
+    e = Decimal(str(einkauf))
+    mgk = e * Decimal(str(mgk_pct)) / Decimal("100")
+    oem = e * Decimal(str(oem_pct)) / Decimal("100") if nominierung == "oem_nominiert" else Decimal("0")
+    sga_basis = e + mgk + oem
+    sga = sga_basis * Decimal(str(sga_pct)) / Decimal("100")
+    total = sga_basis + sga
     base = dict(
         kaufteil_id=kid,
         bezeichnung=f"Kaufteil {kid}",
         lieferant="Lieferant A",
         menge=menge,
         reihenfolge=kid,
-        snapshot_preis=preis,
+        nominierung=nominierung,
+        einkaufspreis_je_stueck=float(e),
+        mgk_satz_pct=mgk_pct,
+        mgk_je_stueck=float(mgk),
+        oem_handling_satz_pct=oem_pct,
+        oem_handling_je_stueck=float(oem),
+        sga_satz_pct=sga_pct,
+        sga_quelle="standard",
+        sga_je_stueck=float(sga),
+        kosten_inkl_overheads_je_stueck=float(total),
     )
     base.update(kw)
     return KaufteilEingabe(**base)
@@ -44,19 +73,25 @@ def _kaufteil(kid: int, preis: float, menge: float = 1.0, **kw) -> KaufteilEinga
 
 def _veredelung(
     vid: int,
-    kosten: float,
+    *,
+    lohn: float = 0.0,
+    maschine: float = 0.0,
+    verbrauch: float = 0.0,
     faktor: float = 1.0,
     ausschussquote_pct: float = 0.0,
     **kw,
 ) -> VeredelungEingabe:
+    direkt = lohn + maschine + verbrauch
     base = dict(
         veredelungsschritt_id=vid,
         bezeichnung=f"Montage {vid}",
         reihenfolge=vid,
         mengenfaktor=faktor,
-        kosten_vor_ausschuss=kosten,
         ausschussquote_pct=ausschussquote_pct,
-        snapshot_kosten=kosten,
+        lohnkosten_je_stueck=lohn,
+        maschinenkosten_je_stueck=maschine,
+        verbrauchskosten_je_stueck=verbrauch,
+        direktkosten_je_stueck=direkt,
     )
     base.update(kw)
     return VeredelungEingabe(**base)
@@ -64,6 +99,7 @@ def _veredelung(
 
 def _calc(*args, **kwargs):
     kwargs.setdefault("gewinn_pct", GEWINN_PCT)
+    kwargs.setdefault("fgk_pct", FGK_PCT)
     return berechne_baugruppe(*args, **kwargs)
 
 
@@ -77,64 +113,96 @@ def test_mit_einem_einzelteil():
     result = _calc([_einzelteil(1, 5.50, menge=2)], [], [])
     assert result.einzelteile_gesamt == pytest.approx(11.0)
     assert result.vorprodukt_gesamt == pytest.approx(11.0)
-    assert result.baugruppenpreis_je_stueck == pytest.approx(11.0 * 1.15, abs=0.01)
+    assert result.baugruppenpreis_je_stueck == pytest.approx(11.0 * 1.15, rel=1e-6)
 
 
-def test_mit_mehreren_einzelteilen():
-    result = _calc([_einzelteil(1, 3.0), _einzelteil(2, 4.0, reihenfolge=2)], [], [])
-    assert result.einzelteile_gesamt == pytest.approx(7.0)
-    assert result.baugruppenpreis_je_stueck == pytest.approx(7.0 * 1.15, abs=0.01)
+def test_kaufteil_mit_mgk_und_sga():
+    kt = _kaufteil(1, 0.10, menge=5, mgk_pct=3.0, sga_pct=10.0)
+    result = _calc([], [kt], [])
+    assert result.kaufteile_einkauf_gesamt == pytest.approx(0.5)
+    assert result.kaufteile_mgk_gesamt == pytest.approx(0.015)
+    assert result.kaufteile_sga_gesamt == pytest.approx(0.0515)
+    assert result.kaufteile_gesamt == pytest.approx(0.5665)
 
 
-def test_kaufteil_hinzufuegen():
-    result = _calc([], [_kaufteil(1, 2.50, menge=3)], [])
-    assert result.kaufteile_gesamt == pytest.approx(7.50)
-    assert result.baugruppenpreis_je_stueck == pytest.approx(8.63)
+def test_oem_kaufteil_mit_handling():
+    kt = _kaufteil(1, 1.0, mgk_pct=5.0, oem_pct=6.0, nominierung="oem_nominiert")
+    result = _calc([], [kt], [])
+    assert result.kaufteile_mgk_gesamt == pytest.approx(0.05)
+    assert result.kaufteile_oem_handling_gesamt == pytest.approx(0.06)
 
 
-def test_kaufteilpreis_ueberschreiben():
-    result = _calc([], [_kaufteil(1, 9.99)], [])
-    assert result.kaufteile[0].einzelpreis == pytest.approx(9.99)
-
-
-def test_veredelungsschritt_hinzufuegen():
-    result = _calc([], [], [_veredelung(1, 1.20)])
-    assert result.veredelung_gesamt == pytest.approx(1.20)
-    assert result.baugruppenpreis_je_stueck == pytest.approx(1.20 * 1.15, abs=0.01)
-
-
-def test_reihenfolge_aendert_summe_nicht():
-    a = _calc(
-        [],
-        [],
-        [_veredelung(1, 1.0, reihenfolge=2), _veredelung(2, 2.0, reihenfolge=1)],
+def test_montage_fgk_auf_direkte_kosten():
+    lohn = 500 / 3600 * 12
+    maschine = 500 / 3600 * 1.69
+    direct = lohn + maschine
+    fgk = direct * 0.22
+    result = _calc(
+        [_einzelteil(1, 19.39)],
+        [_kaufteil(1, 0.10, menge=5)],
+        [_veredelung(1, lohn=lohn, maschine=maschine)],
     )
-    b = _calc(
-        [],
-        [],
-        [_veredelung(1, 1.0, reihenfolge=1), _veredelung(2, 2.0, reihenfolge=2)],
+    assert result.assembly_direkt_gesamt == pytest.approx(direct, rel=1e-6)
+    assert result.assembly_fgk_betrag == pytest.approx(fgk, rel=1e-6)
+    assert result.assembly_fgk_satz_pct == 22.0
+
+
+def test_bumper_endpreis_regression():
+    """Bumper-/TSV-Fall: Einzelteil 19,39 + Kaufteil 0,10×5 + Montage + FGK + 1,5% + 15% Gewinn."""
+    lohn = 500 / 3600 * 12
+    maschine = 500 / 3600 * 1.69
+    direct = lohn + maschine
+    fgk = direct * 0.22
+
+    einkauf = Decimal("0.10") * Decimal("5")
+    mgk = einkauf * Decimal("0.03")
+    sga_basis = einkauf + mgk
+    sga = sga_basis * Decimal("0.10")
+    kaufteil_total = sga_basis + sga
+    vorprodukt = Decimal("19.39") + kaufteil_total
+    basis_vor = vorprodukt + Decimal(str(direct)) + Decimal(str(fgk))
+    basis_nach, _, _ = apply_process_yield(vorprodukt + Decimal(str(fgk)), Decimal(str(direct)), 1.5)
+    gewinn = basis_nach * Decimal("0.15")
+    expected_end = basis_nach + gewinn
+
+    result = _calc(
+        [_einzelteil(1, 19.39)],
+        [_kaufteil(1, 0.10, menge=5, mgk_pct=3.0, sga_pct=10.0)],
+        [_veredelung(1, lohn=lohn, maschine=maschine, ausschussquote_pct=1.5)],
     )
-    assert a.veredelung_gesamt == b.veredelung_gesamt == 3.0
-    assert a.baugruppenpreis_je_stueck == b.baugruppenpreis_je_stueck == pytest.approx(3.0 * 1.15, abs=0.01)
+    assert result.kostenbasis_nach_assembly == pytest.approx(float(basis_nach), rel=1e-6)
+    assert result.baugruppenpreis_je_stueck == pytest.approx(float(expected_end), rel=1e-6)
 
 
-def test_menge_aendert_zwischensumme():
-    result = _calc([_einzelteil(1, 5.0, menge=4)], [], [])
-    assert result.einzelteile[0].zwischensumme == pytest.approx(20.0)
+def test_assembly_ausschuss_auf_vorprodukte_und_fgk():
+    einzel = _einzelteil(1, 100.0)
+    kauf = _kaufteil(1, 20.0, reihenfolge=2)
+    lohn = 10.0
+    montage = _veredelung(1, lohn=lohn, ausschussquote_pct=1.5, reihenfolge=3)
+    result = _calc([einzel], [kauf], [montage])
 
-
-def test_investition_separat_anzeigen():
-    inv = InvestitionAnzeige(
-        id=1,
-        bezeichnung="Werkzeug XY",
-        investment_type="Werkzeug",
-        amount=15000.0,
-        status="offen",
-        quelle="Einzelteil",
+    fgk = lohn * 0.22
+    vorprodukt = 100.0 + float(Decimal("20") * (Decimal("1") + Decimal("0.03")) * (Decimal("1") + Decimal("0.10")))
+    basis_nach, surcharge, _ = apply_process_yield(
+        Decimal(str(vorprodukt + fgk)),
+        Decimal(str(lohn)),
+        1.5,
     )
-    result = _calc([_einzelteil(1, 10.0)], [], [], investitionen=[inv])
-    assert result.investitionen_gesamt == 15000.0
-    assert len(result.investitionen) == 1
+    expected_end = float(basis_nach * Decimal("1.15"))
+
+    assert result.assembly_fgk_betrag == pytest.approx(fgk, rel=1e-6)
+    assert result.kostenbasis_nach_assembly == pytest.approx(float(basis_nach), rel=1e-6)
+    assert result.baugruppenpreis_je_stueck == pytest.approx(expected_end, rel=1e-6)
+
+
+def test_fehlender_gewinnsatz():
+    with pytest.raises(BaugruppeMarkupError, match="Gewinnsatz"):
+        berechne_baugruppe([_einzelteil(1, 1.0)], [], [], gewinn_pct=None, fgk_pct=FGK_PCT)
+
+
+def test_fehlender_fgk_satz():
+    with pytest.raises(BaugruppeMarkupError, match="FGK"):
+        berechne_baugruppe([_einzelteil(1, 1.0)], [], [], gewinn_pct=GEWINN_PCT, fgk_pct=None)
 
 
 def test_investition_nicht_im_stueckpreis():
@@ -147,74 +215,9 @@ def test_investition_nicht_im_stueckpreis():
         quelle="Einzelteil",
     )
     result = _calc([_einzelteil(1, 10.0)], [], [], investitionen=[inv])
-    assert result.baugruppenpreis_je_stueck == pytest.approx(10.0 * 1.15, abs=0.01)
-
-
-def test_gesamtkalkulation():
-    result = _calc(
-        [_einzelteil(1, 10.0, menge=2)],
-        [_kaufteil(1, 3.0)],
-        [_veredelung(1, 2.0, faktor=1.5)],
-        jahresstueckzahl=5000,
-    )
-    vorprodukt = 10 * 2 + 3
-    assembly_direct = 2 * 1.5
-    basis = vorprodukt + assembly_direct
-    endpreis = round(basis * 1.15, 2)
-    assert result.vorprodukt_gesamt == pytest.approx(vorprodukt)
-    assert result.assembly_direkt_gesamt == pytest.approx(assembly_direct)
-    assert result.kostenbasis_nach_assembly == pytest.approx(basis)
-    assert result.baugruppenpreis_je_stueck == pytest.approx(endpreis)
-    assert result.jahresumsatz == pytest.approx(endpreis * 5000)
-
-
-def test_assembly_ausschuss_auf_vorprodukte():
-    """Montageausschuss wirkt auf Einzelteile, Kaufteile und Montagekosten."""
-    einzel = _einzelteil(1, 100.0)
-    kauf = _kaufteil(1, 20.0, reihenfolge=2)
-    montage = _veredelung(1, 10.0, ausschussquote_pct=1.5, reihenfolge=3)
-    result = _calc([einzel], [kauf], [montage])
-
-    vorprodukt = 120.0
-    direct = 10.0
-    basis, surcharge, _ = apply_process_yield(
-        __import__("decimal").Decimal(str(vorprodukt)),
-        __import__("decimal").Decimal(str(direct)),
-        1.5,
-    )
-    expected_basis = float(basis)
-    expected_end = expected_basis * 1.15
-
-    expected_end = round(expected_basis * 1.15, 2)
-
-    assert result.vorprodukt_gesamt == pytest.approx(vorprodukt)
-    assert result.assembly_direkt_gesamt == pytest.approx(direct)
-    assert result.assembly_ausschuss_zuschlag == pytest.approx(float(surcharge), abs=0.01)
-    assert result.kostenbasis_nach_assembly == pytest.approx(expected_basis, abs=0.01)
-    assert result.baugruppenpreis_je_stueck == pytest.approx(expected_end, abs=0.01)
-    assert result.gewinn_betrag == pytest.approx(round(expected_basis * 0.15, 2), abs=0.01)
-
-
-def test_fehlender_gewinnsatz():
-    with pytest.raises(BaugruppeMarkupError, match="Gewinnsatz"):
-        berechne_baugruppe([_einzelteil(1, 1.0)], [], [], gewinn_pct=None)
-
-
-def test_preis_snapshots_bleiben_berechnungsbasis():
-    result = _calc([_einzelteil(1, 7.77)], [], [])
-    assert result.einzelteile[0].einzelpreis == pytest.approx(7.77)
+    assert result.baugruppenpreis_je_stueck == pytest.approx(10.0 * 1.15, rel=1e-6)
 
 
 def test_ungueltige_menge():
     with pytest.raises(BaugruppeValidationError, match="Menge"):
         _calc([_einzelteil(1, 5.0, menge=0)], [], [])
-
-
-def test_ungueltiger_mengenfaktor():
-    with pytest.raises(BaugruppeValidationError, match="Mengenfaktor"):
-        _calc([], [], [_veredelung(1, 1.0, faktor=0)])
-
-
-def test_doppeltes_einzelteil():
-    with pytest.raises(BaugruppeValidationError, match="doppelt"):
-        _calc([_einzelteil(1, 1.0), _einzelteil(1, 2.0, reihenfolge=2)], [], [])

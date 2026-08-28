@@ -86,9 +86,15 @@ function kaufteilSelectionTags(
 
 const ZUSAMMENFASSUNG: Array<{ key: keyof BaugruppeErgebnis; label: string; highlight?: boolean }> = [
   { key: "einzelteile_gesamt", label: "Einzelteil-Selbstkosten gesamt (€)" },
+  { key: "kaufteile_einkauf_gesamt", label: "Kaufteil-Einkauf gesamt (€)" },
+  { key: "kaufteile_mgk_gesamt", label: "Kaufteil-MGK gesamt (€)" },
+  { key: "kaufteile_oem_handling_gesamt", label: "OEM-Handling gesamt (€)" },
+  { key: "kaufteile_sga_gesamt", label: "Kaufteil-SG&A gesamt (€)" },
   { key: "kaufteile_gesamt", label: "Kaufteil-Selbstkosten gesamt (€)" },
   { key: "vorprodukt_gesamt", label: "Vorprodukt-Zwischensumme (€)" },
-  { key: "assembly_direkt_gesamt", label: "Assembly-/Montage direkt (€)" },
+  { key: "assembly_direkt_gesamt", label: "Montage direkt (€)" },
+  { key: "assembly_fgk_betrag", label: "Montage-FGK (€)" },
+  { key: "kostenbasis_vor_ausschuss", label: "Kostenbasis vor Ausschuss (€)" },
   { key: "assembly_ausschuss_zuschlag", label: "Assembly-Ausschusszuschlag (€)" },
   { key: "kostenbasis_nach_assembly", label: "Kostenbasis nach Assembly (€)" },
   { key: "gewinn_pct", label: "Gewinnsatz (%)" },

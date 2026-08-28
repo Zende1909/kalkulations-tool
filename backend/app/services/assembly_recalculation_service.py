@@ -342,7 +342,8 @@ def _refresh_position_snapshot(
     elif pos.position_type == "PURCHASED_PART":
         row = db.execute(
             text(
-                "SELECT bezeichnung, lieferant, preis, nominierung FROM kaufteile WHERE id = :id"
+                "SELECT bezeichnung, lieferant, preis, nominierung, "
+                "sga_override_aktiv, sga_satz_manuell FROM kaufteile WHERE id = :id"
             ),
             {"id": pos.purchased_part_id},
         ).first()
@@ -350,19 +351,20 @@ def _refresh_position_snapshot(
             raise AssemblyRecalculationError(f"{prefix}: Kaufteil nicht gefunden", status_code=404)
         try:
             rates = load_central_markup_rates(db, werk_id=werk_id)
-            mgk_pct = rates.mgk_pct_for_nominierung(row[3])
-        except CentralMarkupRatesError as exc:
-            raise AssemblyRecalculationError(
-                f"{prefix}: {exc}",
-            ) from exc
-        einkauf = float(row[2])
-        mgk_amount = einkauf * (mgk_pct / 100.0)
-        handling_pct = 0.0
-        if row[3] == "oem_nominiert":
-            handling_pct = float(getattr(rates, "handling_oem_kaufteil_pct", 0) or 0)
-        handling_amount = einkauf * (handling_pct / 100.0)
-        pos.price_snapshot = _money(einkauf + mgk_amount + handling_amount)
-        pos.cost_snapshot = einkauf
+            from app.services.kaufteil_kalkulation import berechne_kaufteil_kosten
+
+            detail = berechne_kaufteil_kosten(
+                float(row[2]),
+                row[3],
+                rates,
+                sga_override_aktiv=bool(row[4]) if row[4] is not None else False,
+                sga_satz_manuell=float(row[5]) if row[5] is not None else None,
+                kontext=prefix,
+            )
+        except Exception as exc:
+            raise AssemblyRecalculationError(f"{prefix}: {exc}") from exc
+        pos.price_snapshot = float(detail.kosten_inkl_overheads_je_stueck)
+        pos.cost_snapshot = float(detail.einkaufspreis_je_stueck)
         pos.name_snapshot = row[0]
         pos.supplier_snapshot = row[1]
 

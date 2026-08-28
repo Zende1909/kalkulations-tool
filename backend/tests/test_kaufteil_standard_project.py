@@ -91,6 +91,8 @@ def _create_schema(engine) -> None:
                     customer_id INTEGER,
                     program_id INTEGER,
                     project_id INTEGER,
+                    sga_override_aktiv BOOLEAN NOT NULL DEFAULT 0,
+                    sga_satz_manuell FLOAT,
                     created_at TIMESTAMP,
                     updated_at TIMESTAMP
                 )

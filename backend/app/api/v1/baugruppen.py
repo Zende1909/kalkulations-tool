@@ -53,6 +53,7 @@ from app.services.central_markup_rates import (
     CentralMarkupRatesError,
     load_central_markup_rates,
 )
+from app.services.kaufteil_kalkulation import KaufteilKalkulationError, berechne_kaufteil_kosten
 from app.services.project_volume_service import average_jahresstueckzahl_for_project
 from app.services.veredelung_kalkulation import VeredelungInput as VeredelungCalcInput
 from app.services.veredelung_kalkulation import berechne_veredelung
@@ -65,23 +66,37 @@ def _money(value: float) -> float:
     return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
-def _kaufteil_preis_inkl_mgk(
-    db: Session, kt: Kaufteil, *, werk_id: int | None = None
-) -> float:
-    """Einkaufspreis + MGK laut Nominierung (+ optionales OEM-Handling werkbezogen)."""
+def _kaufteil_kosten_detail(
+    db: Session,
+    kt: Kaufteil,
+    *,
+    werk_id: int | None = None,
+    einkauf_override: float | None = None,
+):
+    """Volle Kaufteilkosten je Stück inkl. MGK, OEM-Handling und SG&A."""
     try:
         rates = load_central_markup_rates(db, werk_id=werk_id)
-        mgk_pct = rates.mgk_pct_for_nominierung(kt.nominierung)
-    except CentralMarkupRatesError as exc:
+        return berechne_kaufteil_kosten(
+            einkauf_override if einkauf_override is not None else kt.preis,
+            kt.nominierung,
+            rates,
+            sga_override_aktiv=bool(getattr(kt, "sga_override_aktiv", False)),
+            sga_satz_manuell=getattr(kt, "sga_satz_manuell", None),
+            kontext=f"Kaufteil '{kt.bezeichnung}'",
+        )
+    except (CentralMarkupRatesError, KaufteilKalkulationError) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
-    einkauf = float(kt.preis)
-    mgk_amount = einkauf * (mgk_pct / 100.0)
-    handling = 0.0
-    if kt.nominierung == "oem_nominiert":
-        handling = einkauf * (float(rates.handling_oem_kaufteil_pct or 0) / 100.0)
-    return _money(einkauf + mgk_amount + handling)
+
+
+def _kaufteil_preis_inkl_overheads(
+    db: Session, kt: Kaufteil, *, werk_id: int | None = None, einkauf_override: float | None = None
+) -> float:
+    detail = _kaufteil_kosten_detail(
+        db, kt, werk_id=werk_id, einkauf_override=einkauf_override
+    )
+    return float(detail.kosten_inkl_overheads_je_stueck)
 
 
 def _selbstkosten_aus_spritzguss(kalk: SpritzgussKalkulation) -> float:
@@ -92,8 +107,8 @@ def _selbstkosten_aus_spritzguss(kalk: SpritzgussKalkulation) -> float:
     return 0.0
 
 
-def _veredelung_direktkosten(schritt: Veredelungsschritt) -> tuple[float, float]:
-    """Direkte Montagekosten vor Ausschuss und Ausschussquote in Prozentpunkten."""
+def _veredelung_direktkosten(schritt: Veredelungsschritt) -> tuple[float, float, float, float, float]:
+    """Direkte Montagekosten je Stück vor Assembly-Ausschuss (ohne FGK)."""
     result = berechne_veredelung(
         VeredelungCalcInput(
             taktzeit_s=schritt.taktzeit_s,
@@ -102,11 +117,17 @@ def _veredelung_direktkosten(schritt: Veredelungsschritt) -> tuple[float, float]
             maschinenstundensatz=schritt.maschinenstundensatz,
             verbrauchskosten_je_stueck=schritt.verbrauchskosten_je_stueck,
             ausschussquote_pct=0.0,
-            fgk_pct=schritt.fgk_pct,
+            fgk_pct=0.0,
             reihenfolge=schritt.reihenfolge,
         )
     )
-    return _money(result.kosten_vor_ausschuss), float(schritt.ausschussquote_pct)
+    return (
+        result.lohnkosten_je_stueck,
+        result.maschinenkosten_je_stueck,
+        result.verbrauchskosten_je_stueck,
+        result.kosten_vor_ausschuss,
+        float(schritt.ausschussquote_pct),
+    )
 
 
 def _endpreis_aus_spritzguss(kalk: SpritzgussKalkulation) -> float:
@@ -367,12 +388,13 @@ def _resolve_eingaben(
                 detail=f"Kaufteil {z.kaufteil_id} nicht gefunden",
             )
         snap = kt_snap.get(z.kaufteil_id)
-        if z.snapshot_preis is not None:
-            preis = z.snapshot_preis
-        elif use_snapshots and snap is not None:
-            preis = snap.snapshot_preis
-        else:
-            preis = _kaufteil_preis_inkl_mgk(db, kt, werk_id=werk_id)
+        einkauf_override = z.snapshot_preis if z.snapshot_preis is not None else None
+        detail = _kaufteil_kosten_detail(
+            db,
+            kt,
+            werk_id=werk_id,
+            einkauf_override=einkauf_override,
+        )
         bezeichnung = snap.snapshot_bezeichnung if snap else kt.bezeichnung
         lieferant = snap.snapshot_lieferant if snap else kt.lieferant
         kaufteile.append(
@@ -382,7 +404,16 @@ def _resolve_eingaben(
                 lieferant=lieferant,
                 menge=z.menge,
                 reihenfolge=z.reihenfolge,
-                snapshot_preis=preis,
+                nominierung=detail.nominierung,
+                einkaufspreis_je_stueck=float(detail.einkaufspreis_je_stueck),
+                mgk_satz_pct=float(detail.mgk_satz_pct),
+                mgk_je_stueck=float(detail.mgk_je_stueck),
+                oem_handling_satz_pct=float(detail.oem_handling_satz_pct),
+                oem_handling_je_stueck=float(detail.oem_handling_je_stueck),
+                sga_satz_pct=float(detail.sga_satz_pct),
+                sga_quelle=detail.sga_quelle,
+                sga_je_stueck=float(detail.sga_je_stueck),
+                kosten_inkl_overheads_je_stueck=float(detail.kosten_inkl_overheads_je_stueck),
             )
         )
 
@@ -396,21 +427,22 @@ def _resolve_eingaben(
             )
         snap = vd_snap.get(z.veredelungsschritt_id)
         if use_snapshots and snap is not None:
-            kosten_vor_ausschuss = snap.snapshot_kosten
             bezeichnung = snap.snapshot_bezeichnung
+            lohn, maschine, verbrauch, direkt, ausschussquote_pct = _veredelung_direktkosten(schritt)
         else:
-            kosten_vor_ausschuss, _ = _veredelung_direktkosten(schritt)
+            lohn, maschine, verbrauch, direkt, ausschussquote_pct = _veredelung_direktkosten(schritt)
             bezeichnung = schritt.bezeichnung
-        ausschussquote_pct = float(schritt.ausschussquote_pct)
         veredelungen.append(
             VeredelungEingabe(
                 veredelungsschritt_id=z.veredelungsschritt_id,
                 bezeichnung=bezeichnung,
                 reihenfolge=z.reihenfolge,
                 mengenfaktor=z.mengenfaktor,
-                kosten_vor_ausschuss=kosten_vor_ausschuss,
                 ausschussquote_pct=ausschussquote_pct,
-                snapshot_kosten=kosten_vor_ausschuss,
+                lohnkosten_je_stueck=lohn,
+                maschinenkosten_je_stueck=maschine,
+                verbrauchskosten_je_stueck=verbrauch,
+                direktkosten_je_stueck=direkt,
             )
         )
 
@@ -459,6 +491,7 @@ def _build_calc_response(
     try:
         rates = load_central_markup_rates(db, werk_id=werk_id)
         gewinn_pct = rates.gewinn_pct
+        fgk_pct = rates.fgk_pct
     except CentralMarkupRatesError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
@@ -486,6 +519,7 @@ def _build_calc_response(
             jahresstueckzahl=jahresstueckzahl,
             investitionen=investitionen,
             gewinn_pct=gewinn_pct,
+            fgk_pct=fgk_pct,
         )
     except BaugruppeMarkupError as exc:
         raise HTTPException(
@@ -504,6 +538,9 @@ def _build_calc_response(
         "ueberleitung": {
             "vorprodukt": ergebnis.vorprodukt_gesamt,
             "assembly_direkt": ergebnis.assembly_direkt_gesamt,
+            "assembly_fgk_basis": ergebnis.assembly_fgk_basis,
+            "assembly_fgk": ergebnis.assembly_fgk_betrag,
+            "kostenbasis_vor_ausschuss": ergebnis.kostenbasis_vor_ausschuss,
             "assembly_ausschuss": ergebnis.assembly_ausschuss_zuschlag,
             "kostenbasis_nach_assembly": ergebnis.kostenbasis_nach_assembly,
             "gewinn_pct": ergebnis.gewinn_pct,
@@ -576,7 +613,9 @@ def _sync_kaufteil_zuordnungen(
         preis = (
             z.snapshot_preis
             if z.snapshot_preis is not None
-            else _kaufteil_preis_inkl_mgk(db, kt, werk_id=getattr(obj, "werk_id", None))
+            else _kaufteil_preis_inkl_overheads(
+                db, kt, werk_id=getattr(obj, "werk_id", None)
+            )
         )
         db.add(
             BaugruppeKaufteilZuordnung(
@@ -612,7 +651,7 @@ def _sync_veredelung_zuordnungen(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Veredelungsschritt {z.veredelungsschritt_id} nicht gefunden",
             )
-        kosten_vor_ausschuss, _ = _veredelung_direktkosten(schritt)
+        lohn, maschine, verbrauch, kosten_vor_ausschuss, _ = _veredelung_direktkosten(schritt)
         db.add(
             BaugruppeVeredelungZuordnung(
                 baugruppe_id=obj.id,

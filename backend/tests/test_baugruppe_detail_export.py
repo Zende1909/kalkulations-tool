@@ -55,6 +55,8 @@ def db():
             "ALTER TABLE kaufteile ADD COLUMN customer_id INTEGER",
             "ALTER TABLE kaufteile ADD COLUMN program_id INTEGER",
             "ALTER TABLE kaufteile ADD COLUMN project_id INTEGER",
+            "ALTER TABLE kaufteile ADD COLUMN sga_override_aktiv BOOLEAN NOT NULL DEFAULT 0",
+            "ALTER TABLE kaufteile ADD COLUMN sga_satz_manuell FLOAT",
             """
             CREATE TABLE IF NOT EXISTS customers (
                 id INTEGER PRIMARY KEY,

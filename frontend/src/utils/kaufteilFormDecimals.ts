@@ -31,6 +31,8 @@ export function submitKaufteilFormValues(
       customer_id: null,
       program_id: null,
       project_id: null,
+      sga_override_aktiv: Boolean(base.sga_override_aktiv),
+      sga_satz_manuell: base.sga_override_aktiv ? toNullableId("sga_satz_manuell") : null,
     };
   }
   return {
@@ -38,5 +40,7 @@ export function submitKaufteilFormValues(
     customer_id: toNullableId("customer_id"),
     program_id: toNullableId("program_id"),
     project_id: projectId,
+    sga_override_aktiv: Boolean(base.sga_override_aktiv),
+    sga_satz_manuell: base.sga_override_aktiv ? toNullableId("sga_satz_manuell") : null,
   };
 }

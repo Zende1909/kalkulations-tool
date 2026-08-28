@@ -78,6 +78,19 @@ const formFields: FormField[] = [
       { value: "oem_nominiert", label: "OEM-nominiert (MGK aus Stammdaten)" },
     ],
   },
+  {
+    name: "sga_override_aktiv",
+    label: "SG&A-Satz manuell überschreiben",
+    type: "checkbox",
+    hint: "Ohne Aktivierung gilt der zentrale Standard-SG&A-Satz für Kaufteile.",
+  },
+  {
+    name: "sga_satz_manuell",
+    label: "Manueller SG&A-Satz (%)",
+    type: "number",
+    step: "0.01",
+    hint: "Nur bei aktivierter Überschreibung. Basis: Einkauf + MGK + OEM-Handling.",
+  },
   { name: "gueltig_ab", label: "Gültig ab", type: "date" },
   { name: "aktiv", label: "Aktiv", type: "checkbox" },
 ];
@@ -93,6 +106,8 @@ const emptyFormValues = {
   preis: 0,
   waehrung: "EUR",
   nominierung: "selbstnominiert" as const,
+  sga_override_aktiv: false,
+  sga_satz_manuell: null as number | null,
   customer_id: null as number | null,
   program_id: null as number | null,
   project_id: null as number | null,
@@ -124,7 +139,7 @@ export function KaufteilePage() {
       entityLabel="Kaufteil"
       endpoint="/kaufteile"
       listQuery={listQuery}
-      additionalFormKeys={[...HIERARCHY_KEYS]}
+      additionalFormKeys={[...HIERARCHY_KEYS, "sga_override_aktiv", "sga_satz_manuell"]}
       formMaxWidthClassName="max-w-2xl"
       formExtraContent={(values, onChange) => (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
