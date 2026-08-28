@@ -23,6 +23,7 @@ from app.services.business_case_pricing import (
     kosten_aus_baugruppe,
     kosten_aus_spritzguss,
     load_manual_prices_map,
+    revenue_margin_percent,
 )
 from app.services.dashboard import endpreis_aus_spritzguss, jahresumsatz_aus_baugruppe, preis_aus_baugruppe
 from app.services.investition_assignment_service import ASSIGNMENT_TYPE_LABELS, infer_assignment_type
@@ -141,7 +142,8 @@ def build_project_business_case(
     sales_positions: list[dict] = []
     for row in standalone_sg_rows:
         ergebnis = row.ergebnis if isinstance(row.ergebnis, dict) else None
-        cost = kosten_aus_spritzguss(ergebnis)
+        bloecke = row.ergebnis_bloecke if isinstance(row.ergebnis_bloecke, dict) else None
+        cost = kosten_aus_spritzguss(ergebnis, bloecke=bloecke)
         endpreis = endpreis_aus_spritzguss(ergebnis)
         manual = manual_map.get(("einzelteil", row.id))
         bottom = manual.bottom_price_per_piece if manual else None
@@ -182,7 +184,8 @@ def build_project_business_case(
     assemblies: list[dict] = []
     for row in bg_rows:
         ergebnis = row.ergebnis if isinstance(row.ergebnis, dict) else None
-        cost = kosten_aus_baugruppe(ergebnis)
+        bloecke = row.ergebnis_bloecke if isinstance(row.ergebnis_bloecke, dict) else None
+        cost = kosten_aus_baugruppe(ergebnis, bloecke=bloecke)
         baugruppenpreis = preis_aus_baugruppe(ergebnis)
         manual = manual_map.get(("baugruppe", row.id))
         bottom = manual.bottom_price_per_piece if manual else None
@@ -265,6 +268,12 @@ def build_project_business_case(
             revenue_amount=getattr(inv, "revenue_amount", None),
             legacy_amount=inv.amount,
         )
+        financials["margin_revenue_minus_cost_pct"] = revenue_margin_percent(
+            financials["revenue_amount"], financials["cost_amount"]
+        )
+        financials["margin_revenue_minus_bottom_price_pct"] = revenue_margin_percent(
+            financials["revenue_amount"], financials["bottom_price"]
+        )
         atype = infer_assignment_type(
             assignment_type=getattr(inv, "assignment_type", None),
             calculation_id=inv.calculation_id,
@@ -297,6 +306,8 @@ def build_project_business_case(
             "margin_revenue_minus_cost": financials["margin_revenue_minus_cost"],
             "margin_revenue_minus_bottom_price": financials["margin_revenue_minus_bottom_price"],
             "margin_bottom_price_minus_cost": financials["margin_bottom_price_minus_cost"],
+            "margin_revenue_minus_cost_pct": financials["margin_revenue_minus_cost_pct"],
+            "margin_revenue_minus_bottom_price_pct": financials["margin_revenue_minus_bottom_price_pct"],
             "amount_warnings": financials["warnings"],
             "assignment_type": atype,
             "assignment_type_label": ASSIGNMENT_TYPE_LABELS.get(atype or "", ""),
@@ -375,6 +386,8 @@ def build_project_business_case(
             "actual_revenue_total": sales_totals["actual_revenue_total"],
             "margin_bottom_price_total": sales_totals["margin_bottom_price_total"],
             "margin_actual_total": sales_totals["margin_actual_total"],
+            "margin_bottom_price_total_pct": sales_totals["margin_bottom_price_total_pct"],
+            "margin_actual_total_pct": sales_totals["margin_actual_total_pct"],
             "anzahl_einzelteile": len(parts),
             "anzahl_baugruppen": len(assemblies),
             "anzahl_einzelteile_in_baugruppen_ausgeschlossen": excluded_in_baugruppe_count,

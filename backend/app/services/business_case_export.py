@@ -14,6 +14,7 @@ from app.config import settings
 from app.services.business_case_overview import build_project_business_case
 
 EUR_FORMAT = '#,##0.00 "€"'
+PCT_FORMAT = '0.00"%"'
 BOLD = Font(bold=True)
 
 
@@ -34,8 +35,34 @@ class BusinessCaseExportData:
     investment_rows: list[list] = field(default_factory=list)
 
 
-def _money(value: float | None) -> str | float | None:
+def _money(value: float | None) -> float | str | None:
     return value
+
+
+def _pct(value: float | None) -> float | str | None:
+    return value
+
+
+def _position_row(item: dict, typ: str, label_key: str) -> list:
+    return [
+        typ,
+        item.get("material_number") or item.get("teilenummer"),
+        item.get(label_key),
+        _money(item.get("cost_per_piece")),
+        _money(item.get("bottom_price_per_piece")),
+        _money(item.get("actual_price_per_piece")),
+        _money(item.get("guide_price_per_piece")),
+        item.get("project_volume"),
+        _money(item.get("bottom_price_revenue")),
+        _money(item.get("actual_revenue")),
+        _money(item.get("cost_total")),
+        _money(item.get("margin_bottom_price_total")),
+        _pct(item.get("margin_bottom_price_total_pct")),
+        _money(item.get("margin_actual_total")),
+        _pct(item.get("margin_actual_total_pct")),
+        _pct(item.get("margin_bottom_price_pct")),
+        _pct(item.get("margin_actual_price_pct")),
+    ]
 
 
 def build_business_case_export(
@@ -64,45 +91,17 @@ def build_business_case_export(
         "Tatsächlicher Umsatz",
         "Kosten gesamt",
         "Bottom-Marge gesamt",
+        "Bottom-Marge gesamt %",
         "Tatsächliche Marge gesamt",
+        "Tatsächliche Marge gesamt %",
+        "Bottom-Marge/Stück %",
+        "Tatsächliche Marge/Stück %",
     ]
     position_rows: list[list] = []
     for part in data["parts"]:
-        position_rows.append(
-            [
-                "Einzelteil",
-                part.get("material_number") or part.get("teilenummer"),
-                part.get("bezeichnung"),
-                _money(part.get("cost_per_piece")),
-                _money(part.get("bottom_price_per_piece")),
-                _money(part.get("actual_price_per_piece")),
-                _money(part.get("guide_price_per_piece")),
-                part.get("project_volume"),
-                _money(part.get("bottom_price_revenue")),
-                _money(part.get("actual_revenue")),
-                _money(part.get("cost_total")),
-                _money(part.get("margin_bottom_price_total")),
-                _money(part.get("margin_actual_total")),
-            ]
-        )
+        position_rows.append(_position_row(part, "Einzelteil", "bezeichnung"))
     for asm in data["assemblies"]:
-        position_rows.append(
-            [
-                "Baugruppe",
-                asm.get("material_number") or asm.get("teilenummer"),
-                asm.get("name"),
-                _money(asm.get("cost_per_piece")),
-                _money(asm.get("bottom_price_per_piece")),
-                _money(asm.get("actual_price_per_piece")),
-                _money(asm.get("guide_price_per_piece")),
-                asm.get("project_volume"),
-                _money(asm.get("bottom_price_revenue")),
-                _money(asm.get("actual_revenue")),
-                _money(asm.get("cost_total")),
-                _money(asm.get("margin_bottom_price_total")),
-                _money(asm.get("margin_actual_total")),
-            ]
-        )
+        position_rows.append(_position_row(asm, "Baugruppe", "name"))
 
     investment_headers = [
         "Bezeichnung",
@@ -115,7 +114,9 @@ def build_business_case_export(
         "Bottom Price einmalig",
         "Erlös einmalig",
         "Erlös − Kosten",
+        "Erlös − Kosten %",
         "Erlös − Bottom Price",
+        "Erlös − Bottom Price %",
         "Bottom Price − Kosten",
     ]
     investment_rows = [
@@ -130,7 +131,9 @@ def build_business_case_export(
             inv.get("bottom_price"),
             inv.get("revenue_amount"),
             inv.get("margin_revenue_minus_cost"),
+            _pct(inv.get("margin_revenue_minus_cost_pct")),
             inv.get("margin_revenue_minus_bottom_price"),
+            _pct(inv.get("margin_revenue_minus_bottom_price_pct")),
             inv.get("margin_bottom_price_minus_cost"),
         ]
         for inv in data["investments"]
@@ -162,38 +165,44 @@ def render_business_case_excel(data: BusinessCaseExportData) -> bytes:
     ws["A2"] = f"{data.customer} / {data.program} / {data.project}"
     row = 4
     kpi_labels = [
-        ("Gesamtkosten", data.kpis.get("cost_total")),
-        ("Bottom-Price-Umsatz", data.kpis.get("bottom_price_revenue_total")),
-        ("Tatsächlicher Umsatz", data.kpis.get("actual_revenue_total")),
-        ("Bottom-Price-Marge", data.kpis.get("margin_bottom_price_total")),
-        ("Tatsächliche Marge", data.kpis.get("margin_actual_total")),
-        ("Projektstückzahl", data.kpis.get("project_volume_total")),
-        ("Einzelteile", data.kpis.get("anzahl_einzelteile")),
-        ("Baugruppen", data.kpis.get("anzahl_baugruppen")),
+        ("Gesamtkosten", data.kpis.get("cost_total"), EUR_FORMAT),
+        ("Bottom-Price-Umsatz", data.kpis.get("bottom_price_revenue_total"), EUR_FORMAT),
+        ("Tatsächlicher Umsatz", data.kpis.get("actual_revenue_total"), EUR_FORMAT),
+        ("Bottom-Price-Marge", data.kpis.get("margin_bottom_price_total"), EUR_FORMAT),
+        ("Bottom-Price-Marge %", data.kpis.get("margin_bottom_price_total_pct"), PCT_FORMAT),
+        ("Tatsächliche Marge", data.kpis.get("margin_actual_total"), EUR_FORMAT),
+        ("Tatsächliche Marge %", data.kpis.get("margin_actual_total_pct"), PCT_FORMAT),
+        ("Projektstückzahl", data.kpis.get("project_volume_total"), None),
+        ("Einzelteile", data.kpis.get("anzahl_einzelteile"), None),
+        ("Baugruppen", data.kpis.get("anzahl_baugruppen"), None),
     ]
-    for label, val in kpi_labels:
+    for label, val, fmt in kpi_labels:
         ws.cell(row=row, column=1, value=label).font = BOLD
         cell = ws.cell(row=row, column=2, value=val)
-        if isinstance(val, float):
-            cell.number_format = EUR_FORMAT
+        if isinstance(val, float) and fmt:
+            cell.number_format = fmt
         row += 1
     row += 1
     ws_pos = wb.create_sheet("Materialpositionen")
+    position_pct_cols = {13, 15, 16, 17}
     for col, header in enumerate(data.position_headers, 1):
         ws_pos.cell(row=1, column=col, value=header).font = BOLD
     for i, prow in enumerate(data.position_rows, start=2):
         for col, val in enumerate(prow, 1):
             cell = ws_pos.cell(row=i, column=col, value=val)
             if isinstance(val, float):
-                cell.number_format = EUR_FORMAT
+                cell.number_format = PCT_FORMAT if col in position_pct_cols else EUR_FORMAT
+            elif col == 8 and isinstance(val, (int, float)):
+                cell.number_format = "#,##0"
     ws_inv = wb.create_sheet("Investitionen")
+    inv_pct_cols = {11, 13}
     for col, header in enumerate(data.investment_headers, 1):
         ws_inv.cell(row=1, column=col, value=header).font = BOLD
     for i, irow in enumerate(data.investment_rows, start=2):
         for col, val in enumerate(irow, 1):
             cell = ws_inv.cell(row=i, column=col, value=val)
             if isinstance(val, float):
-                cell.number_format = EUR_FORMAT
+                cell.number_format = PCT_FORMAT if col in inv_pct_cols else EUR_FORMAT
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()

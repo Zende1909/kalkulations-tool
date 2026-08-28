@@ -7,6 +7,7 @@ class PositionPricingFields(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     cost_per_piece: float | None = None
+    has_cost_per_piece: bool = False
     bottom_price_per_piece: float | None = None
     actual_price_per_piece: float | None = None
     guide_price_per_piece: float | None = None
@@ -18,6 +19,10 @@ class PositionPricingFields(BaseModel):
     margin_actual_price_per_piece: float | None = None
     margin_bottom_price_total: float | None = None
     margin_actual_total: float | None = None
+    margin_bottom_price_pct: float | None = None
+    margin_actual_price_pct: float | None = None
+    margin_bottom_price_total_pct: float | None = None
+    margin_actual_total_pct: float | None = None
     price_warnings: list[str] = Field(default_factory=list)
     has_manual_bottom_price: bool = False
     has_manual_actual_price: bool = False
@@ -75,6 +80,8 @@ class BusinessCaseInvestmentRow(BaseModel):
     margin_revenue_minus_cost: float | None = None
     margin_revenue_minus_bottom_price: float | None = None
     margin_bottom_price_minus_cost: float | None = None
+    margin_revenue_minus_cost_pct: float | None = None
+    margin_revenue_minus_bottom_price_pct: float | None = None
     amount_warnings: list[str] = Field(default_factory=list)
     assignment_type: str | None = None
     assignment_type_label: str = ""
@@ -101,11 +108,13 @@ class BusinessCaseKpis(BaseModel):
     program_id: int | None = None
     linked_project_id: int | None = None
     project_volume_total: float = 0
-    cost_total: float = 0
+    cost_total: float | None = None
     bottom_price_revenue_total: float | None = None
     actual_revenue_total: float | None = None
     margin_bottom_price_total: float | None = None
     margin_actual_total: float | None = None
+    margin_bottom_price_total_pct: float | None = None
+    margin_actual_total_pct: float | None = None
     anzahl_einzelteile: int = 0
     anzahl_baugruppen: int = 0
     anzahl_einzelteile_in_baugruppen_ausgeschlossen: int = 0

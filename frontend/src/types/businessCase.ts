@@ -1,5 +1,6 @@
 export interface PositionPricing {
   cost_per_piece: number | null;
+  has_cost_per_piece: boolean;
   bottom_price_per_piece: number | null;
   actual_price_per_piece: number | null;
   guide_price_per_piece: number | null;
@@ -11,6 +12,10 @@ export interface PositionPricing {
   margin_actual_price_per_piece: number | null;
   margin_bottom_price_total: number | null;
   margin_actual_total: number | null;
+  margin_bottom_price_pct: number | null;
+  margin_actual_price_pct: number | null;
+  margin_bottom_price_total_pct: number | null;
+  margin_actual_total_pct: number | null;
   price_warnings: string[];
   has_manual_bottom_price: boolean;
   has_manual_actual_price: boolean;
@@ -68,6 +73,8 @@ export interface BusinessCaseInvestmentRow {
   margin_revenue_minus_cost: number | null;
   margin_revenue_minus_bottom_price: number | null;
   margin_bottom_price_minus_cost: number | null;
+  margin_revenue_minus_cost_pct: number | null;
+  margin_revenue_minus_bottom_price_pct: number | null;
   amount_warnings: string[];
   assignment_type: string | null;
   assignment_type_label: string;
@@ -99,11 +106,13 @@ export interface BusinessCaseKpis {
   program_id: number;
   linked_project_id: number;
   project_volume_total: number;
-  cost_total: number;
+  cost_total: number | null;
   bottom_price_revenue_total: number | null;
   actual_revenue_total: number | null;
   margin_bottom_price_total: number | null;
   margin_actual_total: number | null;
+  margin_bottom_price_total_pct: number | null;
+  margin_actual_total_pct: number | null;
   anzahl_einzelteile: number;
   anzahl_baugruppen: number;
   anzahl_einzelteile_in_baugruppen_ausgeschlossen: number;
@@ -153,6 +162,8 @@ export interface InvestmentFinancialBlock {
   margin_revenue_minus_cost_total: number | null;
   margin_revenue_minus_bottom_price_total: number | null;
   margin_bottom_price_minus_cost_total: number | null;
+  margin_revenue_minus_cost_pct?: number | null;
+  margin_revenue_minus_bottom_price_pct?: number | null;
 }
 
 export interface ManualPriceUpsert {
@@ -164,3 +175,10 @@ export interface ManualPriceUpsert {
   bottom_price_per_piece?: number | null;
   actual_price_per_piece?: number | null;
 }
+
+export type PriceEditTarget = {
+  assignmentType: "einzelteil" | "baugruppe";
+  row: BusinessCasePartRow | BusinessCaseAssemblyRow;
+  label: string;
+  materialNumber: string;
+};

@@ -38,6 +38,12 @@ from app.services.business_case_overview import build_project_business_case
 from app.services.business_case_pricing import (
     build_position_pricing,
     kalkulatorischer_richtpreis,
+    margin_percent_on_price,
+    revenue_margin_percent,
+)
+from app.services.spritzguss_cost_snapshot import (
+    herstellkosten_aus_baugruppe,
+    selbstkosten_aus_ergebnis,
 )
 
 
@@ -297,3 +303,72 @@ def test_business_case_pdf_export(api_client: TestClient):
     )
     assert resp.status_code == 200
     assert resp.content[:4] == b"%PDF"
+
+
+def test_cost_from_nested_ergebnis_bloecke():
+    ergebnis = {"endpreis_je_stueck": 15.0}
+    bloecke = {"zusammenfassung": {"selbstkosten": 9.75, "endpreis_je_stueck": 15.0}}
+    assert selbstkosten_aus_ergebnis(ergebnis, bloecke=bloecke) == 9.75
+
+
+def test_cost_from_gemeinkosten_block():
+    ergebnis = {"gemeinkosten": {"selbstkosten": 8.25}, "endpreis_je_stueck": 12.0}
+    assert selbstkosten_aus_ergebnis(ergebnis) == 8.25
+
+
+def test_baugruppe_cost_from_nested_bloecke():
+    ergebnis = {"endpreis_je_stueck": 30.0}
+    bloecke = {"zusammenfassung": {"herstellkosten": 22.5}}
+    assert herstellkosten_aus_baugruppe(ergebnis, bloecke=bloecke) == 22.5
+
+
+def test_einzelteil_cost_not_zero_when_present(seeded: Session):
+    result = build_project_business_case(
+        seeded, customer_id=1, program_id=10, linked_project_id=100
+    )
+    part = result["parts"][0]
+    assert part["cost_per_piece"] == 10.0
+    assert part["has_cost_per_piece"] is True
+    assert part["cost_total"] == pytest.approx(20000.0)
+
+
+def test_missing_cost_is_null_not_zero(seeded: Session):
+    sg = seeded.get(SpritzgussKalkulation, 1)
+    sg.ergebnis = {"endpreis_je_stueck": 12.0}
+    seeded.commit()
+    result = build_project_business_case(
+        seeded, customer_id=1, program_id=10, linked_project_id=100
+    )
+    part = result["parts"][0]
+    assert part["cost_per_piece"] is None
+    assert part["has_cost_per_piece"] is False
+    assert part["cost_total"] is None
+    assert part["margin_bottom_price_total"] is None
+    assert result["assemblies"][0]["cost_total"] == pytest.approx(40000.0)
+
+
+def test_margin_percent_calculation():
+    pricing = build_position_pricing(
+        cost_per_piece=10.0,
+        bottom_price_per_piece=12.0,
+        actual_price_per_piece=13.0,
+        project_volume=1000,
+    )
+    assert pricing["margin_bottom_price_pct"] == pytest.approx(16.666666, rel=1e-4)
+    assert pricing["margin_actual_price_pct"] == pytest.approx(23.076923, rel=1e-4)
+
+
+def test_margin_percent_division_by_zero():
+    assert margin_percent_on_price(0, 5) is None
+    assert margin_percent_on_price(12, None) is None
+    assert revenue_margin_percent(0, 100) is None
+
+
+def test_negative_margin_percent():
+    pricing = build_position_pricing(
+        cost_per_piece=10.0,
+        bottom_price_per_piece=8.0,
+        actual_price_per_piece=None,
+        project_volume=100,
+    )
+    assert pricing["margin_bottom_price_pct"] == pytest.approx(-25.0)

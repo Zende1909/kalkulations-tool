@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -19,28 +19,17 @@ import type {
   BusinessCaseAssemblyRow,
   BusinessCasePartRow,
   BusinessCaseResponse,
+  PriceEditTarget,
 } from "../types/businessCase";
 import { coerceFormDecimal, formatDecimalForInputDe } from "../utils/decimalInput";
-
-function euro(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "–";
-  return `${value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
-}
-
-function manualPrice(value: number | null | undefined, hasManual: boolean): string {
-  if (!hasManual || value == null) return "nicht hinterlegt";
-  return euro(value);
-}
-
-function marginClass(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "";
-  return value < 0 ? "text-red-700" : "";
-}
-
-function int(value: number | null | undefined): string {
-  if (value == null) return "–";
-  return value.toLocaleString("de-DE");
-}
+import {
+  formatCost,
+  formatEuro,
+  formatInteger,
+  formatManualPrice,
+  formatMarginWithPercent,
+  marginClass,
+} from "./businessCaseFormatting";
 
 const emptyHierarchy = (): HierarchySelection => ({
   customer_id: null,
@@ -60,7 +49,8 @@ function FinancialSummaryBlock({
     revenue_amount_total: number;
     margin_revenue_minus_cost_total: number | null;
     margin_revenue_minus_bottom_price_total: number | null;
-    margin_bottom_price_minus_cost_total: number | null;
+    margin_revenue_minus_cost_pct?: number | null;
+    margin_revenue_minus_bottom_price_pct?: number | null;
   };
 }) {
   return (
@@ -68,93 +58,179 @@ function FinancialSummaryBlock({
       <h4 className="mb-2 font-semibold">{title}</h4>
       <div className="grid gap-1 sm:grid-cols-2">
         <div>Anzahl: {block.count}</div>
-        <div>Kosten: {euro(block.cost_amount_total)}</div>
-        <div>Bottom Price: {euro(block.bottom_price_total)}</div>
-        <div>Erlös: {euro(block.revenue_amount_total)}</div>
+        <div>Kosten: {formatEuro(block.cost_amount_total)}</div>
+        <div>Bottom Price: {formatEuro(block.bottom_price_total)}</div>
+        <div>Erlös: {formatEuro(block.revenue_amount_total)}</div>
         <div className={marginClass(block.margin_revenue_minus_cost_total)}>
-          Erlös − Kosten: {euro(block.margin_revenue_minus_cost_total)}
+          Erlös − Kosten:{" "}
+          {formatMarginWithPercent(
+            block.margin_revenue_minus_cost_total,
+            block.margin_revenue_minus_cost_pct,
+          )}
+        </div>
+        <div className={marginClass(block.margin_revenue_minus_bottom_price_total)}>
+          Erlös − Bottom:{" "}
+          {formatMarginWithPercent(
+            block.margin_revenue_minus_bottom_price_total,
+            block.margin_revenue_minus_bottom_price_pct,
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function ManualPriceEditor({
-  row,
-  assignmentType,
+function PriceEditDialog({
+  target,
   filter,
   canWrite,
+  onClose,
   onSaved,
 }: {
-  row: BusinessCasePartRow | BusinessCaseAssemblyRow;
-  assignmentType: "einzelteil" | "baugruppe";
+  target: PriceEditTarget;
   filter: BusinessCaseResponse["filter"];
   canWrite: boolean;
+  onClose: () => void;
   onSaved: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [bottomRaw, setBottomRaw] = useState(
-    row.bottom_price_per_piece != null ? formatDecimalForInputDe(row.bottom_price_per_piece) : "",
+    target.row.bottom_price_per_piece != null
+      ? formatDecimalForInputDe(target.row.bottom_price_per_piece)
+      : "",
   );
   const [actualRaw, setActualRaw] = useState(
-    row.actual_price_per_piece != null ? formatDecimalForInputDe(row.actual_price_per_piece) : "",
+    target.row.actual_price_per_piece != null
+      ? formatDecimalForInputDe(target.row.actual_price_per_piece)
+      : "",
   );
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    dialogRef.current?.focus();
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const save = async () => {
     setBusy(true);
+    setError(null);
     try {
-      const bottom = bottomRaw.trim()
-        ? coerceFormDecimal(bottomRaw, "Bottom Price")
-        : null;
-      const actual = actualRaw.trim()
-        ? coerceFormDecimal(actualRaw, "Tatsächlicher Preis")
-        : null;
+      const bottom = bottomRaw.trim() ? coerceFormDecimal(bottomRaw, "Bottom Price") : null;
+      const actual = actualRaw.trim() ? coerceFormDecimal(actualRaw, "Tatsächlicher Preis") : null;
       await upsertManualPrice({
         customer_id: filter.customer_id,
         program_id: filter.program_id,
         linked_project_id: filter.linked_project_id,
-        assignment_type: assignmentType,
-        object_id: row.id,
+        assignment_type: target.assignmentType,
+        object_id: target.row.id,
         bottom_price_per_piece: bottom,
         actual_price_per_piece: actual,
       });
       onSaved();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
     } finally {
       setBusy(false);
     }
   };
 
-  if (!canWrite) {
-    return (
-      <div className="text-xs text-gray-600">
-        {manualPrice(row.bottom_price_per_piece, row.has_manual_bottom_price)} /{" "}
-        {manualPrice(row.actual_price_per_piece, row.has_manual_actual_price)}
-      </div>
-    );
-  }
-
   return (
-    <div className="flex min-w-[220px] flex-col gap-1">
-      <DecimalInputField
-        label="Bottom Price (€/Stk.)"
-        rawValue={bottomRaw}
-        onRawChange={setBottomRaw}
-        className="w-full rounded border px-1 py-0.5 text-xs"
-      />
-      <DecimalInputField
-        label="Tatsächlicher Preis (€/Stk.)"
-        rawValue={actualRaw}
-        onRawChange={setActualRaw}
-        className="w-full rounded border px-1 py-0.5 text-xs"
-      />
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => void save()}
-        className="rounded bg-slate-700 px-2 py-0.5 text-xs text-white disabled:opacity-50"
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2 sm:items-center sm:p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bc-price-dialog-title"
+        className="flex max-h-[min(92dvh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-xl"
       >
-        Speichern
-      </button>
+        <header className="flex shrink-0 items-center justify-between border-b px-4 py-3 sm:px-6">
+          <h3 id="bc-price-dialog-title" className="text-lg font-semibold">
+            Preise bearbeiten
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-gray-400 hover:bg-gray-100"
+            aria-label="Schließen"
+          >
+            ✕
+          </button>
+        </header>
+        <div className="space-y-3 overflow-y-auto px-4 py-4 sm:px-6">
+          <p className="text-sm text-gray-600">
+            {target.label} · {target.materialNumber}
+          </p>
+          <p className="text-sm">
+            Kosten/Stück:{" "}
+            {formatCost(target.row.cost_per_piece, target.row.has_cost_per_piece)}
+          </p>
+          <p className="text-xs text-gray-500">
+            Richtpreis (15 %): {formatEuro(target.row.guide_price_per_piece)} – nur Anzeige, wird nicht
+            übernommen
+          </p>
+          {error && (
+            <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              {error}
+            </div>
+          )}
+          {canWrite ? (
+            <>
+              <DecimalInputField
+                label="Bottom Price (€ / Stück)"
+                rawValue={bottomRaw}
+                onRawChange={setBottomRaw}
+                className="w-full rounded border px-2 py-1.5 text-sm"
+              />
+              <DecimalInputField
+                label="Tatsächlicher Preis (€ / Stück)"
+                rawValue={actualRaw}
+                onRawChange={setActualRaw}
+                className="w-full rounded border px-2 py-1.5 text-sm"
+              />
+            </>
+          ) : (
+            <p className="text-sm text-gray-600">Keine Schreibberechtigung.</p>
+          )}
+          {target.row.price_warnings.length > 0 && (
+            <ul className="list-disc pl-5 text-xs text-amber-800">
+              {target.row.price_warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <footer className="flex shrink-0 justify-end gap-2 border-t px-4 py-3 sm:px-6">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
+          >
+            Abbrechen
+          </button>
+          {canWrite && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void save()}
+              className="rounded bg-slate-700 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            >
+              Speichern
+            </button>
+          )}
+        </footer>
+      </div>
     </div>
   );
 }
@@ -166,6 +242,7 @@ export function BusinessCasePage() {
   const [loading, setLoading] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [priceEditTarget, setPriceEditTarget] = useState<PriceEditTarget | null>(null);
 
   const filterReady =
     filterHierarchy.customer_id != null &&
@@ -206,14 +283,13 @@ export function BusinessCasePage() {
     if (!data) return;
     setExportBusy(true);
     try {
-      const filename = `business_case_${data.project.replace(/\W+/g, "_")}.xlsx`;
       await downloadReport(
         businessCaseXlsxUrl({
           customer_id: data.customer_id,
           program_id: data.program_id,
           linked_project_id: data.linked_project_id,
         }),
-        filename,
+        `business_case_${data.project.replace(/\W+/g, "_")}.xlsx`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
@@ -226,14 +302,13 @@ export function BusinessCasePage() {
     if (!data) return;
     setExportBusy(true);
     try {
-      const filename = `business_case_${data.project.replace(/\W+/g, "_")}.pdf`;
       await downloadReport(
         businessCasePdfUrl({
           customer_id: data.customer_id,
           program_id: data.program_id,
           linked_project_id: data.linked_project_id,
         }),
-        filename,
+        `business_case_${data.project.replace(/\W+/g, "_")}.pdf`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
@@ -252,41 +327,72 @@ export function BusinessCasePage() {
       <th className="py-2 pr-3">Bottom-Umsatz</th>
       <th className="py-2 pr-3">Tatsächlicher Umsatz</th>
       <th className="py-2 pr-3">Kosten gesamt</th>
-      <th className="py-2 pr-3">Manuelle Preise</th>
+      <th className="py-2 pr-3">Bottom-Marge</th>
+      <th className="py-2 pr-3">Tatsächliche Marge</th>
     </>
   );
 
-  const priceCells = (row: BusinessCasePartRow | BusinessCaseAssemblyRow, atype: "einzelteil" | "baugruppe") => (
+  const priceCells = (row: BusinessCasePartRow | BusinessCaseAssemblyRow) => (
     <>
-      <td className="py-2 pr-3">{euro(row.cost_per_piece)}</td>
-      <td className="py-2 pr-3">{manualPrice(row.bottom_price_per_piece, row.has_manual_bottom_price)}</td>
-      <td className="py-2 pr-3">{manualPrice(row.actual_price_per_piece, row.has_manual_actual_price)}</td>
-      <td className="py-2 pr-3 text-gray-600" title="Kalkulatorischer Richtwert, nicht der tatsächliche Kundenpreis">
-        {euro(row.guide_price_per_piece)}
-      </td>
-      <td className="py-2 pr-3">{int(row.project_volume)}</td>
-      <td className="py-2 pr-3">{row.bottom_price_revenue != null ? euro(row.bottom_price_revenue) : "–"}</td>
-      <td className="py-2 pr-3">{row.actual_revenue != null ? euro(row.actual_revenue) : "–"}</td>
-      <td className="py-2 pr-3">{euro(row.cost_total)}</td>
+      <td className="py-2 pr-3">{formatCost(row.cost_per_piece, row.has_cost_per_piece)}</td>
       <td className="py-2 pr-3">
-        {data && (
-          <ManualPriceEditor
-            row={row}
-            assignmentType={atype}
-            filter={data.filter}
-            canWrite={canWrite}
-            onSaved={reload}
-          />
-        )}
-        {row.price_warnings.length > 0 && (
-          <ul className="mt-1 list-disc pl-4 text-xs text-amber-800">
-            {row.price_warnings.map((w) => (
-              <li key={w}>{w}</li>
-            ))}
-          </ul>
-        )}
+        {formatManualPrice(row.bottom_price_per_piece, row.has_manual_bottom_price)}
+      </td>
+      <td className="py-2 pr-3">
+        {formatManualPrice(row.actual_price_per_piece, row.has_manual_actual_price)}
+      </td>
+      <td
+        className="py-2 pr-3 text-gray-600"
+        title="Kalkulatorischer Richtwert, nicht der tatsächliche Kundenpreis"
+      >
+        {formatEuro(row.guide_price_per_piece)}
+      </td>
+      <td className="py-2 pr-3">{formatInteger(row.project_volume)}</td>
+      <td className="py-2 pr-3">
+        {row.bottom_price_revenue != null ? formatEuro(row.bottom_price_revenue) : "–"}
+      </td>
+      <td className="py-2 pr-3">
+        {row.actual_revenue != null ? formatEuro(row.actual_revenue) : "–"}
+      </td>
+      <td className="py-2 pr-3">{formatCost(row.cost_total, row.has_cost_per_piece)}</td>
+      <td className={`py-2 pr-3 ${marginClass(row.margin_bottom_price_total)}`}>
+        {formatMarginWithPercent(row.margin_bottom_price_total, row.margin_bottom_price_total_pct)}
+      </td>
+      <td className={`py-2 pr-3 ${marginClass(row.margin_actual_total)}`}>
+        {formatMarginWithPercent(row.margin_actual_total, row.margin_actual_total_pct)}
       </td>
     </>
+  );
+
+  const actionCells = (
+    row: BusinessCasePartRow | BusinessCaseAssemblyRow,
+    assignmentType: "einzelteil" | "baugruppe",
+    label: string,
+    linkTo: string,
+  ) => (
+    <td className="py-2">
+      <div className="flex flex-col gap-1">
+        {canWrite && (
+          <button
+            type="button"
+            className="text-left text-sm text-blue-700 underline"
+            onClick={() =>
+              setPriceEditTarget({
+                assignmentType,
+                row,
+                label,
+                materialNumber: row.material_number,
+              })
+            }
+          >
+            Preise bearbeiten
+          </button>
+        )}
+        <Link to={linkTo} className="text-sm text-blue-700 underline">
+          Öffnen
+        </Link>
+      </div>
+    </td>
   );
 
   return (
@@ -307,7 +413,11 @@ export function BusinessCasePage() {
             if (next.customer_id !== filterHierarchy.customer_id) {
               setFilterHierarchy({ customer_id: next.customer_id, program_id: null, project_id: null });
             } else if (next.program_id !== filterHierarchy.program_id) {
-              setFilterHierarchy({ customer_id: next.customer_id, program_id: next.program_id, project_id: null });
+              setFilterHierarchy({
+                customer_id: next.customer_id,
+                program_id: next.program_id,
+                project_id: null,
+              });
             } else {
               setFilterHierarchy(next);
             }
@@ -322,14 +432,20 @@ export function BusinessCasePage() {
           >
             Business Case anzeigen
           </button>
-          <button type="button" onClick={resetFilters} className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+          >
             Filter zurücksetzen
           </button>
         </div>
       </section>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {error}
+        </div>
       )}
 
       {data && (
@@ -341,12 +457,34 @@ export function BusinessCasePage() {
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[
-                ["Gesamtkosten", euro(data.kpis.cost_total)],
-                ["Bottom-Price-Umsatz", data.kpis.bottom_price_revenue_total != null ? euro(data.kpis.bottom_price_revenue_total) : "–"],
-                ["Tatsächlicher Umsatz", data.kpis.actual_revenue_total != null ? euro(data.kpis.actual_revenue_total) : "–"],
-                ["Bottom-Price-Marge", euro(data.kpis.margin_bottom_price_total)],
-                ["Tatsächliche Marge", euro(data.kpis.margin_actual_total)],
-                ["Projektstückzahl", int(data.kpis.project_volume_total)],
+                ["Gesamtkosten", formatCost(data.kpis.cost_total, data.kpis.cost_total != null)],
+                [
+                  "Bottom-Price-Umsatz",
+                  data.kpis.bottom_price_revenue_total != null
+                    ? formatEuro(data.kpis.bottom_price_revenue_total)
+                    : "–",
+                ],
+                [
+                  "Tatsächlicher Umsatz",
+                  data.kpis.actual_revenue_total != null
+                    ? formatEuro(data.kpis.actual_revenue_total)
+                    : "–",
+                ],
+                [
+                  "Bottom-Price-Marge",
+                  formatMarginWithPercent(
+                    data.kpis.margin_bottom_price_total,
+                    data.kpis.margin_bottom_price_total_pct,
+                  ),
+                ],
+                [
+                  "Tatsächliche Marge",
+                  formatMarginWithPercent(
+                    data.kpis.margin_actual_total,
+                    data.kpis.margin_actual_total_pct,
+                  ),
+                ],
+                ["Projektstückzahl", formatInteger(data.kpis.project_volume_total)],
                 ["Einzelteile (ohne BG-Anteil)", String(data.kpis.anzahl_einzelteile)],
                 ["Ausgeschlossen (in BG)", String(data.kpis.anzahl_einzelteile_in_baugruppen_ausgeschlossen)],
                 ["Baugruppen", String(data.kpis.anzahl_baugruppen)],
@@ -354,7 +492,9 @@ export function BusinessCasePage() {
               ].map(([label, value]) => (
                 <div key={label} className="rounded border border-gray-100 bg-gray-50 p-3">
                   <div className="text-xs text-gray-500">{label}</div>
-                  <div className={`mt-1 font-semibold ${label.includes("Marge") ? marginClass(typeof value === "string" ? null : (value as number)) : ""}`}>
+                  <div
+                    className={`mt-1 font-semibold ${String(label).includes("Marge") ? marginClass(typeof value === "string" ? null : (value as number)) : ""}`}
+                  >
                     {value}
                   </div>
                 </div>
@@ -401,12 +541,8 @@ export function BusinessCasePage() {
                       <tr key={p.id} className="border-b border-gray-100 align-top">
                         <td className="py-2 pr-3">{p.bezeichnung}</td>
                         <td className="py-2 pr-3">{p.material_number}</td>
-                        {priceCells(p, "einzelteil")}
-                        <td className="py-2">
-                          <Link to="/spritzguss" className="text-blue-700 underline">
-                            Öffnen
-                          </Link>
-                        </td>
+                        {priceCells(p)}
+                        {actionCells(p, "einzelteil", p.bezeichnung, "/spritzguss")}
                       </tr>
                     ))}
                   </tbody>
@@ -435,12 +571,8 @@ export function BusinessCasePage() {
                       <tr key={a.id} className="border-b border-gray-100 align-top">
                         <td className="py-2 pr-3">{a.name}</td>
                         <td className="py-2 pr-3">{a.material_number}</td>
-                        {priceCells(a, "baugruppe")}
-                        <td className="py-2">
-                          <Link to="/baugruppen" className="text-blue-700 underline">
-                            Öffnen
-                          </Link>
-                        </td>
+                        {priceCells(a)}
+                        {actionCells(a, "baugruppe", a.name, "/baugruppen")}
                       </tr>
                     ))}
                   </tbody>
@@ -453,8 +585,14 @@ export function BusinessCasePage() {
             <h3 className="mb-3 font-semibold">Investitionen</h3>
             {data.investment_financial_summary && (
               <div className="mb-4 grid gap-3 lg:grid-cols-2">
-                <FinancialSummaryBlock title="Materialnummernbezogen" block={data.investment_financial_summary.material_assignments} />
-                <FinancialSummaryBlock title="Gesamtprojekt" block={data.investment_financial_summary.project_assignments} />
+                <FinancialSummaryBlock
+                  title="Materialnummernbezogen"
+                  block={data.investment_financial_summary.material_assignments}
+                />
+                <FinancialSummaryBlock
+                  title="Gesamtprojekt"
+                  block={data.investment_financial_summary.project_assignments}
+                />
               </div>
             )}
             {data.investments.length === 0 ? (
@@ -481,20 +619,29 @@ export function BusinessCasePage() {
                       <tr key={inv.id} className="border-b border-gray-100">
                         <td className="py-2 pr-3">{inv.bezeichnung}</td>
                         <td className="py-2 pr-3">{inv.assignment_type_label || inv.assignment_type || "–"}</td>
-                        <td className="py-2 pr-3">{inv.material_number || (inv.assignment_type === "gesamtprojekt" ? "Gesamtprojekt" : "–")}</td>
+                        <td className="py-2 pr-3">
+                          {inv.material_number ||
+                            (inv.assignment_type === "gesamtprojekt" ? "Gesamtprojekt" : "–")}
+                        </td>
                         <td className="py-2 pr-3 text-xs">
                           {inv.customer_name} / {inv.program_name} / {inv.project_name}
                         </td>
-                        <td className="py-2 pr-3">{euro(inv.cost_amount)}</td>
-                        <td className="py-2 pr-3">{euro(inv.bottom_price)}</td>
-                        <td className="py-2 pr-3">{euro(inv.revenue_amount)}</td>
+                        <td className="py-2 pr-3">{formatEuro(inv.cost_amount)}</td>
+                        <td className="py-2 pr-3">{formatEuro(inv.bottom_price)}</td>
+                        <td className="py-2 pr-3">{formatEuro(inv.revenue_amount)}</td>
                         <td className={`py-2 pr-3 ${marginClass(inv.margin_revenue_minus_cost)}`}>
-                          {euro(inv.margin_revenue_minus_cost)}
+                          {formatMarginWithPercent(
+                            inv.margin_revenue_minus_cost,
+                            inv.margin_revenue_minus_cost_pct,
+                          )}
                         </td>
                         <td className={`py-2 pr-3 ${marginClass(inv.margin_revenue_minus_bottom_price)}`}>
-                          {euro(inv.margin_revenue_minus_bottom_price)}
+                          {formatMarginWithPercent(
+                            inv.margin_revenue_minus_bottom_price,
+                            inv.margin_revenue_minus_bottom_price_pct,
+                          )}
                         </td>
-                        <td className="py-2 text-amber-800 text-xs">
+                        <td className="py-2 text-xs text-amber-800">
                           {[inv.hinweis, ...(inv.amount_warnings ?? [])].filter(Boolean).join(" · ")}
                         </td>
                       </tr>
@@ -512,6 +659,16 @@ export function BusinessCasePage() {
         <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center text-sm text-gray-600">
           Bitte Kunde, Programm und Projekt wählen und „Business Case anzeigen“ klicken.
         </div>
+      )}
+
+      {priceEditTarget && data && (
+        <PriceEditDialog
+          target={priceEditTarget}
+          filter={data.filter}
+          canWrite={canWrite}
+          onClose={() => setPriceEditTarget(null)}
+          onSaved={reload}
+        />
       )}
     </div>
   );

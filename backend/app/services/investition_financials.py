@@ -117,19 +117,29 @@ def aggregate_investment_financials(rows: list[dict[str, Any]]) -> dict[str, Any
         return sum(float(v) for v in values)
 
     def _block(rows_subset: list[dict]) -> dict[str, Any]:
+        cost_total = _sum(rows_subset, "cost_amount")
+        revenue_total = _sum(rows_subset, "revenue_amount")
+        margin_rev_cost = _sum_margins(rows_subset, "margin_revenue_minus_cost")
+        margin_rev_bottom = _sum_margins(rows_subset, "margin_revenue_minus_bottom_price")
         return {
             "count": len(rows_subset),
-            "cost_amount_total": _sum(rows_subset, "cost_amount"),
+            "cost_amount_total": cost_total,
             "bottom_price_total": _sum(rows_subset, "bottom_price"),
-            "revenue_amount_total": _sum(rows_subset, "revenue_amount"),
-            "margin_revenue_minus_cost_total": _sum_margins(
-                rows_subset, "margin_revenue_minus_cost"
-            ),
-            "margin_revenue_minus_bottom_price_total": _sum_margins(
-                rows_subset, "margin_revenue_minus_bottom_price"
-            ),
+            "revenue_amount_total": revenue_total,
+            "margin_revenue_minus_cost_total": margin_rev_cost,
+            "margin_revenue_minus_bottom_price_total": margin_rev_bottom,
             "margin_bottom_price_minus_cost_total": _sum_margins(
                 rows_subset, "margin_bottom_price_minus_cost"
+            ),
+            "margin_revenue_minus_cost_pct": (
+                margin_rev_cost / revenue_total * 100
+                if margin_rev_cost is not None and revenue_total
+                else None
+            ),
+            "margin_revenue_minus_bottom_price_pct": (
+                margin_rev_bottom / revenue_total * 100
+                if margin_rev_bottom is not None and revenue_total
+                else None
             ),
         }
 
