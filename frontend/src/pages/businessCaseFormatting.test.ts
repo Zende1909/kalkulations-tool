@@ -5,7 +5,15 @@ import {
   formatMarginPercent,
   formatMarginWithPercent,
   formatManualPrice,
+  formatRevenueEuro,
 } from "./businessCaseFormatting";
+
+describe("businessCaseFormatting revenue", () => {
+  it("formats revenue as whole euros", () => {
+    expect(formatRevenueEuro(28000.49)).toBe("28.000 €");
+    expect(formatRevenueEuro(28000.51)).toBe("28.001 €");
+  });
+});
 
 describe("businessCaseFormatting", () => {
   it("shows nicht hinterlegt for missing costs", () => {

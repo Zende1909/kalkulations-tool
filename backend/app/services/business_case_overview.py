@@ -25,7 +25,7 @@ from app.services.business_case_pricing import (
     load_manual_prices_map,
     revenue_margin_percent,
 )
-from app.services.dashboard import endpreis_aus_spritzguss, jahresumsatz_aus_baugruppe, preis_aus_baugruppe
+from app.services.dashboard import endpreis_aus_spritzguss, jahresumsatz_aus_baugruppe, parse_json_dict, preis_aus_baugruppe
 from app.services.investition_assignment_service import ASSIGNMENT_TYPE_LABELS, infer_assignment_type
 from app.services.investition_financials import (
     aggregate_investment_financials,
@@ -141,8 +141,8 @@ def build_project_business_case(
     parts: list[dict] = []
     sales_positions: list[dict] = []
     for row in standalone_sg_rows:
-        ergebnis = row.ergebnis if isinstance(row.ergebnis, dict) else None
-        bloecke = row.ergebnis_bloecke if isinstance(row.ergebnis_bloecke, dict) else None
+        ergebnis = parse_json_dict(row.ergebnis)
+        bloecke = parse_json_dict(row.ergebnis_bloecke)
         cost = kosten_aus_spritzguss(ergebnis, bloecke=bloecke)
         endpreis = endpreis_aus_spritzguss(ergebnis)
         manual = manual_map.get(("einzelteil", row.id))
@@ -183,8 +183,8 @@ def build_project_business_case(
 
     assemblies: list[dict] = []
     for row in bg_rows:
-        ergebnis = row.ergebnis if isinstance(row.ergebnis, dict) else None
-        bloecke = row.ergebnis_bloecke if isinstance(row.ergebnis_bloecke, dict) else None
+        ergebnis = parse_json_dict(row.ergebnis)
+        bloecke = parse_json_dict(row.ergebnis_bloecke)
         cost = kosten_aus_baugruppe(ergebnis, bloecke=bloecke)
         baugruppenpreis = preis_aus_baugruppe(ergebnis)
         manual = manual_map.get(("baugruppe", row.id))

@@ -35,6 +35,12 @@ class BusinessCaseExportData:
     investment_rows: list[list] = field(default_factory=list)
 
 
+def _revenue_export(value: float | None) -> int | None:
+    if value is None:
+        return None
+    return int(round(value))
+
+
 def _money(value: float | None) -> float | str | None:
     return value
 
@@ -53,8 +59,8 @@ def _position_row(item: dict, typ: str, label_key: str) -> list:
         _money(item.get("actual_price_per_piece")),
         _money(item.get("guide_price_per_piece")),
         item.get("project_volume"),
-        _money(item.get("bottom_price_revenue")),
-        _money(item.get("actual_revenue")),
+        _revenue_export(item.get("bottom_price_revenue")),
+        _revenue_export(item.get("actual_revenue")),
         _money(item.get("cost_total")),
         _money(item.get("margin_bottom_price_total")),
         _pct(item.get("margin_bottom_price_total_pct")),
@@ -166,8 +172,8 @@ def render_business_case_excel(data: BusinessCaseExportData) -> bytes:
     row = 4
     kpi_labels = [
         ("Gesamtkosten", data.kpis.get("cost_total"), EUR_FORMAT),
-        ("Bottom-Price-Umsatz", data.kpis.get("bottom_price_revenue_total"), EUR_FORMAT),
-        ("Tatsächlicher Umsatz", data.kpis.get("actual_revenue_total"), EUR_FORMAT),
+        ("Bottom-Price-Umsatz", _revenue_export(data.kpis.get("bottom_price_revenue_total")), None),
+        ("Tatsächlicher Umsatz", _revenue_export(data.kpis.get("actual_revenue_total")), None),
         ("Bottom-Price-Marge", data.kpis.get("margin_bottom_price_total"), EUR_FORMAT),
         ("Bottom-Price-Marge %", data.kpis.get("margin_bottom_price_total_pct"), PCT_FORMAT),
         ("Tatsächliche Marge", data.kpis.get("margin_actual_total"), EUR_FORMAT),
@@ -181,10 +187,13 @@ def render_business_case_excel(data: BusinessCaseExportData) -> bytes:
         cell = ws.cell(row=row, column=2, value=val)
         if isinstance(val, float) and fmt:
             cell.number_format = fmt
+        elif isinstance(val, int) and label.endswith("Umsatz"):
+            cell.number_format = '#,##0 "€"'
         row += 1
     row += 1
     ws_pos = wb.create_sheet("Materialpositionen")
     position_pct_cols = {13, 15, 16, 17}
+    position_revenue_cols = {9, 10}
     for col, header in enumerate(data.position_headers, 1):
         ws_pos.cell(row=1, column=col, value=header).font = BOLD
     for i, prow in enumerate(data.position_rows, start=2):
@@ -192,6 +201,8 @@ def render_business_case_excel(data: BusinessCaseExportData) -> bytes:
             cell = ws_pos.cell(row=i, column=col, value=val)
             if isinstance(val, float):
                 cell.number_format = PCT_FORMAT if col in position_pct_cols else EUR_FORMAT
+            elif col in position_revenue_cols and isinstance(val, int):
+                cell.number_format = '#,##0 "€"'
             elif col == 8 and isinstance(val, (int, float)):
                 cell.number_format = "#,##0"
     ws_inv = wb.create_sheet("Investitionen")

@@ -72,14 +72,30 @@ def herstellkosten_aus_baugruppe(
     *,
     bloecke: dict[str, Any] | None = None,
 ) -> float | None:
-    """Baugruppen-Herstellkosten/Selbstkosten aus Ergebnis und Blöcken."""
-    cost_keys = ("herstellkosten", "selbstkosten", "gesamte_herstellkosten")
+    """Baugruppen-Herstellkosten/Selbstkosten aus Ergebnis und Blöcken.
+
+    Unterstützt neue Assembly-Berechnung (herstellkosten/selbstkosten) sowie
+    Legacy-Baugruppenkalkulation (kostenbasis_nach_assembly in ergebnis/ueberleitung).
+    """
+    cost_keys = (
+        "herstellkosten",
+        "selbstkosten",
+        "kostenbasis_nach_assembly",
+        "gesamte_herstellkosten",
+        "kostenbasis_vor_ausschuss",
+    )
     direct = _first_cost_from_dict(ergebnis, cost_keys)
     if direct is not None:
         return direct
 
+    if isinstance(ergebnis, dict):
+        gemeinkosten = ergebnis.get("gemeinkosten")
+        nested = _first_cost_from_dict(gemeinkosten if isinstance(gemeinkosten, dict) else None, cost_keys)
+        if nested is not None:
+            return nested
+
     if isinstance(bloecke, dict):
-        for block_key in ("zusammenfassung", "gemeinkosten", "kosten"):
+        for block_key in ("zusammenfassung", "gemeinkosten", "kosten", "ueberleitung"):
             block = bloecke.get(block_key)
             nested = _first_cost_from_dict(block if isinstance(block, dict) else None, cost_keys)
             if nested is not None:

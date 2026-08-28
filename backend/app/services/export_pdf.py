@@ -566,6 +566,13 @@ def _fmt_optional_money(value: float | None) -> str:
     return _money(value)
 
 
+def _fmt_optional_revenue(value: float | None) -> str:
+    if value is None:
+        return "–"
+    whole = int(round(value))
+    return f"{whole:,}".replace(",", "X").replace(".", ",").replace("X", ".") + " €"
+
+
 def render_business_case_pdf(data) -> bytes:
     """PDF für Business-Case-Export (BusinessCaseExportData)."""
     from app.services.business_case_export import BusinessCaseExportData
@@ -585,8 +592,8 @@ def render_business_case_pdf(data) -> bytes:
     story = _header_block(data.company_name, "Business Case", meta)
     kpis = [
         ("Gesamtkosten", _fmt_optional_money(data.kpis.get("cost_total"))),
-        ("Bottom-Price-Umsatz", _fmt_optional_money(data.kpis.get("bottom_price_revenue_total"))),
-        ("Tatsächlicher Umsatz", _fmt_optional_money(data.kpis.get("actual_revenue_total"))),
+        ("Bottom-Price-Umsatz", _fmt_optional_revenue(data.kpis.get("bottom_price_revenue_total"))),
+        ("Tatsächlicher Umsatz", _fmt_optional_revenue(data.kpis.get("actual_revenue_total"))),
         ("Bottom-Price-Marge", _fmt_optional_money(data.kpis.get("margin_bottom_price_total"))),
         ("Tatsächliche Marge", _fmt_optional_money(data.kpis.get("margin_actual_total"))),
         ("Projektstückzahl", str(data.kpis.get("project_volume_total") or "–")),
@@ -607,8 +614,8 @@ def render_business_case_pdf(data) -> bytes:
                 _fmt_optional_money(row[5] if isinstance(row[5], (int, float)) else None),
                 _fmt_optional_money(row[6] if isinstance(row[6], (int, float)) else None),
                 str(row[7] if row[7] is not None else "–"),
-                _fmt_optional_money(row[8] if isinstance(row[8], (int, float)) else None),
-                _fmt_optional_money(row[9] if isinstance(row[9], (int, float)) else None),
+                _fmt_optional_revenue(row[8] if isinstance(row[8], (int, float)) else None),
+                _fmt_optional_revenue(row[9] if isinstance(row[9], (int, float)) else None),
                 _fmt_optional_money(row[10] if isinstance(row[10], (int, float)) else None),
                 _fmt_optional_money(row[11] if isinstance(row[11], (int, float)) else None),
                 _fmt_optional_money(row[12] if isinstance(row[12], (int, float)) else None),

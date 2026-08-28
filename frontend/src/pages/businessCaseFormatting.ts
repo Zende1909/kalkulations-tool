@@ -46,6 +46,12 @@ export function marginClass(value: number | null | undefined): string {
   return value < 0 ? "text-red-700" : "";
 }
 
+export function formatRevenueEuro(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "–";
+  const whole = Math.round(value);
+  return `${whole.toLocaleString("de-DE", { maximumFractionDigits: 0 })} €`;
+}
+
 export function formatInteger(value: number | null | undefined): string {
   if (value == null) return "–";
   return value.toLocaleString("de-DE");

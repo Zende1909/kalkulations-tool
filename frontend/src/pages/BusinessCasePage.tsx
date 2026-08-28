@@ -28,6 +28,7 @@ import {
   formatInteger,
   formatManualPrice,
   formatMarginWithPercent,
+  formatRevenueEuro,
   marginClass,
 } from "./businessCaseFormatting";
 
@@ -349,10 +350,10 @@ export function BusinessCasePage() {
       </td>
       <td className="py-2 pr-3">{formatInteger(row.project_volume)}</td>
       <td className="py-2 pr-3">
-        {row.bottom_price_revenue != null ? formatEuro(row.bottom_price_revenue) : "–"}
+        {row.bottom_price_revenue != null ? formatRevenueEuro(row.bottom_price_revenue) : "–"}
       </td>
       <td className="py-2 pr-3">
-        {row.actual_revenue != null ? formatEuro(row.actual_revenue) : "–"}
+        {row.actual_revenue != null ? formatRevenueEuro(row.actual_revenue) : "–"}
       </td>
       <td className="py-2 pr-3">{formatCost(row.cost_total, row.has_cost_per_piece)}</td>
       <td className={`py-2 pr-3 ${marginClass(row.margin_bottom_price_total)}`}>
@@ -461,13 +462,13 @@ export function BusinessCasePage() {
                 [
                   "Bottom-Price-Umsatz",
                   data.kpis.bottom_price_revenue_total != null
-                    ? formatEuro(data.kpis.bottom_price_revenue_total)
+                    ? formatRevenueEuro(data.kpis.bottom_price_revenue_total)
                     : "–",
                 ],
                 [
                   "Tatsächlicher Umsatz",
                   data.kpis.actual_revenue_total != null
-                    ? formatEuro(data.kpis.actual_revenue_total)
+                    ? formatRevenueEuro(data.kpis.actual_revenue_total)
                     : "–",
                 ],
                 [

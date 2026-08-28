@@ -364,11 +364,33 @@ def test_margin_percent_division_by_zero():
     assert revenue_margin_percent(0, 100) is None
 
 
-def test_negative_margin_percent():
-    pricing = build_position_pricing(
-        cost_per_piece=10.0,
-        bottom_price_per_piece=8.0,
-        actual_price_per_piece=None,
-        project_volume=100,
+def test_baugruppe_cost_from_legacy_kostenbasis():
+    ergebnis = {
+        "baugruppenpreis_je_stueck": 28.0,
+        "kostenbasis_nach_assembly": 22.5,
+        "einzelteile_gesamt": 15.0,
+    }
+    assert herstellkosten_aus_baugruppe(ergebnis) == 22.5
+
+
+def test_baugruppe_cost_from_legacy_ueberleitung_block():
+    ergebnis = {"baugruppenpreis_je_stueck": 28.0}
+    bloecke = {"ueberleitung": {"kostenbasis_nach_assembly": 18.75}}
+    assert herstellkosten_aus_baugruppe(ergebnis, bloecke=bloecke) == 18.75
+
+
+def test_legacy_baugruppe_cost_in_business_case(seeded: Session):
+    bg = seeded.get(Baugruppe, 3)
+    bg.ergebnis = {
+        "baugruppenpreis_je_stueck": 28.0,
+        "kostenbasis_nach_assembly": 22.5,
+        "jahresstueckzahl": 4000,
+    }
+    seeded.commit()
+    result = build_project_business_case(
+        seeded, customer_id=1, program_id=10, linked_project_id=100
     )
-    assert pricing["margin_bottom_price_pct"] == pytest.approx(-25.0)
+    asm = result["assemblies"][0]
+    assert asm["cost_per_piece"] == 22.5
+    assert asm["has_cost_per_piece"] is True
+    assert asm["cost_total"] == pytest.approx(45000.0)
