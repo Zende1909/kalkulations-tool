@@ -385,6 +385,7 @@ def berechne_baugruppe(
                 running,
                 direct,
                 schritt.ausschussquote_pct,
+                quantize=False,
             )
         except ValueError as exc:
             raise BaugruppeValidationError(str(exc)) from exc

@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.services.assembly_calculation import MarkupRates, PositionCalcInput, calculate_assembly
 from app.services.baugruppe_kalkulation import (
     BaugruppeMarkupError,
     BaugruppeValidationError,
@@ -13,7 +14,6 @@ from app.services.baugruppe_kalkulation import (
     VeredelungEingabe,
     berechne_baugruppe,
 )
-from app.services.process_yield import apply_process_yield
 
 GEWINN_PCT = 15.0
 FGK_PCT = 22.0
@@ -147,31 +147,120 @@ def test_montage_fgk_auf_direkte_kosten():
     assert result.assembly_fgk_satz_pct == 22.0
 
 
+def _bumper_soll_endpreis_unabhaengig() -> Decimal:
+    """Unabhängige Sollrechnung – Formel separat, nicht aus dem Ergebnisobjekt."""
+    einzelteil = Decimal("19.39")
+    einkauf = Decimal("0.10") * Decimal("5")
+    mgk = einkauf * Decimal("3") / Decimal("100")
+    kaufteil_vor_sga = einkauf + mgk
+    kaufteil_sga = kaufteil_vor_sga * Decimal("10") / Decimal("100")
+    vorprodukt = einzelteil + kaufteil_vor_sga + kaufteil_sga
+
+    takt_s = Decimal("500")
+    lohn = takt_s / Decimal("3600") * Decimal("12")
+    maschine = takt_s / Decimal("3600") * Decimal("1.69")
+    direct = lohn + maschine
+    fgk = direct * Decimal("22") / Decimal("100")
+
+    basis_vor_ausschuss = vorprodukt + direct + fgk
+    basis_nach_ausschuss = basis_vor_ausschuss / (
+        Decimal("1") - Decimal("1.5") / Decimal("100")
+    )
+    return basis_nach_ausschuss * (Decimal("1") + Decimal("15") / Decimal("100"))
+
+
 def test_bumper_endpreis_regression():
     """Bumper-/TSV-Fall: Einzelteil 19,39 + Kaufteil 0,10×5 + Montage + FGK + 1,5% + 15% Gewinn."""
     lohn = 500 / 3600 * 12
     maschine = 500 / 3600 * 1.69
     direct = lohn + maschine
     fgk = direct * 0.22
-
-    einkauf = Decimal("0.10") * Decimal("5")
-    mgk = einkauf * Decimal("0.03")
-    sga_basis = einkauf + mgk
-    sga = sga_basis * Decimal("0.10")
-    kaufteil_total = sga_basis + sga
-    vorprodukt = Decimal("19.39") + kaufteil_total
-    basis_vor = vorprodukt + Decimal(str(direct)) + Decimal(str(fgk))
-    basis_nach, _, _ = apply_process_yield(vorprodukt + Decimal(str(fgk)), Decimal(str(direct)), 1.5)
-    gewinn = basis_nach * Decimal("0.15")
-    expected_end = basis_nach + gewinn
+    expected_end = float(_bumper_soll_endpreis_unabhaengig())
 
     result = _calc(
         [_einzelteil(1, 19.39)],
         [_kaufteil(1, 0.10, menge=5, mgk_pct=3.0, sga_pct=10.0)],
         [_veredelung(1, lohn=lohn, maschine=maschine, ausschussquote_pct=1.5)],
     )
-    assert result.kostenbasis_nach_assembly == pytest.approx(float(basis_nach), rel=1e-6)
-    assert result.baugruppenpreis_je_stueck == pytest.approx(float(expected_end), rel=1e-6)
+    assert result.kaufteile_gesamt == pytest.approx(0.5665)
+    assert result.assembly_direkt_gesamt == pytest.approx(direct, rel=1e-6)
+    assert result.assembly_fgk_betrag == pytest.approx(fgk, rel=1e-6)
+    assert result.kostenbasis_vor_ausschuss == pytest.approx(
+        float(Decimal("19.9565") + Decimal(str(direct)) + Decimal(str(fgk))), rel=1e-6
+    )
+    assert result.baugruppenpreis_je_stueck == pytest.approx(expected_end, rel=1e-6)
+    assert result.baugruppenpreis_je_stueck == pytest.approx(26.01, abs=0.01)
+
+
+def test_bumper_legacy_und_phase_c_parity():
+    """Legacy-Berechnen und Phase-C-Recalc liefern denselben ungerundeten Endwert."""
+    lohn = 500 / 3600 * 12
+    maschine = 500 / 3600 * 1.69
+    direct = lohn + maschine
+    per_piece_kt = float(Decimal("0.5665") / Decimal("5"))
+    expected_end = float(_bumper_soll_endpreis_unabhaengig())
+
+    legacy = _calc(
+        [_einzelteil(1, 19.39)],
+        [_kaufteil(1, 0.10, menge=5, mgk_pct=3.0, sga_pct=10.0)],
+        [_veredelung(1, lohn=lohn, maschine=maschine, ausschussquote_pct=1.5)],
+    )
+    phase_c = calculate_assembly(
+        assembly_type="TOP_LEVEL",
+        positions=[
+            PositionCalcInput(
+                position_id=1,
+                position_type="PART",
+                sequence=1,
+                quantity=1,
+                quantity_factor=1,
+                price_basis="COST",
+                active=True,
+                label="Einzelteil",
+                name_snapshot="Einzelteil",
+                cost_snapshot=19.39,
+                price_snapshot=None,
+            ),
+            PositionCalcInput(
+                position_id=2,
+                position_type="PURCHASED_PART",
+                sequence=2,
+                quantity=5,
+                quantity_factor=1,
+                price_basis=None,
+                active=True,
+                label="Kaufteil",
+                name_snapshot="Kaufteil",
+                cost_snapshot=0.10,
+                price_snapshot=per_piece_kt,
+            ),
+            PositionCalcInput(
+                position_id=3,
+                position_type="PROCESS",
+                sequence=3,
+                quantity=1,
+                quantity_factor=1,
+                price_basis=None,
+                active=True,
+                label="Montage",
+                name_snapshot="Montage",
+                cost_snapshot=direct,
+                price_snapshot=None,
+                cost_before_scrap=direct,
+                ausschussquote_pct=1.5,
+            ),
+        ],
+        markup_rates=MarkupRates(
+            fgk_pct=FGK_PCT,
+            vvgk_pct=10.0,
+            gewinn_pct=GEWINN_PCT,
+            skonto_pct=0.0,
+        ),
+    )
+    assert phase_c.vvgk == pytest.approx(0.0)
+    assert legacy.baugruppenpreis_je_stueck == pytest.approx(expected_end, rel=1e-6)
+    assert phase_c.endpreis_je_stueck == pytest.approx(expected_end, rel=1e-6)
+    assert legacy.baugruppenpreis_je_stueck == pytest.approx(phase_c.endpreis_je_stueck, rel=1e-9)
 
 
 def test_assembly_ausschuss_auf_vorprodukte_und_fgk():
@@ -183,11 +272,8 @@ def test_assembly_ausschuss_auf_vorprodukte_und_fgk():
 
     fgk = lohn * 0.22
     vorprodukt = 100.0 + float(Decimal("20") * (Decimal("1") + Decimal("0.03")) * (Decimal("1") + Decimal("0.10")))
-    basis_nach, surcharge, _ = apply_process_yield(
-        Decimal(str(vorprodukt + fgk)),
-        Decimal(str(lohn)),
-        1.5,
-    )
+    basis_vor = Decimal(str(vorprodukt + fgk + lohn))
+    basis_nach = basis_vor / (Decimal("1") - Decimal("1.5") / Decimal("100"))
     expected_end = float(basis_nach * Decimal("1.15"))
 
     assert result.assembly_fgk_betrag == pytest.approx(fgk, rel=1e-6)

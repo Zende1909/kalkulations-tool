@@ -380,10 +380,12 @@ def test_top_level_with_markups(db):
         markup_rates=MarkupRates(vvgk_pct=10, gewinn_pct=10, skonto_pct=2, fgk_pct=22),
     )
     assert result.herstellkosten == pytest.approx(100.0)
-    assert result.vvgk == pytest.approx(10.0)
-    assert result.selbstkosten == pytest.approx(110.0)
+    assert result.vvgk == pytest.approx(0.0)
+    assert result.selbstkosten == pytest.approx(100.0)
+    assert result.gewinn == pytest.approx(10.0)
+    assert result.skonto == pytest.approx(2.2)
+    assert result.endpreis_je_stueck == pytest.approx(112.2)
     assert result.markup_applied is True
-    assert result.endpreis_je_stueck is not None
 
 
 def test_inactive_position_skipped():

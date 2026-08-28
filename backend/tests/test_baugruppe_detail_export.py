@@ -372,7 +372,7 @@ def _seed_tsv_assembly(db) -> Baugruppe:
         "endpreis_je_stueck": result.endpreis_je_stueck,
         "markup_applied": True,
         "applied_fgk_pct": 22.0,
-        "applied_vvgk_pct": 10.0,
+        "applied_vvgk_pct": 0.0,
         "applied_gewinn_pct": 15.0,
         "applied_skonto_pct": 0.0,
         "positions": [

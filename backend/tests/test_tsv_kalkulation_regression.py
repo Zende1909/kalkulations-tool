@@ -278,21 +278,19 @@ def test_tsv_assy_ausschuss_kaskade():
     result = calculate_assembly(
         assembly_type="TOP_LEVEL", positions=positions, markup_rates=rates
     )
-    vorprodukt = _money(4.20 + 6.80 + 2.58)
-    expected_after_assy = _money((vorprodukt + 1.00) / 0.985)
-    fgk = _money(1.00 * 0.22)
-    expected_hk = _money(expected_after_assy + fgk)
-    assert result.herstellkosten == expected_hk
+    vorprodukt = Decimal(str(_money(4.20 + 6.80 + 2.58)))
+    process_direct = Decimal("1.00")
+    fgk = process_direct * Decimal("0.22")
+    expected_hk = float((vorprodukt + process_direct + fgk) / Decimal("0.985"))
+    assert result.herstellkosten == pytest.approx(expected_hk, rel=1e-6)
     assert result.fgk_basis == 1.0
     assert result.process_yield_details is not None
     assert len(result.process_yield_details) == 1
     detail = result.process_yield_details[0]
     assert detail.ausschussquote_pct == 1.5
-    assert detail.vorprodukt_eingang == vorprodukt
-    assert detail.ausschuss_zuschlag == _money(expected_after_assy - vorprodukt - 1.00)
-    assert result.vvgk == _money(expected_hk * 0.10)
-    selbst = _money(expected_hk + result.vvgk)
-    assert result.gewinn == _money(selbst * 0.15)
+    assert detail.vorprodukt_eingang == pytest.approx(float(vorprodukt + fgk), rel=1e-6)
+    assert result.vvgk == pytest.approx(0.0)
+    assert result.gewinn == pytest.approx(expected_hk * 0.15, rel=1e-6)
 
 
 def test_jahresstueckzahl_41875_ceil():

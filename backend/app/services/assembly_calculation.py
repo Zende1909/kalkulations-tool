@@ -29,7 +29,8 @@ class MarkupRates:
 
     FGK wird nur auf PROCESS-Positionen (direkte Veredelung) addiert –
     PART-/SUBASSEMBLY-Herstellkosten enthalten FGK bereits.
-    VVGK/Gewinn/Skonto einmal auf die so ermittelten Herstellkosten.
+    Baugruppe TOP_LEVEL: keine zusätzliche VVGK/SG&A (bereits in Positions-Snapshots),
+    Gewinn und Skonto einmal auf die so ermittelten Herstellkosten.
     """
 
     vvgk_pct: float | None = None
@@ -210,13 +211,30 @@ def calculate_position_line(
     return line, warnings
 
 
+def _process_direct_cost(
+    position: PositionCalcInput,
+    *,
+    position_index: int,
+) -> Decimal:
+    quote = float(position.ausschussquote_pct or 0)
+    if position.cost_before_scrap is not None:
+        vor_unit = _d(position.cost_before_scrap)
+    elif position.cost_snapshot is not None and quote > 0:
+        vor_unit = _d(position.cost_snapshot) * (Decimal("1") - _d(quote) / Decimal("100"))
+    else:
+        vor_unit = _require_positive_snapshot(
+            position.cost_snapshot,
+            label="cost_snapshot",
+            position_index=position_index,
+        )
+    return vor_unit * _d(position.quantity_factor)
+
+
 def apply_top_level_markups(
     herstellkosten: Decimal,
     rates: MarkupRates,
 ) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal, Decimal, list[CalculationWarning]]:
     missing: list[str] = []
-    if rates.vvgk_pct is None:
-        missing.append("VVGK")
     if rates.gewinn_pct is None:
         missing.append("Gewinn")
     if rates.skonto_pct is None:
@@ -224,17 +242,17 @@ def apply_top_level_markups(
     if missing:
         raise AssemblyCalculationError(f"Fehlende Zuschlagssätze: {', '.join(missing)}")
 
-    vvgk_pct = rates.vvgk_pct
     gewinn_pct = rates.gewinn_pct
     skonto_pct = rates.skonto_pct
-    assert vvgk_pct is not None and gewinn_pct is not None and skonto_pct is not None
+    assert gewinn_pct is not None and skonto_pct is not None
 
-    vvgk = _money(herstellkosten * _pct_rate(vvgk_pct))
-    selbstkosten = _money(herstellkosten + vvgk)
-    gewinn = _money(selbstkosten * _pct_rate(gewinn_pct))
-    nettoverkaufspreis = _money(selbstkosten + gewinn)
-    skonto = _money(nettoverkaufspreis * _pct_rate(skonto_pct))
-    endpreis = _money(nettoverkaufspreis + skonto)
+    # Keine Baugruppen-VVGK: SG&A liegt bereits in Einzelteil-/Kaufteil-Snapshots.
+    vvgk = Decimal("0")
+    selbstkosten = herstellkosten
+    gewinn = herstellkosten * _pct_rate(gewinn_pct)
+    nettoverkaufspreis = herstellkosten + gewinn
+    skonto = nettoverkaufspreis * _pct_rate(skonto_pct)
+    endpreis = nettoverkaufspreis + skonto
     return vvgk, selbstkosten, gewinn, nettoverkaufspreis, skonto, endpreis, []
 
 
@@ -252,8 +270,22 @@ def calculate_assembly(
     if not active_positions:
         raise AssemblyCalculationError("Keine aktiven Positionen für die Kalkulation")
 
-    lines: list[PositionCalculationLine] = []
+    rates = markup_rates or MarkupRates()
     warnings: list[CalculationWarning] = list(extra_warnings or [])
+
+    if assembly_type == "TOP_LEVEL":
+        return _calculate_top_level(active_positions, rates, warnings)
+
+    return _calculate_subassembly(active_positions, assembly_type, rates, warnings)
+
+
+def _calculate_subassembly(
+    active_positions: list[PositionCalcInput],
+    assembly_type: str,
+    rates: MarkupRates,
+    warnings: list[CalculationWarning],
+) -> AssemblyCalculationResult:
+    lines: list[PositionCalculationLine] = []
     yield_details: list[ProcessYieldDetail] = []
     running = Decimal("0")
     process_direct_sum = Decimal("0")
@@ -261,18 +293,7 @@ def calculate_assembly(
     for index, position in enumerate(active_positions, start=1):
         if position.position_type == "PROCESS":
             quote = float(position.ausschussquote_pct or 0)
-            if position.cost_before_scrap is not None:
-                vor_unit = _d(position.cost_before_scrap)
-            elif position.cost_snapshot is not None and quote > 0:
-                # Snapshot war inkl. Eigenausschuss → Vor-Kosten ableiten
-                vor_unit = _d(position.cost_snapshot) * (Decimal("1") - _d(quote) / Decimal("100"))
-            else:
-                vor_unit = _require_positive_snapshot(
-                    position.cost_snapshot,
-                    label="cost_snapshot",
-                    position_index=index,
-                )
-            vor = _money(vor_unit * _d(position.quantity_factor))
+            vor = _money(_process_direct_cost(position, position_index=index))
             vorprodukt = running
             try:
                 output, surcharge, _yf = apply_process_yield(running, vor, quote)
@@ -288,7 +309,7 @@ def calculate_assembly(
                     sequence=position.sequence,
                     label=position.label,
                     name_snapshot=position.name_snapshot,
-                    einzelpreis=float(vor_unit),
+                    einzelpreis=float(vor / _d(position.quantity_factor)),
                     quantity=position.quantity,
                     quantity_factor=position.quantity_factor,
                     zwischensumme=float(beitrag),
@@ -313,42 +334,148 @@ def calculate_assembly(
         warnings.extend(line_warnings)
         running = _money(running + _d(line.zwischensumme))
 
-    # FGK nur auf direkte Veredelung (PROCESS) *vor* Ausschuss
-    rates = markup_rates or MarkupRates()
     fgk_basis = _money(process_direct_sum)
     fertigungsgemeinkosten = Decimal("0")
-    if assembly_type == "TOP_LEVEL":
-        if rates.fgk_pct is None:
-            raise AssemblyCalculationError("Fehlende Zuschlagssätze: FGK")
-        fertigungsgemeinkosten = _money(fgk_basis * _pct_rate(rates.fgk_pct))
-    elif assembly_type == "SUBASSEMBLY" and process_direct_sum > 0:
+    if assembly_type == "SUBASSEMBLY" and process_direct_sum > 0:
         if rates.fgk_pct is None:
             raise AssemblyCalculationError("Fehlende Zuschlagssätze: FGK")
         fertigungsgemeinkosten = _money(fgk_basis * _pct_rate(rates.fgk_pct))
 
     herstellkosten = _money(running + fertigungsgemeinkosten)
 
-    if assembly_type == "SUBASSEMBLY":
-        return AssemblyCalculationResult(
-            assembly_type=assembly_type,
-            herstellkosten=float(herstellkosten),
-            vvgk=None,
-            selbstkosten=None,
-            gewinn=None,
-            nettoverkaufspreis=None,
-            skonto=None,
-            endpreis_je_stueck=None,
-            markup_applied=False,
-            position_lines=lines,
-            warnings=warnings,
-            fertigungsgemeinkosten=float(fertigungsgemeinkosten),
-            fgk_basis=float(fgk_basis),
-            applied_fgk_pct=float(rates.fgk_pct) if rates.fgk_pct is not None else None,
-            process_yield_details=yield_details,
+    if assembly_type != "SUBASSEMBLY":
+        raise AssemblyCalculationError(f"Unbekannter assembly_type '{assembly_type}'")
+
+    return AssemblyCalculationResult(
+        assembly_type=assembly_type,
+        herstellkosten=float(herstellkosten),
+        vvgk=None,
+        selbstkosten=None,
+        gewinn=None,
+        nettoverkaufspreis=None,
+        skonto=None,
+        endpreis_je_stueck=None,
+        markup_applied=False,
+        position_lines=lines,
+        warnings=warnings,
+        fertigungsgemeinkosten=float(fertigungsgemeinkosten),
+        fgk_basis=float(fgk_basis),
+        applied_fgk_pct=float(rates.fgk_pct) if rates.fgk_pct is not None else None,
+        process_yield_details=yield_details,
+    )
+
+
+def _position_vorprodukt_beitrag(position: PositionCalcInput, *, position_index: int) -> Decimal:
+    if position.position_type == "PART":
+        if position.price_basis == "COST":
+            unit = _require_positive_snapshot(
+                position.cost_snapshot,
+                label="cost_snapshot",
+                position_index=position_index,
+            )
+        elif position.price_basis == "SALES_PRICE":
+            unit = _require_positive_snapshot(
+                position.price_snapshot,
+                label="price_snapshot",
+                position_index=position_index,
+            )
+        else:
+            raise AssemblyCalculationError(
+                f"Position #{position_index}: unbekanntes price_basis '{position.price_basis}'"
+            )
+        return unit * _d(position.quantity)
+    if position.position_type == "PURCHASED_PART":
+        unit = _require_positive_snapshot(
+            position.price_snapshot,
+            label="price_snapshot",
+            position_index=position_index,
+        )
+        return unit * _d(position.quantity)
+    if position.position_type == "SUBASSEMBLY":
+        if position.child_herstellkosten is None or position.child_herstellkosten <= 0:
+            raise AssemblyCalculationError(
+                f"Position #{position_index}: Herstellkosten der Unterbaugruppe fehlen"
+            )
+        return _d(position.child_herstellkosten) * _d(position.quantity)
+    raise AssemblyCalculationError(
+        f"Position #{position_index}: unerwarteter position_type '{position.position_type}'"
+    )
+
+
+def _calculate_top_level(
+    active_positions: list[PositionCalcInput],
+    rates: MarkupRates,
+    warnings: list[CalculationWarning],
+) -> AssemblyCalculationResult:
+    if rates.fgk_pct is None:
+        raise AssemblyCalculationError("Fehlende Zuschlagssätze: FGK")
+
+    lines: list[PositionCalculationLine] = []
+    yield_details: list[ProcessYieldDetail] = []
+    vorprodukt = Decimal("0")
+    process_steps: list[tuple[PositionCalcInput, int, Decimal, Decimal]] = []
+    process_direct_sum = Decimal("0")
+
+    for index, position in enumerate(active_positions, start=1):
+        if position.position_type == "PROCESS":
+            quote = float(position.ausschussquote_pct or 0)
+            vor = _process_direct_cost(position, position_index=index)
+            vor_unit = vor / _d(position.quantity_factor)
+            process_steps.append((position, index, vor, vor_unit))
+            process_direct_sum += vor
+            continue
+
+        line, line_warnings = calculate_position_line(position, position_index=index)
+        lines.append(line)
+        warnings.extend(line_warnings)
+        vorprodukt += _position_vorprodukt_beitrag(position, position_index=index)
+
+    fgk_basis = process_direct_sum
+    fertigungsgemeinkosten = fgk_basis * _pct_rate(rates.fgk_pct)
+    running = vorprodukt + fertigungsgemeinkosten
+
+    for position, index, vor, vor_unit in process_steps:
+        quote = float(position.ausschussquote_pct or 0)
+        vorprodukt_eingang = running
+        try:
+            output, surcharge, _yf = apply_process_yield(
+                running,
+                vor,
+                quote,
+                quantize=False,
+            )
+        except ValueError as exc:
+            raise AssemblyCalculationError(str(exc)) from exc
+        beitrag = output - running
+        running = output
+        lines.append(
+            PositionCalculationLine(
+                position_id=position.position_id,
+                position_type=position.position_type,
+                sequence=position.sequence,
+                label=position.label,
+                name_snapshot=position.name_snapshot,
+                einzelpreis=float(vor_unit),
+                quantity=position.quantity,
+                quantity_factor=position.quantity_factor,
+                zwischensumme=float(beitrag),
+            )
+        )
+        yield_details.append(
+            ProcessYieldDetail(
+                position_id=position.position_id,
+                label=position.label,
+                name_snapshot=position.name_snapshot,
+                ausschussquote_pct=quote,
+                vorprodukt_eingang=float(vorprodukt_eingang),
+                process_kosten_vor_ausschuss=float(vor),
+                ausschuss_zuschlag=float(surcharge),
+                kosten_nach_ausbeute=float(output),
+            )
         )
 
-    if assembly_type != "TOP_LEVEL":
-        raise AssemblyCalculationError(f"Unbekannter assembly_type '{assembly_type}'")
+    lines.sort(key=lambda line: line.sequence)
+    herstellkosten = running
 
     vvgk, selbstkosten, gewinn, netto, skonto, endpreis, markup_warnings = apply_top_level_markups(
         herstellkosten, rates
@@ -356,7 +483,7 @@ def calculate_assembly(
     warnings.extend(markup_warnings)
 
     return AssemblyCalculationResult(
-        assembly_type=assembly_type,
+        assembly_type="TOP_LEVEL",
         herstellkosten=float(herstellkosten),
         vvgk=float(vvgk),
         selbstkosten=float(selbstkosten),
@@ -369,8 +496,8 @@ def calculate_assembly(
         warnings=warnings,
         fertigungsgemeinkosten=float(fertigungsgemeinkosten),
         fgk_basis=float(fgk_basis),
-        applied_fgk_pct=float(rates.fgk_pct) if rates.fgk_pct is not None else None,
-        applied_vvgk_pct=float(rates.vvgk_pct) if rates.vvgk_pct is not None else None,
+        applied_fgk_pct=float(rates.fgk_pct),
+        applied_vvgk_pct=0.0,
         applied_gewinn_pct=float(rates.gewinn_pct) if rates.gewinn_pct is not None else None,
         applied_skonto_pct=float(rates.skonto_pct) if rates.skonto_pct is not None else None,
         process_yield_details=yield_details,

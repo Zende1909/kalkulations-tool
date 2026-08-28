@@ -29,6 +29,8 @@ def apply_process_yield(
     upstream_cost: Decimal,
     process_cost_before_scrap: Decimal,
     ausschussquote_pct: float,
+    *,
+    quantize: bool = True,
 ) -> tuple[Decimal, Decimal, Decimal]:
     """Wendet den Prozessausschuss einmal auf Vorprodukt + Prozesskosten an.
 
@@ -41,9 +43,14 @@ def apply_process_yield(
         raise ValueError("ausschussquote_pct muss >= 0 und < 100 sein")
     rate = quote / Decimal("100")
     if rate == 0:
-        output = _money(upstream_cost + process_cost_before_scrap)
-        return output, _money(Decimal("0")), Decimal("1")
-    yield_factor = Decimal("1") / (Decimal("1") - rate)
-    output = _money((upstream_cost + process_cost_before_scrap) * yield_factor)
-    surcharge = _money(output - upstream_cost - process_cost_before_scrap)
+        output = upstream_cost + process_cost_before_scrap
+        surcharge = Decimal("0")
+        yield_factor = Decimal("1")
+    else:
+        yield_factor = Decimal("1") / (Decimal("1") - rate)
+        output = (upstream_cost + process_cost_before_scrap) * yield_factor
+        surcharge = output - upstream_cost - process_cost_before_scrap
+    if quantize:
+        output = _money(output)
+        surcharge = _money(surcharge)
     return output, surcharge, yield_factor

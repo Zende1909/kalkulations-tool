@@ -174,11 +174,11 @@ def test_recalculate_http_top_level_markups_10_15_0_200(client, db):
     assert response.status_code == 200
     body = response.json()
     assert body["calculation"]["herstellkosten"] == pytest.approx(4.2)
-    assert body["calculation"]["vvgk"] == pytest.approx(0.42)
-    assert body["calculation"]["selbstkosten"] == pytest.approx(4.62)
-    assert body["calculation"]["gewinn"] == pytest.approx(0.69)
+    assert body["calculation"]["vvgk"] == pytest.approx(0.0)
+    assert body["calculation"]["selbstkosten"] == pytest.approx(4.2)
+    assert body["calculation"]["gewinn"] == pytest.approx(0.63)
     assert body["calculation"]["skonto"] == pytest.approx(0.0)
-    assert body["calculation"]["endpreis_je_stueck"] == pytest.approx(5.31)
+    assert body["calculation"]["endpreis_je_stueck"] == pytest.approx(4.83)
     assert body["calculation"]["markup_applied"] is True
 
 
