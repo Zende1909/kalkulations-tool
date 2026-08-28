@@ -14,8 +14,29 @@ export function loadKaufteilFormValues(
 export function submitKaufteilFormValues(
   values: Record<string, string | number | boolean>,
 ): Record<string, unknown> {
-  return submitStammdatenDecimalFields(values, {
+  const base = submitStammdatenDecimalFields(values, {
     decimalFields: KAUFTEIL_DECIMAL_FIELDS,
     decimalExample: "0,10 oder 0.10",
   });
+  const toNullableId = (key: string): number | null => {
+    const raw = base[key];
+    if (raw === "" || raw == null) return null;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+  const projectId = toNullableId("project_id");
+  if (projectId == null) {
+    return {
+      ...base,
+      customer_id: null,
+      program_id: null,
+      project_id: null,
+    };
+  }
+  return {
+    ...base,
+    customer_id: toNullableId("customer_id"),
+    program_id: toNullableId("program_id"),
+    project_id: projectId,
+  };
 }

@@ -35,6 +35,7 @@ export function StammdatenFormModal({
   onClose,
   onSubmit,
   footerExtra,
+  extraContent,
 }: {
   title: string;
   fields: FormField[];
@@ -48,6 +49,7 @@ export function StammdatenFormModal({
   onClose: () => void;
   onSubmit: () => void;
   footerExtra?: ReactNode;
+  extraContent?: ReactNode;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-2 sm:p-4">
@@ -171,6 +173,7 @@ export function StammdatenFormModal({
                   ) : null}
                 </div>
               ))}
+              {extraContent}
             </div>
           </div>
 

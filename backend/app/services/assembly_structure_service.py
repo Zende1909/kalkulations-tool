@@ -459,10 +459,6 @@ def validate_project_scope(
                 raise AssemblyStructureError(
                     f"{prefix}: Kaufteil gehört nicht zum Projekt der Baugruppe"
                 )
-            if part_project_id is None:
-                raise AssemblyStructureError(
-                    f"{prefix}: Kaufteil ohne Projekt-Zuordnung ist nicht zulässig"
-                )
         if position.part_calculation_id is not None:
             part_project_id = db.scalar(
                 select(SpritzgussKalkulation.project_id).where(

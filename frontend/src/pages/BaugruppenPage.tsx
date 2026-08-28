@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   archivierenBaugruppe,
@@ -14,7 +14,7 @@ import {
   baugruppeXlsxUrl,
   downloadReport,
 } from "../api/reports";
-import { listKaufteile } from "../api/kaufteile";
+import { getKaufteil, listKaufteile } from "../api/kaufteile";
 import { listKalkulationen } from "../api/spritzguss";
 import { listVeredelungsschritte } from "../api/veredelung";
 import { ExportButtons } from "../components/ExportButtons";
@@ -55,6 +55,35 @@ function euro(value: number | undefined | null): string {
   });
 }
 
+function kaufteilListLabel(k: Kaufteil): string {
+  const tags: string[] = [];
+  if (k.project_id == null) tags.push("(Standard)");
+  if (!k.aktiv) tags.push("(inaktiv)");
+  const tagStr = tags.length ? ` ${tags.join(" ")}` : "";
+  return `${k.bezeichnung} (${k.artikelnummer})${tagStr} – ${euro(k.preis)} € Einkauf`;
+}
+
+function kaufteilSelectionTags(
+  kaufteilId: number,
+  baugruppeProjectId: number | null,
+  kaufteileList: Kaufteil[],
+  metaById: Map<number, Kaufteil>,
+): string {
+  const kt = kaufteileList.find((k) => k.id === kaufteilId) ?? metaById.get(kaufteilId);
+  if (!kt) return " (unbekannt)";
+  const tags: string[] = [];
+  if (kt.project_id == null) tags.push("(Standard)");
+  if (!kt.aktiv) tags.push("(inaktiv)");
+  if (
+    kt.project_id != null &&
+    baugruppeProjectId != null &&
+    kt.project_id !== baugruppeProjectId
+  ) {
+    tags.push("(anderes Projekt)");
+  }
+  return tags.length ? ` ${tags.join(" ")}` : "";
+}
+
 const ZUSAMMENFASSUNG: Array<{ key: keyof BaugruppeErgebnis; label: string; highlight?: boolean }> = [
   { key: "einzelteile_gesamt", label: "Einzelteil-Selbstkosten gesamt (€)" },
   { key: "kaufteile_gesamt", label: "Kaufteil-Selbstkosten gesamt (€)" },
@@ -75,6 +104,8 @@ export function BaugruppenPage() {
   const [list, setList] = useState<BaugruppeListItem[]>([]);
   const [spritzgussList, setSpritzgussList] = useState<SpritzgussListItem[]>([]);
   const [kaufteileList, setKaufteileList] = useState<Kaufteil[]>([]);
+  const [kaufteilMetaById, setKaufteilMetaById] = useState<Map<number, Kaufteil>>(new Map());
+  const loadedKaufteilIdsRef = useRef<Set<number>>(new Set());
   const [veredelungList, setVeredelungList] = useState<Veredelungsschritt[]>([]);
   const [form, setForm] = useState<BaugruppeFormData>(emptyBaugruppeForm());
   const [selectedSpritzguss, setSelectedSpritzguss] = useState<SelectedSpritzguss[]>([]);
@@ -223,6 +254,33 @@ export function BaugruppenPage() {
   }, [form.project_id, loadReferences]);
 
   useEffect(() => {
+    const missing = selectedKaufteile
+      .map((k) => k.kaufteil_id)
+      .filter((id) => !kaufteileList.some((k) => k.id === id));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      missing.map((id) =>
+        getKaufteil(id)
+          .then((kt) => ({ id, kt }))
+          .catch(() => null),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      setKaufteilMetaById((prev) => {
+        const next = new Map(prev);
+        for (const row of results) {
+          if (row && !next.has(row.id)) next.set(row.id, row.kt);
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedKaufteile, kaufteileList]);
+
+  useEffect(() => {
     if (form.project_id == null) return;
     const projectChangedFromLoaded =
       editId == null || form.project_id !== loadedHierarchy.project_id;
@@ -231,7 +289,10 @@ export function BaugruppenPage() {
     const validSg = new Set(spritzgussList.map((s) => s.id));
     const validKt = new Set(kaufteileList.map((k) => k.id));
     const removedSg = selectedSpritzguss.filter((s) => !validSg.has(s.spritzguss_kalkulation_id));
-    const removedKt = selectedKaufteile.filter((k) => !validKt.has(k.kaufteil_id));
+    const removedKt = selectedKaufteile.filter(
+      (k) =>
+        !validKt.has(k.kaufteil_id) && !loadedKaufteilIdsRef.current.has(k.kaufteil_id),
+    );
     if (removedSg.length === 0 && removedKt.length === 0) return;
 
     if (removedSg.length > 0) {
@@ -241,7 +302,9 @@ export function BaugruppenPage() {
     }
     if (removedKt.length > 0) {
       setSelectedKaufteile((current) =>
-        current.filter((k) => validKt.has(k.kaufteil_id)),
+        current.filter(
+          (k) => validKt.has(k.kaufteil_id) || loadedKaufteilIdsRef.current.has(k.kaufteil_id),
+        ),
       );
     }
     setProjectFilterHint(
@@ -320,6 +383,7 @@ export function BaugruppenPage() {
     setProjectFilterHint(null);
     setSelectedSpritzguss([]);
     setSelectedKaufteile([]);
+    loadedKaufteilIdsRef.current = new Set();
     setSelectedVeredelung([]);
     setInvestitionen([]);
     setErgebnis(null);
@@ -536,6 +600,9 @@ export function BaugruppenPage() {
         reihenfolge: z.reihenfolge,
         zwischensumme: z.zwischensumme,
       })),
+    );
+    loadedKaufteilIdsRef.current = new Set(
+      (item.kaufteil_zuordnungen ?? []).map((z) => z.kaufteil_id),
     );
     setSelectedVeredelung(
       (item.veredelung_zuordnungen ?? []).map((z) => ({
@@ -995,7 +1062,7 @@ export function BaugruppenPage() {
             addLabel="Kaufteil hinzufügen"
             options={kaufteileList.map((k) => ({
               id: k.id,
-              label: `${k.bezeichnung} (${k.artikelnummer}) – ${euro(k.preis)} € Einkauf`,
+              label: kaufteilListLabel(k),
             }))}
             disabled={form.project_id == null}
             disabledHint="Bitte zuerst ein Projekt auswählen."
@@ -1007,11 +1074,12 @@ export function BaugruppenPage() {
               .map((k) => (
                 <PositionRow
                   key={k.kaufteil_id}
-                  title={`${k.bezeichnung}${
-                    !kaufteileList.some((x) => x.id === k.kaufteil_id)
-                      ? " (inaktiv / anderes Projekt)"
-                      : ""
-                  }`}
+                  title={`${k.bezeichnung}${kaufteilSelectionTags(
+                    k.kaufteil_id,
+                    form.project_id,
+                    kaufteileList,
+                    kaufteilMetaById,
+                  )}`}
                   subtitle={k.lieferant}
                   menge={k.menge}
                   preis={k.snapshot_preis ?? k.preis}

@@ -9,13 +9,19 @@ export function listKaufteile(
     customerId?: number;
     programId?: number;
     projectId?: number;
+    includeStandard?: boolean;
+    strictProject?: boolean;
   } = {},
 ) {
   const params = new URLSearchParams();
   if (options.nurAktiv) params.set("nur_aktiv", "true");
   if (options.customerId != null) params.set("customer_id", String(options.customerId));
   if (options.programId != null) params.set("program_id", String(options.programId));
-  if (options.projectId != null) params.set("project_id", String(options.projectId));
+  if (options.projectId != null) {
+    params.set("project_id", String(options.projectId));
+    if (options.includeStandard !== false) params.set("include_standard", "true");
+    if (options.strictProject) params.set("strict_project", "true");
+  }
   const q = params.toString();
   return api.get<Kaufteil[]>(`/kaufteile${q ? `?${q}` : ""}`);
 }

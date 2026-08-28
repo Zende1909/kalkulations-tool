@@ -203,7 +203,7 @@ def _validate_zuordnungen_project_scope(
     allow_inactive_spritzguss_ids: set[int] | None = None,
     allow_inactive_kaufteil_ids: set[int] | None = None,
 ) -> None:
-    """Erzwingt exakte Projektübereinstimmung für Komponenten (keine globalen Datensätze)."""
+    """Erzwingt Projektübereinstimmung; Kaufteile dürfen projektbezogen oder Standard sein."""
     if project_id is None:
         return
     allow_sg = allow_inactive_spritzguss_ids or set()
@@ -237,14 +237,15 @@ def _validate_zuordnungen_project_scope(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Kaufteil-Zuordnung #{index}: Kaufteil nicht gefunden",
             )
-        if kt.project_id != project_id:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"Kaufteil-Zuordnung #{index}: Kaufteil gehört nicht zum "
-                    f"Projekt der Baugruppe (project_id={project_id})"
-                ),
-            )
+        if kt.project_id is not None and kt.project_id != project_id:
+            if z.kaufteil_id not in allow_kt:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=(
+                        f"Kaufteil-Zuordnung #{index}: Kaufteil gehört nicht zum "
+                        f"Projekt der Baugruppe (project_id={project_id})"
+                    ),
+                )
         if not kt.aktiv and kt.id not in allow_kt:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

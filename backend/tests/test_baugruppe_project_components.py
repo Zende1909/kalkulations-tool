@@ -76,7 +76,7 @@ def db() -> Session:
         text(
             """
             INSERT INTO kaufteile (id, bezeichnung, project_id, aktiv)
-            VALUES (1, 'Clip A', 10, 1), (2, 'Clip B', 20, 1)
+            VALUES (1, 'Clip A', 10, 1), (2, 'Clip B', 20, 1), (3, 'Standard Clip', NULL, 1)
             """
         )
     )
@@ -126,6 +126,15 @@ def test_validate_accepts_matching_project(db: Session) -> None:
         10,
         [SpritzgussZuordnungInput(spritzguss_kalkulation_id=1, menge=1, reihenfolge=1)],
         [KaufteilZuordnungInput(kaufteil_id=1, menge=1, reihenfolge=1)],
+    )
+
+
+def test_validate_accepts_standard_kaufteil(db: Session) -> None:
+    _validate_zuordnungen_project_scope(
+        db,
+        10,
+        [],
+        [KaufteilZuordnungInput(kaufteil_id=3, menge=1, reihenfolge=1)],
     )
 
 

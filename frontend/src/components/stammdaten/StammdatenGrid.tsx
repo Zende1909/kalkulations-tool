@@ -45,6 +45,13 @@ interface StammdatenGridProps<T extends { id: number }> {
     values: Record<string, string | number | boolean>,
     mode: FormMode,
   ) => Record<string, string | number | boolean>;
+  /** Zusätzliche Formularschlüssel aus Zeile/emptyFormValues (nicht in formFields). */
+  additionalFormKeys?: string[];
+  /** Zusätzlicher Inhalt im Formular (z. B. Hierarchie). */
+  formExtraContent?: (
+    values: Record<string, string | number | boolean>,
+    onChange: (name: string, value: string | number | boolean) => void,
+  ) => ReactNode;
   /** Wird bei jeder Formularänderung aufgerufen (z. B. Werk-Banner). */
   onFormValuesChange?: (values: Record<string, string | number | boolean>) => void;
 }
@@ -68,6 +75,7 @@ function formatFetchError(err: unknown, method: string, url: string): string {
 function rowToFormValues<T extends { id: number }>(
   row: T,
   fields: FormField[],
+  extraKeys: string[] = [],
 ): Record<string, string | number | boolean> {
   const values: Record<string, string | number | boolean> = {};
   for (const field of fields) {
@@ -87,6 +95,18 @@ function rowToFormValues<T extends { id: number }>(
       values[field.name] = raw == null ? "" : String(raw);
     }
   }
+  for (const key of extraKeys) {
+    const raw = (row as unknown as Record<string, unknown>)[key];
+    if (raw == null || raw === "") {
+      values[key] = "";
+    } else if (typeof raw === "number") {
+      values[key] = raw;
+    } else if (typeof raw === "boolean") {
+      values[key] = raw;
+    } else {
+      values[key] = String(raw);
+    }
+  }
   return values;
 }
 
@@ -103,6 +123,8 @@ export function StammdatenGrid<T extends { id: number }>({
   formBanner,
   formMaxWidthClassName,
   formFooterExtra,
+  additionalFormKeys = [],
+  formExtraContent,
   transformSubmitValues,
   transformLoadValues,
   onFormValuesChange,
@@ -181,7 +203,7 @@ export function StammdatenGrid<T extends { id: number }>({
       setFormMode("edit");
       setEditingId(row.id);
       setSelectedId(row.id);
-      const values = rowToFormValues(row, formFields);
+      const values = rowToFormValues(row, formFields, additionalFormKeys);
       const mapped = transformLoadValues ? transformLoadValues(values, "edit") : values;
       setFormValues(mapped);
       onFormValuesChange?.(mapped);
@@ -189,7 +211,7 @@ export function StammdatenGrid<T extends { id: number }>({
       setSuccess(null);
       setShowForm(true);
     },
-    [canWrite, formFields, onFormValuesChange, transformLoadValues],
+    [canWrite, formFields, additionalFormKeys, onFormValuesChange, transformLoadValues],
   );
 
   const closeForm = () => {
@@ -396,6 +418,7 @@ export function StammdatenGrid<T extends { id: number }>({
           banner={formBanner}
           maxWidthClassName={formMaxWidthClassName}
           footerExtra={formFooterExtra}
+          extraContent={formExtraContent?.(formValues, handleFormChange)}
           onChange={handleFormChange}
           onClose={closeForm}
           onSubmit={handleSubmit}

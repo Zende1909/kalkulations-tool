@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ColDef } from "ag-grid-community";
 
-import { HierarchySelector } from "../../components/hierarchy/HierarchySelector";
+import { OptionalHierarchySelector } from "../../components/hierarchy/OptionalHierarchySelector";
 import type { HierarchySelection } from "../../components/hierarchy/HierarchySelector";
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
@@ -11,9 +11,35 @@ import {
   submitKaufteilFormValues,
 } from "../../utils/kaufteilFormDecimals";
 
+function hierarchyFromFormValues(
+  values: Record<string, string | number | boolean>,
+): HierarchySelection {
+  const toId = (key: string): number | null => {
+    const raw = values[key];
+    if (raw === "" || raw == null) return null;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    customer_id: toId("customer_id"),
+    program_id: toId("program_id"),
+    project_id: toId("project_id"),
+  };
+}
+
+function projectLabel(row: Kaufteil): string {
+  if (row.project_id == null) return "(Standard)";
+  return `Projekt #${row.project_id}`;
+}
+
 const columnDefs: ColDef<Kaufteil>[] = [
   { field: "artikelnummer", headerName: "Artikel-Nr." },
   { field: "bezeichnung", headerName: "Bezeichnung" },
+  {
+    field: "project_id",
+    headerName: "Projekt",
+    valueFormatter: (p) => projectLabel(p.data as Kaufteil),
+  },
   {
     field: "nominierung",
     headerName: "Nominierung",
@@ -27,7 +53,11 @@ const columnDefs: ColDef<Kaufteil>[] = [
   { field: "preis", headerName: "Preis" },
   { field: "einheit", headerName: "Einheit" },
   { field: "waehrung", headerName: "Währung" },
-  { field: "aktiv", headerName: "Aktiv" },
+  {
+    field: "aktiv",
+    headerName: "Aktiv",
+    valueFormatter: (p) => (p.value ? "Ja" : "Nein (inaktiv)"),
+  },
 ];
 
 const formFields: FormField[] = [
@@ -51,6 +81,8 @@ const formFields: FormField[] = [
   { name: "gueltig_ab", label: "Gültig ab", type: "date" },
   { name: "aktiv", label: "Aktiv", type: "checkbox" },
 ];
+
+const HIERARCHY_KEYS = ["customer_id", "program_id", "project_id"] as const;
 
 const emptyFormValues = {
   artikelnummer: "",
@@ -79,7 +111,10 @@ export function KaufteilePage() {
     const params = new URLSearchParams();
     if (hierarchy.customer_id != null) params.set("customer_id", String(hierarchy.customer_id));
     if (hierarchy.program_id != null) params.set("program_id", String(hierarchy.program_id));
-    if (hierarchy.project_id != null) params.set("project_id", String(hierarchy.project_id));
+    if (hierarchy.project_id != null) {
+      params.set("project_id", String(hierarchy.project_id));
+      params.set("include_standard", "true");
+    }
     return params.toString();
   }, [hierarchy]);
 
@@ -89,14 +124,30 @@ export function KaufteilePage() {
       entityLabel="Kaufteil"
       endpoint="/kaufteile"
       listQuery={listQuery}
+      additionalFormKeys={[...HIERARCHY_KEYS]}
+      formMaxWidthClassName="max-w-2xl"
+      formExtraContent={(values, onChange) => (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <h4 className="mb-2 text-sm font-semibold text-slate-800">Projektzuordnung</h4>
+          <OptionalHierarchySelector
+            value={hierarchyFromFormValues(values)}
+            onChange={(next) => {
+              onChange("customer_id", next.customer_id ?? "");
+              onChange("program_id", next.program_id ?? "");
+              onChange("project_id", next.project_id ?? "");
+            }}
+          />
+        </div>
+      )}
       toolbarExtra={
         <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
           <p className="mb-2 text-sm text-gray-600">
             Filter: Kunde → Programm → Projekt (optional). Ohne Filter bleiben alle Kaufteile
-            sichtbar. Altbestand ohne Nominierung bitte nachklassifizieren – sonst schlägt die
+            sichtbar. Mit Projektfilter werden projektbezogene und Standardkaufteile angezeigt.
+            Altbestand ohne Nominierung bitte nachklassifizieren – sonst schlägt die
             Baugruppenkalkulation mit Hinweis fehl (kein stiller Standardsatz).
           </p>
-          <HierarchySelector value={hierarchy} onChange={setHierarchy} />
+          <OptionalHierarchySelector value={hierarchy} onChange={setHierarchy} />
         </div>
       }
       columnDefs={columnDefs}
