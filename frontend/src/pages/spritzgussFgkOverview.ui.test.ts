@@ -1,4 +1,4 @@
-/** Ergebnisübersicht: FGK additiv genau einmal, Nettokapazität sichtbar. */
+/** Ergebnisübersicht: FGK additiv genau einmal. */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,11 +30,5 @@ describe("Spritzguss Ergebnisübersicht FGK", () => {
     // Spritzguss-HK steht nach den Herstellkosten (nur Info „davon …“)
     expect(sgIdx).toBeGreaterThan(hkIdx);
     expect(fgkIdx).toBeLessThan(hkIdx);
-  });
-
-  it("zeigt Brutto-/Nettokapazität in der Übersicht", () => {
-    expect(pageSrc).toMatch(/bruttokapazitaet_exakt/);
-    expect(pageSrc).toMatch(/nettokapazitaet/);
-    expect(pageSrc).toMatch(/Nettokapazität nach Ausschuss/);
   });
 });

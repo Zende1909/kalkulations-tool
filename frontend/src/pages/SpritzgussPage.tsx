@@ -92,19 +92,11 @@ const DETAIL_BLOCK_ORDER = [
 const ERGEBNISUEBERSICHT: Array<{
   key: string;
   label: string;
-  highlight?: boolean;
+  /** primary = zentrale Kostenbasis (Selbstkosten); secondary = finales Ergebnis (Endpreis) */
+  emphasis?: "primary" | "secondary";
   /** Zeile ausblenden, wenn Wert 0 / fehlend (keine Null-Zeilen für Setup/Veredelung). */
   hideZero?: boolean;
 }> = [
-  {
-    key: "bruttokapazitaet_exakt",
-    label: "Bruttokapazität exakt (Stück/h)",
-  },
-  {
-    key: "bruttokapazitaet",
-    label: "Bruttokapazität kalkulatorisch ROUND (Stück/h)",
-  },
-  { key: "nettokapazitaet", label: "Nettokapazität nach Ausschuss (Stück/h)" },
   // Additive Aufbauzeilen – FGK nur einmal vor den Herstellkosten
   { key: "materialkosten_gesamt", label: "Material inkl. Ausschuss + MGK (€)" },
   { key: "maschinenkosten", label: "Maschinenkosten je Gutteil (€)" },
@@ -119,20 +111,41 @@ const ERGEBNISUEBERSICHT: Array<{
   {
     key: "gesamte_herstellkosten",
     label: "Herstellkosten (= Summe inkl. FGK) (€)",
-    highlight: true,
   },
   { key: "vvgk", label: "SG&A / VVGK (€)" },
-  { key: "selbstkosten", label: "Selbstkosten (€)" },
+  { key: "selbstkosten", label: "Selbstkosten (€)", emphasis: "primary" },
   { key: "gewinn", label: "Profit / Gewinn (€)" },
   { key: "nettoverkaufspreis_gesamt", label: "Nettoverkaufspreis (€)" },
   { key: "skonto", label: "Skonto (€)", hideZero: true },
-  { key: "endpreis_je_stueck", label: "Endpreis je Stück (€)", highlight: true },
+  { key: "endpreis_je_stueck", label: "Endpreis je Stück (€)", emphasis: "secondary" },
   // Nur bei Veredelung: Spritzguss-HK enthält bereits anteilige FGK – kein Summand
   {
     key: "spritzguss_herstellkosten",
     label: "davon Spritzguss-HK inkl. FGK (ohne Veredelung) (€)",
   },
 ];
+
+function ergebnisUebersichtRowClass(emphasis?: "primary" | "secondary"): string {
+  if (emphasis === "primary") {
+    return "border-slate-400 bg-white px-2 -mx-2 rounded-md font-semibold shadow-sm ring-1 ring-slate-200";
+  }
+  if (emphasis === "secondary") {
+    return "border-slate-200 bg-slate-50/80 px-2 -mx-2 rounded font-medium";
+  }
+  return "border-gray-100";
+}
+
+function ergebnisUebersichtLabelClass(emphasis?: "primary" | "secondary"): string {
+  if (emphasis === "primary") return "text-slate-900 font-semibold";
+  if (emphasis === "secondary") return "text-slate-800 font-medium";
+  return "text-gray-600";
+}
+
+function ergebnisUebersichtValueClass(emphasis?: "primary" | "secondary"): string {
+  if (emphasis === "primary") return "text-lg font-bold tabular-nums text-slate-900";
+  if (emphasis === "secondary") return "text-base font-semibold tabular-nums text-slate-900";
+  return "font-medium tabular-nums text-gray-900";
+}
 
 const FIELD_LABELS: Record<string, string> = {
   materialgewicht_kg: "Materialgewicht aus Schussgewicht (kg)",
@@ -1184,7 +1197,7 @@ export function SpritzgussPage() {
                       den Herstellkosten mitgezählt – nicht erneut zu den Spritzguss-HK addieren.
                     </p>
                     <dl className="space-y-1 text-sm">
-                      {ERGEBNISUEBERSICHT.map(({ key, label, highlight, hideZero }) => {
+                      {ERGEBNISUEBERSICHT.map(({ key, label, emphasis, hideZero }) => {
                         const value = ergebnisUebersicht[key];
                         if (value == null) return null;
                         const num = typeof value === "number" ? value : Number(value);
@@ -1192,19 +1205,15 @@ export function SpritzgussPage() {
                         return (
                           <div
                             key={key}
-                            className={`flex justify-between gap-3 border-b py-1.5 ${
-                              highlight
-                                ? "border-slate-300 bg-white px-2 -mx-2 rounded font-semibold"
-                                : "border-gray-100"
-                            }`}
+                            className={`flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 border-b py-1.5 ${ergebnisUebersichtRowClass(emphasis)}`}
                           >
-                            <dt className={highlight ? "text-slate-900" : "text-gray-600"}>
+                            <dt
+                              className={`min-w-0 flex-1 basis-[55%] sm:basis-auto ${ergebnisUebersichtLabelClass(emphasis)}`}
+                            >
                               {label}
                             </dt>
                             <dd
-                              className={`tabular-nums ${
-                                highlight ? "text-lg text-slate-900" : "font-medium text-gray-900"
-                              }`}
+                              className={`shrink-0 text-right ${ergebnisUebersichtValueClass(emphasis)}`}
                             >
                               {euro(Number.isFinite(num) ? num : Number(value))}
                             </dd>
