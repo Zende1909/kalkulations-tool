@@ -24,6 +24,8 @@ import {
   type Investition,
   type InvestitionPayload,
 } from "../types/investition";
+import { coerceFormDecimal, formatDecimalForInputDe } from "../utils/decimalInput";
+import { DecimalInputField } from "../components/DecimalInputField";
 
 type FormMode = "create" | "edit";
 type ZuordnungForm = "projekt" | "einzelteil" | "baugruppe";
@@ -70,6 +72,7 @@ export function InvestitionenPage() {
   const [formMode, setFormMode] = useState<FormMode>("create");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<InvestitionPayload>(emptyInvestitionForm());
+  const [amountRaw, setAmountRaw] = useState("0");
   const [zuordnungForm, setZuordnungForm] = useState<ZuordnungForm>("projekt");
 
   useEffect(() => {
@@ -149,6 +152,7 @@ export function InvestitionenPage() {
       project: appliedProject,
       customer: appliedCustomer,
     });
+    setAmountRaw("0");
     setShowForm(true);
     setError(null);
   };
@@ -171,11 +175,20 @@ export function InvestitionenPage() {
       baugruppe_id: item.baugruppe_id,
       description: item.description,
     });
+    setAmountRaw(formatDecimalForInputDe(item.amount));
     setShowForm(true);
   };
 
   const handleSave = async () => {
-    const validationError = validateForm(form, zuordnungForm);
+    let amount: number;
+    try {
+      amount = coerceFormDecimal(amountRaw, "0,10 oder 0.10") ?? 0;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ungültiger Betrag.");
+      return;
+    }
+    const formWithAmount = { ...form, amount };
+    const validationError = validateForm(formWithAmount, zuordnungForm);
     if (validationError) {
       setError(validationError);
       return;
@@ -184,7 +197,7 @@ export function InvestitionenPage() {
     setError(null);
     try {
       const payload: InvestitionPayload = {
-        ...form,
+        ...formWithAmount,
         project: appliedProject,
         customer: appliedCustomer || form.customer,
         calculation_id: zuordnungForm === "einzelteil" ? form.calculation_id : null,
@@ -402,17 +415,12 @@ export function InvestitionenPage() {
                 ))}
               </div>
             </fieldset>
-            <label className="block text-sm">
-              <span className="text-gray-600">Betrag (€) *</span>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                className="mt-1 block w-full rounded border px-2 py-1.5"
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })}
-              />
-            </label>
+            <DecimalInputField
+              label="Betrag (€) *"
+              rawValue={amountRaw}
+              onRawChange={setAmountRaw}
+              className="mt-1 block w-full rounded border px-2 py-1.5"
+            />
             {form.payment_type === "Amortisation" && (
               <label className="block text-sm">
                 <span className="text-gray-600">Amortisationsvolumen *</span>

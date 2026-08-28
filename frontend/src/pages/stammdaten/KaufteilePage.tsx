@@ -6,6 +6,10 @@ import type { HierarchySelection } from "../../components/hierarchy/HierarchySel
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import type { Kaufteil } from "../../types/baugruppe";
+import {
+  loadKaufteilFormValues,
+  submitKaufteilFormValues,
+} from "../../utils/kaufteilFormDecimals";
 
 const columnDefs: ColDef<Kaufteil>[] = [
   { field: "artikelnummer", headerName: "Artikel-Nr." },
@@ -32,7 +36,7 @@ const formFields: FormField[] = [
   { name: "beschreibung", label: "Beschreibung", type: "text" },
   { name: "lieferant", label: "Lieferant", type: "text" },
   { name: "einheit", label: "Einheit", type: "text", required: true },
-  { name: "preis", label: "Preis", type: "number", required: true, step: "0.01" },
+  { name: "preis", label: "Preis", type: "number", required: true, step: "0.0001", hint: "Dezimalwert, z. B. 0,10 oder 0.10" },
   { name: "waehrung", label: "Währung", type: "text", required: true },
   {
     name: "nominierung",
@@ -98,6 +102,8 @@ export function KaufteilePage() {
       columnDefs={columnDefs}
       formFields={formFields}
       emptyFormValues={emptyFormValues}
+      transformLoadValues={(values) => loadKaufteilFormValues(values)}
+      transformSubmitValues={(values) => submitKaufteilFormValues(values)}
     />
   );
 }

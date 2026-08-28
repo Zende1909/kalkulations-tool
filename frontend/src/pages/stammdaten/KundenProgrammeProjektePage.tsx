@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { coerceFormDecimal, formatDecimalForInputDe } from "../../utils/decimalInput";
 import {
   bulkSaveProgramVolumes,
   createCustomer,
@@ -266,7 +267,7 @@ export function KundenProgrammeProjektePage() {
         project_number: r.project_number,
         name: r.name,
         component_area: area,
-        quantity_per_vehicle: r.quantity_per_vehicle,
+        quantity_per_vehicle: formatDecimalForInputDe(r.quantity_per_vehicle),
         status: r.status,
         notes: r.notes,
         active: r.active,
@@ -334,7 +335,10 @@ export function KundenProgrammeProjektePage() {
           project_number: String(formValues.project_number),
           name: String(formValues.name),
           component_area: String(formValues.component_area),
-          quantity_per_vehicle: Number(formValues.quantity_per_vehicle),
+          quantity_per_vehicle: coerceFormDecimal(
+            formValues.quantity_per_vehicle,
+            "1,5 oder 1.5",
+          ) ?? 1,
           status: String(formValues.status),
           notes: String(formValues.notes ?? ""),
           active: Boolean(formValues.active),

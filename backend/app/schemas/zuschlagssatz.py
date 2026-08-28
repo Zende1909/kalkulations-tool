@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.zuschlagssatz import ALLOWED_ZUSCHLAGSSATZ_TYPEN
+from app.schemas.numbers import parse_percent_points
 
 ZuschlagssatzTyp = Literal[
     "GEMEINKOSTEN",
@@ -31,6 +32,15 @@ class ZuschlagssatzBase(BaseModel):
     typ: ZuschlagssatzTyp
     aktiv: bool = True
 
+    @field_validator("satz_prozent", mode="before")
+    @classmethod
+    def coerce_satz_prozent(cls, value: object) -> object:
+        if value is None or value == "":
+            return 0.0
+        parsed = parse_percent_points(value, field_label="Satz", allow_none=False)
+        assert parsed is not None
+        return parsed
+
     @field_validator("typ")
     @classmethod
     def validate_typ(cls, value: str) -> str:
@@ -46,6 +56,13 @@ class ZuschlagssatzUpdate(BaseModel):
     satz_prozent: float | None = Field(default=None, ge=0)
     typ: ZuschlagssatzTyp | None = None
     aktiv: bool | None = None
+
+    @field_validator("satz_prozent", mode="before")
+    @classmethod
+    def coerce_satz_prozent_update(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        return parse_percent_points(value, field_label="Satz", allow_none=True)
 
     @field_validator("typ")
     @classmethod

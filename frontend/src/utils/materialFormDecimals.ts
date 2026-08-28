@@ -2,7 +2,7 @@
  * Material-Formular: Preis/Dichte als absolute Dezimalwerte (keine %-Logik).
  */
 
-import { coerceFormDecimal, formatDecimalForInput } from "./decimalInput";
+import { coerceFormDecimal, formatDecimalForInputDe } from "./decimalInput";
 
 export const MATERIAL_NUMERIC_FIELDS = ["preis_pro_kg", "dichte"] as const;
 
@@ -15,7 +15,7 @@ export function loadMaterialFormValues(
     if (raw === "" || raw == null) continue;
     if (typeof raw === "string") continue;
     if (typeof raw === "number" && Number.isFinite(raw)) {
-      next[key] = formatDecimalForInput(raw);
+      next[key] = formatDecimalForInputDe(raw);
     }
   }
   return next;

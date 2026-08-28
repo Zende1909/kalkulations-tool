@@ -3,6 +3,10 @@ import type { ColDef } from "ag-grid-community";
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import type { Lohnkosten } from "../../types/stammdaten";
+import {
+  loadLohnkostenFormValues,
+  submitLohnkostenFormValues,
+} from "../../utils/lohnkostenFormDecimals";
 
 const columnDefs: ColDef<Lohnkosten>[] = [
   { field: "bezeichnung", headerName: "Bezeichnung" },
@@ -28,9 +32,9 @@ const formFields: FormField[] = [
       { value: "sonstig", label: "Sonstig" },
     ],
   },
-  { name: "kosten_pro_stunde", label: "Kosten EUR/h", type: "number", required: true, step: "0.01" },
+  { name: "kosten_pro_stunde", label: "Kosten EUR/h", type: "number", required: true, step: "0.0001" },
   { name: "source_currency", label: "Quellwährung", type: "text" },
-  { name: "source_rate", label: "Originalsatz", type: "number", step: "0.01" },
+  { name: "source_rate", label: "Originalsatz", type: "number", step: "0.0001" },
   { name: "kostenstelle", label: "Kostenstelle", type: "text", required: true },
   { name: "gueltig_ab", label: "Gültig ab", type: "date", required: true },
   { name: "aktiv", label: "Aktiv", type: "checkbox" },
@@ -53,6 +57,8 @@ export function LohnkostenPage() {
         rolle: "produktion",
         werk_id: null,
       }}
+      transformLoadValues={(values) => loadLohnkostenFormValues(values)}
+      transformSubmitValues={(values) => submitLohnkostenFormValues(values)}
     />
   );
 }

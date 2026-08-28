@@ -26,6 +26,15 @@ export type CalcPayload = Pick<
   | "vvgk_pct"
   | "gewinn_pct"
   | "skonto_pct"
+  | "werk_id"
+  | "project_id"
+  | "losgroesse_modus"
+  | "losgroesse_manuell"
+  | "setup_zeit_min"
+  | "setup_maschinenstundensatz"
+  | "setup_lohnstundensatz"
+  | "setup_mitarbeiter"
+  | "setup_aktiv"
 > & {
   veredelung_zuordnungen?: VeredelungZuordnungInput[];
 };

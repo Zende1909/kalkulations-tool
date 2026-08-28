@@ -5,6 +5,10 @@ import { api } from "../../api/client";
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import type { Werk, WerkZuschlag } from "../../types/stammdaten";
+import {
+  loadWerkZuschlagFormValues,
+  submitWerkZuschlagFormValues,
+} from "../../utils/werkZuschlagFormDecimals";
 
 const columnDefs: ColDef<WerkZuschlag>[] = [
   { field: "typ", headerName: "Typ" },
@@ -71,6 +75,8 @@ export function WerkZuschlaegePage() {
           kostenbasis: "einkaufspreis",
           aktiv: true,
         }}
+        transformLoadValues={(values) => loadWerkZuschlagFormValues(values)}
+        transformSubmitValues={(values) => submitWerkZuschlagFormValues(values)}
       />
     </div>
   );

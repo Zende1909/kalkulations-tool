@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from app.schemas.numbers import parse_de_float as _parse_de_float
+from app.schemas.numbers import parse_de_float as _parse_de_float, parse_percent_points
 from app.services.losgroesse_berechnung import DEFAULT_PRODUKTIONSINTERVALL_ARBEITSTAGE
 
 _OPT_FLOAT_LABELS = {
@@ -256,6 +256,15 @@ class WerkZuschlagBase(BaseModel):
     kostenbasis: str = ""
     aktiv: bool = True
 
+    @field_validator("satz_prozent", mode="before")
+    @classmethod
+    def coerce_satz_prozent(cls, value: object) -> object:
+        if value is None or value == "":
+            return 0.0
+        parsed = parse_percent_points(value, field_label="Satz", allow_none=False)
+        assert parsed is not None
+        return parsed
+
 
 class WerkZuschlagCreate(WerkZuschlagBase):
     pass
@@ -267,6 +276,13 @@ class WerkZuschlagUpdate(BaseModel):
     satz_prozent: float | None = None
     kostenbasis: str | None = None
     aktiv: bool | None = None
+
+    @field_validator("satz_prozent", mode="before")
+    @classmethod
+    def coerce_satz_prozent_update(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        return parse_percent_points(value, field_label="Satz", allow_none=True)
 
 
 class WerkZuschlagRead(WerkZuschlagBase):

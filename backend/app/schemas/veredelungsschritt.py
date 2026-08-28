@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.schemas.numbers import parse_percent_points
+from app.schemas.numbers import parse_de_float, parse_percent_points
 
 from app.services.veredelung_kalkulation import VEREDELUNGSARTEN
 
@@ -41,6 +41,16 @@ class VeredelungsschrittBase(BaseModel):
         if value is None or value == "":
             return 0.0
         parsed = parse_percent_points(value, field_label="Ausschussquote", allow_none=False)
+        assert parsed is not None
+        return parsed
+
+    @field_validator("taktzeit_s", "lohnstundensatz", "verbrauchskosten_je_stueck", "fgk_pct", mode="before")
+    @classmethod
+    def coerce_decimal_fields(cls, value: object, info) -> object:
+        if value is None or value == "":
+            return 0.0 if info.field_name != "fgk_pct" else 0.0
+        label = info.field_name or "Wert"
+        parsed = parse_de_float(value, field_label=label, allow_none=False)
         assert parsed is not None
         return parsed
 

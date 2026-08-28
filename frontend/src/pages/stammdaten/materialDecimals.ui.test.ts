@@ -54,8 +54,8 @@ describe("Material Dezimal-Submit", () => {
       preis_pro_kg: 2.1,
       dichte: 1.04,
     });
-    expect(loaded.preis_pro_kg).toBe("2.1");
-    expect(loaded.dichte).toBe("1.04");
+    expect(loaded.preis_pro_kg).toBe("2,1");
+    expect(loaded.dichte).toBe("1,04");
   });
 
   it("wirft verständlichen Fehler bei ungültiger Eingabe", () => {

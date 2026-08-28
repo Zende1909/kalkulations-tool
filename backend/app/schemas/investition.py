@@ -1,7 +1,9 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.numbers import parse_de_float
 from app.services.investition_service import INVESTMENT_TYPES, PAYMENT_TYPES, PLANNING_STATUS_VALUES
 
 
@@ -22,6 +24,15 @@ class InvestitionBase(BaseModel):
     planning_status: str | None = Field(default=None, alias="status")
     description: str = ""
     included_in_unit_price: bool | None = None
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def coerce_amount(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return 0.0
+        parsed = parse_de_float(value, field_label="Betrag", allow_none=False)
+        assert parsed is not None
+        return parsed
 
     @field_validator("investment_type")
     @classmethod
@@ -67,6 +78,13 @@ class InvestitionUpdate(BaseModel):
     description: str | None = None
     included_in_unit_price: bool | None = None
     archived: bool | None = None
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def coerce_amount_update(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return None
+        return parse_de_float(value, field_label="Betrag", allow_none=True)
 
 
 class InvestitionRead(BaseModel):

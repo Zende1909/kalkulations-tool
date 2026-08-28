@@ -33,14 +33,16 @@ import {
   type VeredelungZuordnungInput,
   type WerkzeugAbrechnungsart,
 } from "../types/spritzguss";
-import { DecimalInputField } from "../components/DecimalInputField";
+import { FormDecimalInput } from "../components/FormDecimalInput";
 import {
-  formatDecimalForInputDe,
   formatPercentPoints,
-  parseDecimalInput,
-  parsePercentPointsInput,
   PercentPointsParseError,
+  formatDecimalForInputDe,
 } from "../utils/decimalInput";
+import {
+  loadSpritzgussDecimalRaw,
+  parseSpritzgussDecimalFields,
+} from "../utils/spritzgussFormDecimals";
 import {
   berechneAutomatischeLosgroesse,
   inferLegacyLosgroesseModus,
@@ -218,39 +220,25 @@ function veredelungDetailLabel(
 
 function NumberInput({
   label,
+  fieldKey,
   value,
-  onChange,
-  step = "0.01",
-  min,
+  decimalRaw,
+  onDecimalChange,
 }: {
   label: string;
+  fieldKey: string;
   value: number;
-  onChange: (v: number) => void;
-  step?: string;
-  min?: number;
+  decimalRaw: Record<string, string>;
+  onDecimalChange: (fieldKey: string, raw: string) => void;
 }) {
   return (
-    <label className="block text-sm">
-      <span className="font-medium text-gray-700">{label}</span>
-      <input
-        type="text"
-        inputMode="decimal"
-        step={step}
-        min={min}
-        value={Number.isFinite(value) ? String(value) : ""}
-        onChange={(e) => {
-          const parsed = parseDecimalInput(e.target.value);
-          if (parsed === "") {
-            onChange(0);
-            return;
-          }
-          if (typeof parsed === "number" && Number.isFinite(parsed)) {
-            onChange(parsed);
-          }
-        }}
-        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-      />
-    </label>
+    <FormDecimalInput
+      fieldKey={fieldKey}
+      label={label}
+      value={value}
+      decimalRaw={decimalRaw}
+      onDecimalChange={onDecimalChange}
+    />
   );
 }
 
@@ -279,7 +267,9 @@ function TextInput({
 export function SpritzgussPage() {
   const { canWrite } = useAuth();
   const [form, setForm] = useState<SpritzgussFormData>(emptySpritzgussForm());
-  const [ausschussquoteRaw, setAusschussquoteRaw] = useState("0");
+  const [decimalRaw, setDecimalRaw] = useState<Record<string, string>>(() =>
+    loadSpritzgussDecimalRaw(emptySpritzgussForm()),
+  );
   const [hierarchy, setHierarchy] = useState<HierarchySelection>({
     customer_id: null,
     program_id: null,
@@ -313,6 +303,13 @@ export function SpritzgussPage() {
   const setField = <K extends keyof SpritzgussFormData>(key: K, value: SpritzgussFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
+
+  const handleDecimalChange = (fieldKey: string, raw: string) => {
+    setDecimalRaw((current) => ({ ...current, [fieldKey]: raw }));
+  };
+
+  const resolveParsedForm = (): SpritzgussFormData =>
+    parseSpritzgussDecimalFields(decimalRaw, form);
 
   const loadStammdaten = useCallback(async () => {
     const [mats, masch, lohn, veredelung, lands, plants] = await Promise.all([
@@ -598,6 +595,10 @@ export function SpritzgussPage() {
       material_id: mat.id,
       materialpreis_pro_kg: mat.preis_pro_kg,
     }));
+    setDecimalRaw((current) => ({
+      ...current,
+      materialpreis_pro_kg: formatDecimalForInputDe(mat.preis_pro_kg),
+    }));
   };
 
   const handleMaschineChange = (id: string) => {
@@ -617,6 +618,13 @@ export function SpritzgussPage() {
       setup_aktiv: (maschine.setup_zeit_min ?? 0) > 0,
       werk_id: maschine.werk_id ?? current.werk_id,
     }));
+    setDecimalRaw((current) => ({
+      ...current,
+      maschinenstundensatz: formatDecimalForInputDe(maschine.stundensatz),
+      setup_maschinenstundensatz: formatDecimalForInputDe(maschine.stundensatz),
+      setup_zeit_min: formatDecimalForInputDe(maschine.setup_zeit_min ?? 0),
+      setup_mitarbeiter: formatDecimalForInputDe(maschine.setup_mitarbeiter ?? 0),
+    }));
   };
 
   const handleLohnChange = (id: string) => {
@@ -631,17 +639,33 @@ export function SpritzgussPage() {
       lohnkosten_id: lohn.id,
       lohnstundensatz: lohn.kosten_pro_stunde,
     }));
+    setDecimalRaw((current) => ({
+      ...current,
+      lohnstundensatz: formatDecimalForInputDe(lohn.kosten_pro_stunde),
+    }));
   };
-
-  const resolveAusschussquotePct = (): number => parsePercentPointsInput(ausschussquoteRaw);
 
   const handleBerechnen = async () => {
     setBusy(true);
     setError(null);
     setSuccess(null);
     try {
-      const ausschussquote_pct = resolveAusschussquotePct();
-      const result = await berechnen({ ...calcPayloadBase, ausschussquote_pct });
+      const parsedForm = resolveParsedForm();
+      const result = await berechnen({
+        ...calcPayloadBase,
+        teilegewicht_netto_g: parsedForm.teilegewicht_netto_g,
+        schussgewicht_g: parsedForm.schussgewicht_g,
+        materialpreis_pro_kg: parsedForm.materialpreis_pro_kg,
+        ausschussquote_pct: parsedForm.ausschussquote_pct,
+        zykluszeit_s: parsedForm.zykluszeit_s,
+        maschinenstundensatz: parsedForm.maschinenstundensatz,
+        kavitaeten: parsedForm.kavitaeten,
+        lohnstundensatz: parsedForm.lohnstundensatz,
+        setup_zeit_min: parsedForm.setup_zeit_min,
+        setup_maschinenstundensatz: parsedForm.setup_maschinenstundensatz,
+        setup_lohnstundensatz: parsedForm.setup_lohnstundensatz,
+        setup_mitarbeiter: parsedForm.setup_mitarbeiter,
+      });
       setBloecke(result.bloecke);
       updateSelectedFromResponse(result.veredelung_zuordnungen);
       setSuccess("Berechnung erfolgreich.");
@@ -664,19 +688,18 @@ export function SpritzgussPage() {
     setError(null);
     setSuccess(null);
     try {
-      const ausschussquote_pct = resolveAusschussquotePct();
-      if (!form.teilebezeichnung.trim()) {
+      const parsedForm = resolveParsedForm();
+      if (!parsedForm.teilebezeichnung.trim()) {
         throw new Error("Teilebezeichnung ist für das Speichern erforderlich.");
       }
-      if (!form.teilenummer.trim()) {
+      if (!parsedForm.teilenummer.trim()) {
         throw new Error("Teilenummer ist für das Speichern erforderlich.");
       }
       if (!legacyHierarchy && hierarchy.project_id == null) {
         throw new Error("Bitte Kunde, Programm und Projekt auswählen.");
       }
       const payload = {
-        ...form,
-        ausschussquote_pct,
+        ...parsedForm,
         customer_id: hierarchy.customer_id,
         program_id: hierarchy.program_id,
         project_id: hierarchy.project_id,
@@ -801,7 +824,28 @@ export function SpritzgussPage() {
       } else {
         setSelectedLandId(null);
       }
-      setAusschussquoteRaw(formatDecimalForInputDe(item.ausschussquote_pct));
+      setDecimalRaw(
+        loadSpritzgussDecimalRaw({
+          ...emptySpritzgussForm(),
+          schussgewicht_g: item.schussgewicht_g,
+          teilegewicht_netto_g: item.teilegewicht_netto_g,
+          materialpreis_pro_kg: item.materialpreis_pro_kg,
+          ausschussquote_pct: item.ausschussquote_pct,
+          zykluszeit_s: item.zykluszeit_s,
+          kavitaeten: item.kavitaeten,
+          maschinenstundensatz: item.maschinenstundensatz,
+          lohnstundensatz: item.lohnstundensatz,
+          setup_zeit_min: item.setup_zeit_min ?? 0,
+          setup_maschinenstundensatz: item.setup_maschinenstundensatz ?? 0,
+          setup_lohnstundensatz: item.setup_lohnstundensatz ?? 0,
+          setup_mitarbeiter: item.setup_mitarbeiter ?? 0,
+          losgroesse_manuell:
+            item.losgroesse_manuell ??
+            (inferLegacyLosgroesseModus(item.losgroesse_modus, item.losgroesse) === "manuell"
+              ? item.losgroesse
+              : null),
+        }),
+      );
       setBloecke((item.ergebnis_bloecke as SpritzgussBloecke) ?? null);
       loadVeredelungFromSaved(item.veredelung_zuordnungen);
       setSuccess(`Kalkulation #${item.id} geladen.`);
@@ -815,7 +859,7 @@ export function SpritzgussPage() {
   const handleNew = () => {
     setEditId(null);
     setForm(emptySpritzgussForm());
-    setAusschussquoteRaw("0");
+    setDecimalRaw(loadSpritzgussDecimalRaw(emptySpritzgussForm()));
     setHierarchy({
       customer_id: null,
       program_id: null,
@@ -999,27 +1043,32 @@ export function SpritzgussPage() {
                 </select>
               </label>
               <NumberInput
+                fieldKey="schussgewicht_g"
                 label="Schussgewicht / Brutto (g) – Materialbasis"
                 value={form.schussgewicht_g}
-                min={0}
-                onChange={(v) => setField("schussgewicht_g", v)}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
               />
               <NumberInput
+                fieldKey="teilegewicht_netto_g"
                 label="Teilegewicht netto (g) – nur Information"
                 value={form.teilegewicht_netto_g}
-                min={0}
-                onChange={(v) => setField("teilegewicht_netto_g", v)}
-              />
-              <DecimalInputField
-                label="Ausschussquote (%)"
-                rawValue={ausschussquoteRaw}
-                onRawChange={setAusschussquoteRaw}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
               />
               <NumberInput
+                fieldKey="ausschussquote_pct"
+                label="Ausschussquote (%)"
+                value={form.ausschussquote_pct}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
+              />
+              <NumberInput
+                fieldKey="materialpreis_pro_kg"
                 label="Materialpreis (€/kg, überschreibbar)"
                 value={form.materialpreis_pro_kg}
-                min={0}
-                onChange={(v) => setField("materialpreis_pro_kg", v)}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
               />
               <label className="block text-sm md:col-span-2">
                 <span className="font-medium text-gray-700">Material-Nominierung (MGK)</span>
@@ -1103,23 +1152,25 @@ export function SpritzgussPage() {
                 </select>
               </label>
               <NumberInput
+                fieldKey="zykluszeit_s"
                 label="Zykluszeit (s)"
                 value={form.zykluszeit_s}
-                min={0}
-                onChange={(v) => setField("zykluszeit_s", v)}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
               />
               <NumberInput
+                fieldKey="kavitaeten"
                 label="Kavitäten"
                 value={form.kavitaeten}
-                min={1}
-                step="1"
-                onChange={(v) => setField("kavitaeten", v)}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
               />
               <NumberInput
+                fieldKey="maschinenstundensatz"
                 label="Maschinenstundensatz (€/h, überschreibbar)"
                 value={form.maschinenstundensatz}
-                min={0}
-                onChange={(v) => setField("maschinenstundensatz", v)}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
               />
               <label className="block text-sm md:col-span-2">
                 <span className="font-medium text-gray-700">Lohnkosten Produktion</span>
@@ -1138,28 +1189,32 @@ export function SpritzgussPage() {
                 </select>
               </label>
               <NumberInput
+                fieldKey="lohnstundensatz"
                 label="Lohnstundensatz Produktion (€/h)"
                 value={form.lohnstundensatz}
-                min={0}
-                onChange={(v) => setField("lohnstundensatz", v)}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
               />
               <NumberInput
+                fieldKey="setup_lohnstundensatz"
                 label="Setup-Lohnsatz (€/h)"
                 value={form.setup_lohnstundensatz}
-                min={0}
-                onChange={(v) => setField("setup_lohnstundensatz", v)}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
               />
               <NumberInput
+                fieldKey="setup_zeit_min"
                 label="Setup-Zeit (min)"
                 value={form.setup_zeit_min}
-                min={0}
-                onChange={(v) => setField("setup_zeit_min", v)}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
               />
               <NumberInput
+                fieldKey="setup_mitarbeiter"
                 label="Setup-Mitarbeiter"
                 value={form.setup_mitarbeiter}
-                min={0}
-                onChange={(v) => setField("setup_mitarbeiter", v)}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
               />
               <div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -1199,13 +1254,11 @@ export function SpritzgussPage() {
                   </p>
                 ) : (
                   <NumberInput
+                    fieldKey="losgroesse_manuell"
                     label="Manuelle Losgröße (Stück)"
                     value={form.losgroesse_manuell ?? 0}
-                    min={1}
-                    step="1"
-                    onChange={(v) =>
-                      setField("losgroesse_manuell", v >= 1 ? Math.round(v) : null)
-                    }
+                    decimalRaw={decimalRaw}
+                    onDecimalChange={handleDecimalChange}
                   />
                 )}
                 <dl className="mt-2 space-y-1 text-xs text-slate-600">
@@ -1257,10 +1310,11 @@ export function SpritzgussPage() {
                 </p>
               </div>
               <NumberInput
+                fieldKey="setup_maschinenstundensatz"
                 label="Setup-Maschinenstundensatz (€/h)"
                 value={form.setup_maschinenstundensatz}
-                min={0}
-                onChange={(v) => setField("setup_maschinenstundensatz", v)}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
               />
             </div>
           </section>

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.models.program import PROGRAM_STATUSES
 from app.models.project import PROJECT_STATUSES
+from app.schemas.numbers import parse_de_float
 from app.services.hierarchy import (
     validate_calendar_year,
     validate_component_area,
@@ -164,6 +165,15 @@ class ProjectBase(BaseModel):
             raise ValueError(f"Ungültiger Projektstatus: {value}")
         return value
 
+    @field_validator("quantity_per_vehicle", mode="before")
+    @classmethod
+    def coerce_quantity_per_vehicle(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return 1.0
+        parsed = parse_de_float(value, field_label="Anzahl pro Fahrzeug", allow_none=False)
+        assert parsed is not None
+        return parsed
+
     @field_validator("quantity_per_vehicle")
     @classmethod
     def check_quantity(cls, value: float) -> float:
@@ -197,6 +207,13 @@ class ProjectUpdate(BaseModel):
         if value is not None and value not in PROJECT_STATUSES:
             raise ValueError(f"Ungültiger Projektstatus: {value}")
         return value
+
+    @field_validator("quantity_per_vehicle", mode="before")
+    @classmethod
+    def coerce_quantity_per_vehicle_update(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return None
+        return parse_de_float(value, field_label="Anzahl pro Fahrzeug", allow_none=True)
 
     @field_validator("quantity_per_vehicle")
     @classmethod

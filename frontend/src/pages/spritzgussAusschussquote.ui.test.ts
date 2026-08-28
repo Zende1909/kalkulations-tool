@@ -49,10 +49,9 @@ describe("Ausschussquote Dezimalkomma", () => {
 });
 
 describe("SpritzgussPage Ausschussquote Rohstring", () => {
-  it("nutzt DecimalInputField mit Rohstring und Submit-Parse", () => {
-    expect(spritzSrc).toMatch(/DecimalInputField/);
-    expect(spritzSrc).toMatch(/ausschussquoteRaw/);
-    expect(spritzSrc).toMatch(/parsePercentPointsInput\(ausschussquoteRaw\)/);
-    expect(spritzSrc).toMatch(/rawValue=\{ausschussquoteRaw\}/);
+  it("nutzt decimalRaw mit Submit-Parse", () => {
+    expect(spritzSrc).toMatch(/decimalRaw/);
+    expect(spritzSrc).toMatch(/parseSpritzgussDecimalFields/);
+    expect(spritzSrc).toMatch(/fieldKey="ausschussquote_pct"/);
   });
 });

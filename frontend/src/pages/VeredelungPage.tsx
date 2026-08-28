@@ -26,21 +26,14 @@ import {
   type Veredelungsschritt,
   type VeredelungsschrittPayload,
 } from "../types/veredelung";
+import { FormDecimalInput } from "../components/FormDecimalInput";
+import { formatDecimalForInputDe, PercentPointsParseError } from "../utils/decimalInput";
 import {
-  formatDecimalForInputDe,
-  parseDecimalInput,
-  parsePercentPointsInput,
-  PercentPointsParseError,
-} from "../utils/decimalInput";
-import { DecimalInputField } from "../components/DecimalInputField";
+  loadVeredelungDecimalRaw,
+  parseVeredelungDecimalFields,
+} from "../utils/veredelungFormDecimals";
 
 type FormMode = "create" | "edit";
-
-function parseFormNumber(raw: string, fallback = 0): number {
-  const parsed = parseDecimalInput(raw);
-  if (parsed === "") return fallback;
-  return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : fallback;
-}
 
 function euro(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "–";
@@ -93,7 +86,13 @@ export function VeredelungPage() {
   const [submitting, setSubmitting] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [form, setForm] = useState<VeredelungsschrittPayload>(emptyVeredelungForm());
-  const [ausschussquoteRaw, setAusschussquoteRaw] = useState("0");
+  const [decimalRaw, setDecimalRaw] = useState<Record<string, string>>(() =>
+    loadVeredelungDecimalRaw(emptyVeredelungForm()),
+  );
+
+  const handleDecimalChange = (fieldKey: string, raw: string) => {
+    setDecimalRaw((current) => ({ ...current, [fieldKey]: raw }));
+  };
 
   const apiUrl = `${getApiBaseUrl()}/veredelung`;
 
@@ -134,7 +133,7 @@ export function VeredelungPage() {
     setFormMode("create");
     setEditingId(null);
     setForm(emptyVeredelungForm());
-    setAusschussquoteRaw("0");
+    setDecimalRaw(loadVeredelungDecimalRaw(emptyVeredelungForm()));
     setFormError(null);
     setSuccess(null);
     setShowForm(true);
@@ -161,7 +160,7 @@ export function VeredelungPage() {
         fgk_pct: row.fgk_pct,
         aktiv: row.aktiv,
       });
-      setAusschussquoteRaw(formatDecimalForInputDe(row.ausschussquote_pct));
+      setDecimalRaw(loadVeredelungDecimalRaw(row));
       setFormError(null);
       setSuccess(null);
       setShowForm(true);
@@ -189,21 +188,26 @@ export function VeredelungPage() {
       lohnkosten_id: lohn.id,
       lohnstundensatz: lohn.kosten_pro_stunde,
     }));
+    setDecimalRaw((current) => ({
+      ...current,
+      lohnstundensatz: formatDecimalForInputDe(lohn.kosten_pro_stunde),
+    }));
   };
 
   const handleSubmit = async () => {
-    let ausschussquote_pct: number;
+    let formForValidation: VeredelungsschrittPayload;
     try {
-      ausschussquote_pct = parsePercentPointsInput(ausschussquoteRaw);
+      formForValidation = parseVeredelungDecimalFields(decimalRaw, form);
     } catch (err) {
       setFormError(
         err instanceof PercentPointsParseError
           ? err.message
-          : "Ungültige Ausschussquote.",
+          : err instanceof Error
+            ? err.message
+            : "Ungültige Dezimalwerte.",
       );
       return;
     }
-    const formForValidation = { ...form, ausschussquote_pct };
     const clientError = validateForm(formForValidation);
     if (clientError) {
       setFormError(clientError);
@@ -526,19 +530,14 @@ export function VeredelungPage() {
                 />
               </label>
 
-              <label className="block text-sm">
-                <span className="font-medium text-gray-700">Taktzeit (s / Stück)</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  required
-                  value={form.taktzeit_s}
-                  onChange={(e) =>
-                    setForm((c) => ({ ...c, taktzeit_s: parseFormNumber(e.target.value, 0) }))
-                  }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
+              <FormDecimalInput
+                fieldKey="taktzeit_s"
+                label="Taktzeit (s / Stück)"
+                value={form.taktzeit_s}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
 
               <label className="block text-sm">
                 <span className="font-medium text-gray-700">Anzahl Mitarbeiter</span>
@@ -576,66 +575,39 @@ export function VeredelungPage() {
                 </select>
               </label>
 
-              <label className="block text-sm">
-                <span className="font-medium text-gray-700">Lohnstundensatz (€/h)</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  required
-                  value={form.lohnstundensatz}
-                  onChange={(e) =>
-                    setForm((c) => ({
-                      ...c,
-                      lohnstundensatz: parseFormNumber(e.target.value, 0),
-                    }))
-                  }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
+              <FormDecimalInput
+                fieldKey="lohnstundensatz"
+                label="Lohnstundensatz (€/h)"
+                value={form.lohnstundensatz}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
 
-              <label className="block text-sm">
-                <span className="font-medium text-gray-700">
-                  Maschinenstundensatz (€/h, optional)
-                </span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={form.maschinenstundensatz ?? ""}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setForm((c) => ({
-                      ...c,
-                      maschinenstundensatz:
-                        raw.trim() === "" ? null : parseFormNumber(raw, 0),
-                    }));
-                  }}
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
+              <FormDecimalInput
+                fieldKey="maschinenstundensatz"
+                label="Maschinenstundensatz (€/h, optional)"
+                value={form.maschinenstundensatz ?? 0}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
 
-              <label className="block text-sm">
-                <span className="font-medium text-gray-700">
-                  Verbrauchskosten je Stück (€)
-                </span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  required
-                  value={form.verbrauchskosten_je_stueck}
-                  onChange={(e) =>
-                    setForm((c) => ({
-                      ...c,
-                      verbrauchskosten_je_stueck: parseFormNumber(e.target.value, 0),
-                    }))
-                  }
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-              </label>
+              <FormDecimalInput
+                fieldKey="verbrauchskosten_je_stueck"
+                label="Verbrauchskosten je Stück (€)"
+                value={form.verbrauchskosten_je_stueck}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
 
-              <DecimalInputField
+              <FormDecimalInput
+                fieldKey="ausschussquote_pct"
                 label="Ausschussquote (%)"
-                rawValue={ausschussquoteRaw}
-                onRawChange={setAusschussquoteRaw}
+                value={form.ausschussquote_pct}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               />
 

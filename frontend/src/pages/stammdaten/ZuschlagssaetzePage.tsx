@@ -4,6 +4,10 @@ import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import { ZUSCHLAGSSATZ_TYP_OPTIONS } from "../../constants/zuschlagssatzTypen";
 import type { Zuschlagssatz } from "../../types/stammdaten";
+import {
+  loadZuschlagssatzFormValues,
+  submitZuschlagssatzFormValues,
+} from "../../utils/zuschlagssatzFormDecimals";
 
 const columnDefs: ColDef<Zuschlagssatz>[] = [
   { field: "bezeichnung", headerName: "Bezeichnung" },
@@ -41,6 +45,8 @@ export function ZuschlagssaetzePage() {
       columnDefs={columnDefs}
       formFields={formFields}
       emptyFormValues={emptyFormValues}
+      transformLoadValues={(values) => loadZuschlagssatzFormValues(values)}
+      transformSubmitValues={(values) => submitZuschlagssatzFormValues(values)}
     />
   );
 }

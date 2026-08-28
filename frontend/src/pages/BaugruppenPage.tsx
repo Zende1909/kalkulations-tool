@@ -45,6 +45,7 @@ import {
   type SelectedSpritzguss,
   type SelectedVeredelung,
 } from "../types/baugruppe";
+import { coerceFormDecimal, formatDecimalForInputDe } from "../utils/decimalInput";
 
 function euro(value: number | undefined | null): string {
   if (value == null || Number.isNaN(value)) return "–";
@@ -1284,6 +1285,34 @@ function PositionRow({
   onMoveDown: () => void;
   preisLabel: string;
 }) {
+  const [mengeRaw, setMengeRaw] = useState(() => formatDecimalForInputDe(menge));
+  const [preisRaw, setPreisRaw] = useState(() => formatDecimalForInputDe(preis));
+
+  useEffect(() => {
+    setMengeRaw(formatDecimalForInputDe(menge));
+  }, [menge]);
+
+  useEffect(() => {
+    setPreisRaw(formatDecimalForInputDe(preis));
+  }, [preis]);
+
+  const commitMenge = () => {
+    try {
+      onMengeChange(coerceFormDecimal(mengeRaw, "1,25") ?? menge);
+    } catch {
+      setMengeRaw(formatDecimalForInputDe(menge));
+    }
+  };
+
+  const commitPreis = () => {
+    if (!onPreisChange) return;
+    try {
+      onPreisChange(coerceFormDecimal(preisRaw, "0,10") ?? preis);
+    } catch {
+      setPreisRaw(formatDecimalForInputDe(preis));
+    }
+  };
+
   return (
     <div className="flex flex-wrap items-center gap-2 rounded border border-gray-100 bg-gray-50 p-2 text-sm">
       <div className="min-w-[120px]">
@@ -1293,24 +1322,26 @@ function PositionRow({
       <label className="flex items-center gap-1">
         Menge
         <input
-          type="number"
-          min={0.01}
-          step="0.01"
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
           className="w-20 rounded border px-1 py-0.5"
-          value={menge}
-          onChange={(e) => onMengeChange(Number(e.target.value))}
+          value={mengeRaw}
+          onChange={(e) => setMengeRaw(e.target.value)}
+          onBlur={commitMenge}
         />
       </label>
       <label className="flex items-center gap-1">
         {preisLabel}
         {preisEditable ? (
           <input
-            type="number"
-            min={0}
-            step="0.01"
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
             className="w-24 rounded border px-1 py-0.5"
-            value={preis}
-            onChange={(e) => onPreisChange?.(Number(e.target.value))}
+            value={preisRaw}
+            onChange={(e) => setPreisRaw(e.target.value)}
+            onBlur={commitPreis}
           />
         ) : (
           <span className="tabular-nums">{euro(preis)} €</span>

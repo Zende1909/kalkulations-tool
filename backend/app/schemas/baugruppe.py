@@ -1,6 +1,9 @@
 from datetime import date, datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.schemas.numbers import parse_de_float
 
 
 class KaufteilBase(BaseModel):
@@ -18,6 +21,15 @@ class KaufteilBase(BaseModel):
     customer_id: int | None = None
     program_id: int | None = None
     project_id: int | None = None
+
+    @field_validator("preis", mode="before")
+    @classmethod
+    def coerce_preis(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return 0.0
+        parsed = parse_de_float(value, field_label="Preis", allow_none=False)
+        assert parsed is not None
+        return parsed
 
     @field_validator("nominierung")
     @classmethod
@@ -51,9 +63,16 @@ class KaufteilUpdate(BaseModel):
     program_id: int | None = None
     project_id: int | None = None
 
+    @field_validator("preis", mode="before")
+    @classmethod
+    def coerce_preis_update(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return None
+        return parse_de_float(value, field_label="Preis", allow_none=True)
+
     @field_validator("nominierung")
     @classmethod
-    def validate_nominierung(cls, value: str | None) -> str | None:
+    def validate_nominierung_update(cls, value: str | None) -> str | None:
         if value is None or value == "":
             return None
         allowed = {"selbstnominiert", "oem_nominiert"}

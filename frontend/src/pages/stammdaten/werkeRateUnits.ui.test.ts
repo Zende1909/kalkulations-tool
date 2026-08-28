@@ -72,9 +72,9 @@ describe("Dezimalparsing und Prozentanzeige", () => {
     expect(formatPercentPoints(22)).not.toMatch(/€/);
   });
 
-  it("Spritzguss/Veredelung nutzen parseDecimalInput", () => {
-    expect(spritzSrc).toMatch(/parseDecimalInput/);
+  it("Spritzguss/Veredelung nutzen zentrale Dezimal-Helfer", () => {
+    expect(spritzSrc).toMatch(/parseSpritzgussDecimalFields|FormDecimalInput/);
     expect(spritzSrc).toMatch(/formatPercentPoints|formatDetailValue/);
-    expect(veredSrc).toMatch(/parseDecimalInput|parseFormNumber/);
+    expect(veredSrc).toMatch(/parseVeredelungDecimalFields|FormDecimalInput/);
   });
 });
