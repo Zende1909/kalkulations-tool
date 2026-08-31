@@ -106,13 +106,48 @@ export interface BusinessCaseSegmentKpis {
   ebit_bottom_pct: number | null;
   ebit_actual: number | null;
   ebit_actual_pct: number | null;
-  roi_bottom_pct: number | null;
-  roi_actual_pct: number | null;
+  roi_bottom_pct?: number | null;
+  roi_actual_pct?: number | null;
+  roi_operating_bottom_pct?: number | null;
+  roi_operating_actual_pct?: number | null;
+}
+
+export interface BusinessCaseCapexKpis {
+  cost_total: number | null;
+  bound_capital_share_pct: number | null;
+  note: string;
+}
+
+export interface BusinessCaseCapitalKpis {
+  capex_total: number;
+  operative_investment_cost_total: number;
+  non_capex_investment_cost_total: number;
+  total_investment_cost_total: number;
+  bound_capital_total: number | null;
+  capex_share_of_bound_capital_pct: number | null;
+  roi_incl_capex_bottom_pct: number | null;
+  roi_incl_capex_actual_pct: number | null;
+}
+
+export interface BusinessCaseOperatingKpis {
+  cost_total: number | null;
+  bottom_price_revenue_total: number | null;
+  actual_revenue_total: number | null;
+  ebit_bottom: number | null;
+  ebit_bottom_pct: number | null;
+  ebit_actual: number | null;
+  ebit_actual_pct: number | null;
+  roi_operating_bottom_pct: number | null;
+  roi_operating_actual_pct: number | null;
 }
 
 export interface BusinessCaseKpiSummary {
   parts: BusinessCaseSegmentKpis;
   investments: BusinessCaseSegmentKpis;
+  investments_operating: BusinessCaseSegmentKpis;
+  capex: BusinessCaseCapexKpis;
+  operating: BusinessCaseOperatingKpis;
+  capital: BusinessCaseCapitalKpis;
   total: BusinessCaseSegmentKpis;
   revenue_breakdown: {
     parts_bottom_price_revenue: number | null;
@@ -125,12 +160,17 @@ export interface BusinessCaseKpiSummary {
   cost_breakdown: {
     parts_standalone: number | null;
     assemblies: number | null;
+    parts_total: number | null;
     capex: number;
     entwicklung: number;
     legacy: number;
+    operative_investments: number;
     investments_total: number;
+    operative_total: number | null;
+    bound_capital: number | null;
     total: number | null;
   };
+  ebit_note: string;
   roi_note: string;
 }
 
@@ -143,7 +183,11 @@ export interface BusinessCaseKpis {
   linked_project_id: number;
   project_volume_total: number;
   parts_cost_total: number | null;
+  operative_cost_total: number | null;
   cost_total: number | null;
+  bound_capital_total: number | null;
+  capex_cost_total: number;
+  non_capex_investment_cost_total: number;
   bottom_price_revenue_total: number | null;
   actual_revenue_total: number | null;
   parts_bottom_price_revenue_total: number | null;
@@ -158,6 +202,10 @@ export interface BusinessCaseKpis {
   ebit_actual_total_pct: number | null;
   roi_bottom_pct: number | null;
   roi_actual_pct: number | null;
+  roi_incl_capex_bottom_pct: number | null;
+  roi_incl_capex_actual_pct: number | null;
+  roi_operating_bottom_pct: number | null;
+  roi_operating_actual_pct: number | null;
   parts_ebit_bottom: number | null;
   parts_ebit_bottom_pct: number | null;
   parts_ebit_actual: number | null;

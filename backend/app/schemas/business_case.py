@@ -109,7 +109,11 @@ class BusinessCaseKpis(BaseModel):
     linked_project_id: int | None = None
     project_volume_total: float = 0
     parts_cost_total: float | None = None
+    operative_cost_total: float | None = None
     cost_total: float | None = None
+    bound_capital_total: float | None = None
+    capex_cost_total: float = 0
+    non_capex_investment_cost_total: float = 0
     bottom_price_revenue_total: float | None = None
     actual_revenue_total: float | None = None
     parts_bottom_price_revenue_total: float | None = None
@@ -124,6 +128,10 @@ class BusinessCaseKpis(BaseModel):
     ebit_actual_total_pct: float | None = None
     roi_bottom_pct: float | None = None
     roi_actual_pct: float | None = None
+    roi_incl_capex_bottom_pct: float | None = None
+    roi_incl_capex_actual_pct: float | None = None
+    roi_operating_bottom_pct: float | None = None
+    roi_operating_actual_pct: float | None = None
     parts_ebit_bottom: float | None = None
     parts_ebit_bottom_pct: float | None = None
     parts_ebit_actual: float | None = None

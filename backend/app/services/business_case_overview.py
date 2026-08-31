@@ -392,6 +392,8 @@ def build_project_business_case(
         assemblies=assemblies,
     )
     total_kpis = kpi_summary["total"]
+    operating = kpi_summary["operating"]
+    capital = kpi_summary["capital"]
 
     excluded_in_baugruppe_count = len(linked_sg_ids & {r.id for r in sg_rows})
 
@@ -419,7 +421,11 @@ def build_project_business_case(
             "linked_project_id": linked_project_id,
             "project_volume_total": sales_totals["project_volume_total"],
             "parts_cost_total": sales_totals["cost_total"],
-            "cost_total": total_kpis["cost_total"],
+            "operative_cost_total": operating["cost_total"],
+            "cost_total": operating["cost_total"],
+            "bound_capital_total": capital["bound_capital_total"],
+            "capex_cost_total": capital["capex_total"],
+            "non_capex_investment_cost_total": capital["non_capex_investment_cost_total"],
             "bottom_price_revenue_total": total_kpis["bottom_price_revenue_total"],
             "actual_revenue_total": total_kpis["actual_revenue_total"],
             "parts_bottom_price_revenue_total": sales_totals["bottom_price_revenue_total"],
@@ -428,24 +434,28 @@ def build_project_business_case(
             "margin_actual_total": sales_totals["margin_actual_total"],
             "margin_bottom_price_total_pct": sales_totals["margin_bottom_price_total_pct"],
             "margin_actual_total_pct": sales_totals["margin_actual_total_pct"],
-            "ebit_bottom_total": total_kpis["ebit_bottom"],
-            "ebit_bottom_total_pct": total_kpis["ebit_bottom_pct"],
-            "ebit_actual_total": total_kpis["ebit_actual"],
-            "ebit_actual_total_pct": total_kpis["ebit_actual_pct"],
-            "roi_bottom_pct": total_kpis["roi_bottom_pct"],
-            "roi_actual_pct": total_kpis["roi_actual_pct"],
+            "ebit_bottom_total": operating["ebit_bottom"],
+            "ebit_bottom_total_pct": operating["ebit_bottom_pct"],
+            "ebit_actual_total": operating["ebit_actual"],
+            "ebit_actual_total_pct": operating["ebit_actual_pct"],
+            "roi_bottom_pct": capital["roi_incl_capex_bottom_pct"],
+            "roi_actual_pct": capital["roi_incl_capex_actual_pct"],
+            "roi_incl_capex_bottom_pct": capital["roi_incl_capex_bottom_pct"],
+            "roi_incl_capex_actual_pct": capital["roi_incl_capex_actual_pct"],
+            "roi_operating_bottom_pct": operating["roi_operating_bottom_pct"],
+            "roi_operating_actual_pct": operating["roi_operating_actual_pct"],
             "parts_ebit_bottom": kpi_summary["parts"]["ebit_bottom"],
             "parts_ebit_bottom_pct": kpi_summary["parts"]["ebit_bottom_pct"],
             "parts_ebit_actual": kpi_summary["parts"]["ebit_actual"],
             "parts_ebit_actual_pct": kpi_summary["parts"]["ebit_actual_pct"],
             "parts_roi_bottom_pct": kpi_summary["parts"]["roi_bottom_pct"],
             "parts_roi_actual_pct": kpi_summary["parts"]["roi_actual_pct"],
-            "investments_ebit_bottom": kpi_summary["investments"]["ebit_bottom"],
-            "investments_ebit_bottom_pct": kpi_summary["investments"]["ebit_bottom_pct"],
-            "investments_ebit_actual": kpi_summary["investments"]["ebit_actual"],
-            "investments_ebit_actual_pct": kpi_summary["investments"]["ebit_actual_pct"],
-            "investments_roi_bottom_pct": kpi_summary["investments"]["roi_bottom_pct"],
-            "investments_roi_actual_pct": kpi_summary["investments"]["roi_actual_pct"],
+            "investments_ebit_bottom": kpi_summary["investments_operating"]["ebit_bottom"],
+            "investments_ebit_bottom_pct": kpi_summary["investments_operating"]["ebit_bottom_pct"],
+            "investments_ebit_actual": kpi_summary["investments_operating"]["ebit_actual"],
+            "investments_ebit_actual_pct": kpi_summary["investments_operating"]["ebit_actual_pct"],
+            "investments_roi_bottom_pct": kpi_summary["investments_operating"]["roi_bottom_pct"],
+            "investments_roi_actual_pct": kpi_summary["investments_operating"]["roi_actual_pct"],
             "anzahl_einzelteile": len(parts),
             "anzahl_baugruppen": len(assemblies),
             "anzahl_einzelteile_in_baugruppen_ausgeschlossen": excluded_in_baugruppe_count,
@@ -500,7 +510,8 @@ def build_project_business_case(
                 "Einzelteile innerhalb von Baugruppen sind aus der Einzelteil-Liste "
                 "und den Teilepreis-Summen ausgeschlossen. Teilepreise sind stückbezogen "
                 "über die Projektstückzahl; Investitionsbeträge sind einmalig. "
-                "Gesamtumsatz = Teileumsatz + Investitionserlöse (ohne CAPEX)."
+                "Gesamtumsatz = Teileumsatz + Investitionserlöse (ohne CAPEX). "
+                "CAPEX ist kapitalbindend, aber nicht EBIT-wirksam."
             ),
             "excluded_einzelteile_in_baugruppen": excluded_in_baugruppe_count,
         },

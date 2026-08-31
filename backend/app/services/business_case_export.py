@@ -175,9 +175,11 @@ def render_business_case_excel(data: BusinessCaseExportData) -> bytes:
     ws["A2"] = f"{data.customer} / {data.program} / {data.project}"
     row = 4
     kpi_labels = [
-        ("Gesamtkosten", data.kpis.get("cost_total"), EUR_FORMAT),
-        ("Teilekosten", data.kpis.get("parts_cost_total"), EUR_FORMAT),
-        ("Investitionskosten", data.kpis.get("investition_cost_total"), EUR_FORMAT),
+        ("Operative Kosten", data.kpis.get("operative_cost_total"), EUR_FORMAT),
+        ("Gebundenes Projektkapital", data.kpis.get("bound_capital_total"), EUR_FORMAT),
+        ("CAPEX gesamt", data.kpis.get("capex_cost_total"), EUR_FORMAT),
+        ("Sonstige Investitionskosten", data.kpis.get("non_capex_investment_cost_total"), EUR_FORMAT),
+        ("Gesamtinvestitionskosten", data.kpis.get("investition_cost_total"), EUR_FORMAT),
         ("Teileumsatz Bottom Price", _revenue_export(data.kpis.get("parts_bottom_price_revenue_total")), None),
         ("Teileumsatz tatsächlich", _revenue_export(data.kpis.get("parts_actual_revenue_total")), None),
         ("Investitionserlös Bottom Price", _revenue_export(data.kpis.get("investition_bottom_price_total")), None),
@@ -188,8 +190,10 @@ def render_business_case_excel(data: BusinessCaseExportData) -> bytes:
         ("EBIT Bottom Price %", data.kpis.get("ebit_bottom_total_pct"), PCT_FORMAT),
         ("EBIT tatsächlich", data.kpis.get("ebit_actual_total"), EUR_FORMAT),
         ("EBIT tatsächlich %", data.kpis.get("ebit_actual_total_pct"), PCT_FORMAT),
-        ("ROI Bottom Price %", data.kpis.get("roi_bottom_pct"), PCT_FORMAT),
-        ("ROI tatsächlich %", data.kpis.get("roi_actual_pct"), PCT_FORMAT),
+        ("ROI Bottom Price inkl. CAPEX %", data.kpis.get("roi_incl_capex_bottom_pct"), PCT_FORMAT),
+        ("ROI tatsächlich inkl. CAPEX %", data.kpis.get("roi_incl_capex_actual_pct"), PCT_FORMAT),
+        ("Operativer ROI Bottom Price %", data.kpis.get("roi_operating_bottom_pct"), PCT_FORMAT),
+        ("Operativer ROI tatsächlich %", data.kpis.get("roi_operating_actual_pct"), PCT_FORMAT),
         ("Projektstückzahl", data.kpis.get("project_volume_total"), None),
         ("Einzelteile", data.kpis.get("anzahl_einzelteile"), None),
         ("Baugruppen", data.kpis.get("anzahl_baugruppen"), None),

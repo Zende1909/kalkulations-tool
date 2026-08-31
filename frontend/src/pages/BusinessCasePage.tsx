@@ -21,7 +21,6 @@ import type {
   BusinessCaseKpiSummary,
   BusinessCasePartRow,
   BusinessCaseResponse,
-  BusinessCaseSegmentKpis,
   PriceEditTarget,
 } from "../types/businessCase";
 import { coerceFormDecimal, formatDecimalForInputDe } from "../utils/decimalInput";
@@ -77,63 +76,78 @@ function toneFromValue(value: number | null | undefined): "positive" | "negative
 }
 
 function ScenarioComparisonTable({ summary }: { summary: BusinessCaseKpiSummary }) {
-  const rows: Array<{
-    label: string;
-    segment: BusinessCaseSegmentKpis;
-  }> = [
-    { label: "Teilepreise", segment: summary.parts },
-    { label: "Investitionen", segment: summary.investments },
-    { label: "Gesamtgeschäft", segment: summary.total },
+  const rows = [
+    {
+      label: "Umsatz",
+      bottom: summary.operating.bottom_price_revenue_total,
+      actual: summary.operating.actual_revenue_total,
+      isRevenue: true,
+    },
+    {
+      label: "Operative Kosten",
+      bottom: summary.operating.cost_total,
+      actual: summary.operating.cost_total,
+      isCost: true,
+    },
+    {
+      label: "EBIT",
+      bottom: summary.operating.ebit_bottom,
+      actual: summary.operating.ebit_actual,
+      isMoney: true,
+    },
+    {
+      label: "EBIT %",
+      bottom: summary.operating.ebit_bottom_pct,
+      actual: summary.operating.ebit_actual_pct,
+      isPercent: true,
+    },
+    {
+      label: "ROI inkl. CAPEX",
+      bottom: summary.capital.roi_incl_capex_bottom_pct,
+      actual: summary.capital.roi_incl_capex_actual_pct,
+      isPercent: true,
+    },
+    {
+      label: "Operativer ROI ohne CAPEX",
+      bottom: summary.operating.roi_operating_bottom_pct,
+      actual: summary.operating.roi_operating_actual_pct,
+      isPercent: true,
+    },
   ];
+  const fmt = (
+    value: number | null | undefined,
+    opts: { isRevenue?: boolean; isCost?: boolean; isMoney?: boolean; isPercent?: boolean },
+  ) => {
+    if (value == null) return "–";
+    if (opts.isPercent) return formatPercentOrDash(value);
+    if (opts.isRevenue) return formatRevenueEuro(value);
+    if (opts.isCost) return formatCost(value, true);
+    if (opts.isMoney) return formatEuro(value);
+    return String(value);
+  };
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full text-sm">
         <thead>
           <tr className="border-b text-left text-gray-600">
-            <th className="py-2 pr-4">Bereich</th>
-            <th className="py-2 pr-4">Kosten</th>
-            <th className="py-2 pr-4">Umsatz Bottom</th>
-            <th className="py-2 pr-4">Umsatz tatsächlich</th>
-            <th className="py-2 pr-4">EBIT Bottom</th>
-            <th className="py-2 pr-4">EBIT Bottom %</th>
-            <th className="py-2 pr-4">EBIT tatsächlich</th>
-            <th className="py-2 pr-4">EBIT tatsächlich %</th>
-            <th className="py-2 pr-4">ROI Bottom %</th>
-            <th className="py-2">ROI tatsächlich %</th>
+            <th className="py-2 pr-4">KPI</th>
+            <th className="py-2 pr-4 text-right">Bottom Price</th>
+            <th className="py-2 text-right">Tatsächlicher Preis</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => (
             <tr key={row.label} className="border-b border-gray-100">
               <td className="py-2 pr-4 font-medium">{row.label}</td>
-              <td className="py-2 pr-4">{formatCost(row.segment.cost_total, row.segment.cost_total != null)}</td>
-              <td className="py-2 pr-4">
-                {row.segment.bottom_price_revenue_total != null
-                  ? formatRevenueEuro(row.segment.bottom_price_revenue_total)
-                  : "–"}
+              <td
+                className={`py-2 pr-4 text-right ${row.isPercent || row.isMoney ? valueColorClass(row.bottom ?? null) : ""}`}
+              >
+                {fmt(row.bottom, row)}
               </td>
-              <td className="py-2 pr-4">
-                {row.segment.actual_revenue_total != null
-                  ? formatRevenueEuro(row.segment.actual_revenue_total)
-                  : "–"}
-              </td>
-              <td className={`py-2 pr-4 ${valueColorClass(row.segment.ebit_bottom)}`}>
-                {formatEuro(row.segment.ebit_bottom)}
-              </td>
-              <td className={`py-2 pr-4 ${valueColorClass(row.segment.ebit_bottom_pct)}`}>
-                {formatPercentOrDash(row.segment.ebit_bottom_pct)}
-              </td>
-              <td className={`py-2 pr-4 ${valueColorClass(row.segment.ebit_actual)}`}>
-                {formatEuro(row.segment.ebit_actual)}
-              </td>
-              <td className={`py-2 pr-4 ${valueColorClass(row.segment.ebit_actual_pct)}`}>
-                {formatPercentOrDash(row.segment.ebit_actual_pct)}
-              </td>
-              <td className={`py-2 pr-4 ${valueColorClass(row.segment.roi_bottom_pct)}`}>
-                {formatPercentOrDash(row.segment.roi_bottom_pct)}
-              </td>
-              <td className={`py-2 ${valueColorClass(row.segment.roi_actual_pct)}`}>
-                {formatPercentOrDash(row.segment.roi_actual_pct)}
+              <td
+                className={`py-2 text-right ${row.isPercent || row.isMoney ? valueColorClass(row.actual ?? null) : ""}`}
+              >
+                {fmt(row.actual, row)}
               </td>
             </tr>
           ))}
@@ -166,13 +180,13 @@ function BreakdownList({
 }
 
 function InvestmentDashboardHead({ summary }: { summary: BusinessCaseKpiSummary }) {
-  const inv = summary.investments;
+  const inv = summary.investments_operating;
   return (
-    <div className="mb-4 grid gap-3 lg:grid-cols-3">
+    <div className="mb-4 grid gap-3 lg:grid-cols-2">
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
-        <h4 className="font-semibold text-amber-900">Gesamtinvestitionen</h4>
+        <h4 className="font-semibold text-amber-900">Operative Investitionen (ohne CAPEX)</h4>
         <div className="mt-2 grid gap-1">
-          <div>Kosten: {formatEuro(summary.cost_breakdown.investments_total)}</div>
+          <div>Kosten: {formatEuro(summary.capital.operative_investment_cost_total)}</div>
           <div>
             Bottom-Price-Erlös:{" "}
             {summary.revenue_breakdown.investments_bottom_price_revenue != null
@@ -191,12 +205,18 @@ function InvestmentDashboardHead({ summary }: { summary: BusinessCaseKpiSummary 
           <div className={valueColorClass(inv.ebit_actual)}>
             EBIT tatsächlich: {formatEbitWithPercent(inv.ebit_actual, inv.ebit_actual_pct)}
           </div>
-          <div className={valueColorClass(inv.roi_bottom_pct)}>
-            ROI Bottom: {formatPercentOrDash(inv.roi_bottom_pct)}
+        </div>
+      </div>
+      <div className="rounded-lg border border-slate-300 bg-slate-50 p-4 text-sm">
+        <h4 className="font-semibold text-slate-800">CAPEX / Werksinvestitionen</h4>
+        <div className="mt-2 grid gap-1">
+          <div>Kosten einmalig: {formatEuro(summary.capex.cost_total)}</div>
+          <div className="text-xs text-slate-600">{summary.capex.note}</div>
+          <div>
+            Anteil gebundenes Kapital:{" "}
+            {formatPercentOrDash(summary.capex.bound_capital_share_pct)}
           </div>
-          <div className={valueColorClass(inv.roi_actual_pct)}>
-            ROI tatsächlich: {formatPercentOrDash(inv.roi_actual_pct)}
-          </div>
+          <div>Gebundenes Projektkapital gesamt: {formatEuro(summary.capital.bound_capital_total)}</div>
         </div>
       </div>
     </div>
@@ -262,7 +282,13 @@ function InvestmentTable({
                 </td>
               )}
               <td className="py-2 text-xs text-amber-800">
-                {[inv.hinweis, ...(inv.amount_warnings ?? [])].filter(Boolean).join(" · ")}
+                {[
+                  mode === "capex" ? "nicht EBIT-wirksam, kapitalbindend" : "",
+                  inv.hinweis,
+                  ...(inv.amount_warnings ?? []),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </td>
             </tr>
           ))}
@@ -276,6 +302,7 @@ function CategorySummary({
   title,
   block,
   showMargins = true,
+  note,
 }: {
   title: string;
   block: {
@@ -289,10 +316,12 @@ function CategorySummary({
     margin_revenue_minus_bottom_price_pct?: number | null;
   };
   showMargins?: boolean;
+  note?: string;
 }) {
   return (
     <div className="rounded border border-gray-200 p-3 text-sm">
       <h4 className="mb-2 font-semibold">{title}</h4>
+      {note && <p className="mb-2 text-xs text-slate-600">{note}</p>}
       <div className="grid gap-1 sm:grid-cols-2">
         <div>Anzahl: {block.count}</div>
         <div>Kosten: {formatEuro(block.cost_amount_total)}</div>
@@ -722,59 +751,100 @@ export function BusinessCasePage() {
 
               {data.kpi_summary && (
                 <>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <KpiCard
-                      label="Kosten gesamt"
-                      value={formatCost(data.kpis.cost_total, data.kpis.cost_total != null)}
-                      hint="Teilekosten + alle Investitionen (inkl. CAPEX)"
-                    />
-                    <KpiCard
-                      label="Umsatz Bottom Price"
-                      value={
-                        data.kpis.bottom_price_revenue_total != null
-                          ? formatRevenueEuro(data.kpis.bottom_price_revenue_total)
-                          : "–"
-                      }
-                      hint="Teile + Investitionserlöse"
-                    />
-                    <KpiCard
-                      label="Tatsächlicher Umsatz"
-                      value={
-                        data.kpis.actual_revenue_total != null
-                          ? formatRevenueEuro(data.kpis.actual_revenue_total)
-                          : "–"
-                      }
-                      hint="Teile + Investitionserlöse"
-                    />
-                    <KpiCard
-                      label="EBIT Bottom %"
-                      value={formatPercentOrDash(data.kpis.ebit_bottom_total_pct)}
-                      tone={toneFromValue(data.kpis.ebit_bottom_total_pct)}
-                      hint={formatEbitWithPercent(data.kpis.ebit_bottom_total, data.kpis.ebit_bottom_total_pct)}
-                    />
-                    <KpiCard
-                      label="ROI Bottom %"
-                      value={formatPercentOrDash(data.kpis.roi_bottom_pct)}
-                      tone={toneFromValue(data.kpis.roi_bottom_pct)}
-                      hint="Projektlaufzeit-ROI"
-                    />
-                    <KpiCard
-                      label="EBIT tatsächlich %"
-                      value={formatPercentOrDash(data.kpis.ebit_actual_total_pct)}
-                      tone={toneFromValue(data.kpis.ebit_actual_total_pct)}
-                      hint={formatEbitWithPercent(data.kpis.ebit_actual_total, data.kpis.ebit_actual_total_pct)}
-                    />
-                    <KpiCard
-                      label="ROI tatsächlich %"
-                      value={formatPercentOrDash(data.kpis.roi_actual_pct)}
-                      tone={toneFromValue(data.kpis.roi_actual_pct)}
-                      hint="Projektlaufzeit-ROI"
-                    />
-                    <KpiCard
-                      label="Projektstückzahl"
-                      value={formatInteger(data.kpis.project_volume_total)}
-                      hint={`${data.kpis.anzahl_einzelteile} Einzelteile · ${data.kpis.anzahl_baugruppen} Baugruppen`}
-                    />
+                  <div className="mt-6">
+                    <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                      Operative Wirtschaftlichkeit
+                    </h4>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      <KpiCard
+                        label="Bottom-Price-Umsatz"
+                        value={
+                          data.kpis.bottom_price_revenue_total != null
+                            ? formatRevenueEuro(data.kpis.bottom_price_revenue_total)
+                            : "–"
+                        }
+                        hint="Teile + Nicht-CAPEX-Investitionen"
+                      />
+                      <KpiCard
+                        label="Tatsächlicher Umsatz"
+                        value={
+                          data.kpis.actual_revenue_total != null
+                            ? formatRevenueEuro(data.kpis.actual_revenue_total)
+                            : "–"
+                        }
+                        hint="Teile + Nicht-CAPEX-Investitionen"
+                      />
+                      <KpiCard
+                        label="Operative Kosten"
+                        value={formatCost(
+                          data.kpis.operative_cost_total,
+                          data.kpis.operative_cost_total != null,
+                        )}
+                        hint="Teile + Entwicklung + Amortisation/Einmalzahlung"
+                      />
+                      <KpiCard
+                        label="EBIT Bottom Price"
+                        value={formatEbitWithPercent(
+                          data.kpis.ebit_bottom_total,
+                          data.kpis.ebit_bottom_total_pct,
+                        )}
+                        tone={toneFromValue(data.kpis.ebit_bottom_total)}
+                        hint="CAPEX nicht enthalten"
+                      />
+                      <KpiCard
+                        label="EBIT tatsächlicher Preis"
+                        value={formatEbitWithPercent(
+                          data.kpis.ebit_actual_total,
+                          data.kpis.ebit_actual_total_pct,
+                        )}
+                        tone={toneFromValue(data.kpis.ebit_actual_total)}
+                        hint="CAPEX nicht enthalten"
+                      />
+                      <KpiCard
+                        label="Projektstückzahl"
+                        value={formatInteger(data.kpis.project_volume_total)}
+                        hint={`${data.kpis.anzahl_einzelteile} Einzelteile · ${data.kpis.anzahl_baugruppen} Baugruppen`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                      Kapitalbindung und Rendite
+                    </h4>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      <KpiCard
+                        label="CAPEX gesamt"
+                        value={formatEuro(data.kpis.capex_cost_total)}
+                        hint="Nicht EBIT-wirksam, kapitalbindend"
+                      />
+                      <KpiCard
+                        label="Sonstige Investitionskosten"
+                        value={formatEuro(data.kpis.non_capex_investment_cost_total)}
+                        hint="Entwicklung + Amortisation/Einmalzahlung"
+                      />
+                      <KpiCard
+                        label="Gebundenes Projektkapital"
+                        value={formatEuro(data.kpis.bound_capital_total)}
+                        hint="Operative Kosten + CAPEX"
+                      />
+                      <KpiCard
+                        label="ROI Bottom Price inkl. CAPEX"
+                        value={formatPercentOrDash(data.kpis.roi_incl_capex_bottom_pct)}
+                        tone={toneFromValue(data.kpis.roi_incl_capex_bottom_pct)}
+                      />
+                      <KpiCard
+                        label="ROI tatsächlich inkl. CAPEX"
+                        value={formatPercentOrDash(data.kpis.roi_incl_capex_actual_pct)}
+                        tone={toneFromValue(data.kpis.roi_incl_capex_actual_pct)}
+                      />
+                      <KpiCard
+                        label="Operativer ROI ohne CAPEX"
+                        value={formatPercentOrDash(data.kpis.roi_operating_bottom_pct)}
+                        tone={toneFromValue(data.kpis.roi_operating_bottom_pct)}
+                        hint={`tatsächlich: ${formatPercentOrDash(data.kpis.roi_operating_actual_pct)}`}
+                      />
+                    </div>
                   </div>
 
                   <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -863,11 +933,19 @@ export function BusinessCasePage() {
                           value: formatEuro(data.kpi_summary.cost_breakdown.legacy),
                         },
                         {
-                          label: "Gesamtkosten",
+                          label: "CAPEX (nicht EBIT-wirksam)",
+                          value: formatEuro(data.kpi_summary.cost_breakdown.capex),
+                        },
+                        {
+                          label: "Operative Kosten gesamt",
                           value: formatCost(
-                            data.kpi_summary.cost_breakdown.total,
-                            data.kpi_summary.cost_breakdown.total != null,
+                            data.kpi_summary.cost_breakdown.operative_total,
+                            data.kpi_summary.cost_breakdown.operative_total != null,
                           ),
+                        },
+                        {
+                          label: "Gebundenes Projektkapital",
+                          value: formatEuro(data.kpi_summary.cost_breakdown.bound_capital),
                         },
                       ]}
                     />
@@ -876,7 +954,8 @@ export function BusinessCasePage() {
                   <div className="mt-6">
                     <h4 className="mb-3 font-semibold text-gray-800">Szenariovergleich</h4>
                     <ScenarioComparisonTable summary={data.kpi_summary} />
-                    <p className="mt-2 text-xs text-gray-500">{data.kpi_summary.roi_note}</p>
+                    <p className="mt-2 text-xs text-gray-500">{data.kpi_summary.ebit_note}</p>
+                    <p className="mt-1 text-xs text-gray-500">{data.kpi_summary.roi_note}</p>
                   </div>
                 </>
               )}
@@ -953,6 +1032,7 @@ export function BusinessCasePage() {
                   title="CAPEX / Werksinvestitionen"
                   block={data.investment_financial_summary.capex}
                   showMargins={false}
+                  note="Nicht EBIT-wirksam, kapitalbindend"
                 />
                 <CategorySummary
                   title="Entwicklungsinvestitionen"

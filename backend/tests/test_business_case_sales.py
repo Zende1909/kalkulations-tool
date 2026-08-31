@@ -309,7 +309,13 @@ def test_capex_only_increases_total_cost(seeded: Session):
         seeded, customer_id=1, program_id=10, linked_project_id=100
     )
     assert after["kpi_summary"]["cost_breakdown"]["capex"] == 120000.0
-    assert after["kpis"]["cost_total"] == pytest.approx(cost_before + 120000.0)
+    assert after["kpis"]["operative_cost_total"] == pytest.approx(
+        (before["kpis"]["operative_cost_total"] or 0)
+    )
+    assert after["kpis"]["bound_capital_total"] == pytest.approx(
+        (before["kpis"]["bound_capital_total"] or 0) + 120000.0
+    )
+    assert after["kpis"]["ebit_bottom_total"] == before["kpis"]["ebit_bottom_total"]
     assert (
         after["kpi_summary"]["revenue_breakdown"]["investments_actual_revenue"]
         == revenue_before
