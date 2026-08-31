@@ -29,6 +29,7 @@ import {
   type SpritzgussBloecke,
   type SpritzgussFormData,
   type SpritzgussListItem,
+  type MaschinenGroesseResult,
   type VeredelungZuordnung,
   type VeredelungZuordnungInput,
   type WerkzeugAbrechnungsart,
@@ -264,6 +265,21 @@ function TextInput({
   );
 }
 
+function isSpritzgussMachine(machine: Maschine): boolean {
+  const typ = (machine.maschinentyp ?? "").toLowerCase();
+  return !["montage", "veredelung", "assembly", "finish", "finishing"].some((token) =>
+    typ.includes(token),
+  );
+}
+
+function formatSizingNumber(value: number | null | undefined, fractionDigits = 6): string {
+  if (value == null || Number.isNaN(value)) return "–";
+  return value.toLocaleString("de-DE", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: fractionDigits,
+  });
+}
+
 export function SpritzgussPage() {
   const { canWrite } = useAuth();
   const [form, setForm] = useState<SpritzgussFormData>(emptySpritzgussForm());
@@ -299,6 +315,7 @@ export function SpritzgussPage() {
   const [jahresbedarf, setJahresbedarf] = useState<number | null>(null);
   const [jahresbedarfHint, setJahresbedarfHint] = useState<string | null>(null);
   const [jahresbedarfLoading, setJahresbedarfLoading] = useState(false);
+  const [maschinenGroesse, setMaschinenGroesse] = useState<MaschinenGroesseResult | null>(null);
 
   const setField = <K extends keyof SpritzgussFormData>(key: K, value: SpritzgussFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -426,11 +443,17 @@ export function SpritzgussPage() {
     };
   }, [selectedWerk, jahresbedarf, form.losgroesse_modus, form.losgroesse_manuell]);
 
+  const selectedMaterial = useMemo(
+    () => materials.find((m) => m.id === form.material_id) ?? null,
+    [materials, form.material_id],
+  );
+
   const calcPayloadBase = useMemo(
     () => ({
       teilegewicht_netto_g: form.teilegewicht_netto_g,
       schussgewicht_g: form.schussgewicht_g,
       materialpreis_pro_kg: form.materialpreis_pro_kg,
+      material_id: form.material_id,
       mgk_pct: form.mgk_pct,
       material_nominierung: form.material_nominierung,
       zykluszeit_s: form.zykluszeit_s,
@@ -455,6 +478,12 @@ export function SpritzgussPage() {
       setup_lohnstundensatz: form.setup_lohnstundensatz,
       setup_mitarbeiter: form.setup_mitarbeiter,
       setup_aktiv: form.setup_aktiv || form.setup_zeit_min > 0,
+      maschinen_groesse_modus: form.maschinen_groesse_modus,
+      maschinen_groesse_breite_mm: form.maschinen_groesse_breite_mm,
+      maschinen_groesse_laenge_mm: form.maschinen_groesse_laenge_mm,
+      maschinen_groesse_oeffnungen_pct: form.maschinen_groesse_oeffnungen_pct,
+      maschinen_groesse_proj_flaeche_mm2: form.maschinen_groesse_proj_flaeche_mm2,
+      maschinen_groesse_schwindung_pct: form.maschinen_groesse_schwindung_pct,
     }),
     [form, veredelungZuordnungen, hierarchy.project_id],
   );
@@ -468,8 +497,11 @@ export function SpritzgussPage() {
   );
 
   const filteredMachines = useMemo(() => {
-    if (form.werk_id == null) return machines.filter((m) => m.werk_id == null || !m.werk_id);
-    return machines.filter((m) => m.werk_id === form.werk_id);
+    const base =
+      form.werk_id == null
+        ? machines.filter((m) => m.werk_id == null || !m.werk_id)
+        : machines.filter((m) => m.werk_id === form.werk_id);
+    return base.filter(isSpritzgussMachine);
   }, [machines, form.werk_id]);
 
   const filteredLohns = useMemo(() => {
@@ -645,6 +677,16 @@ export function SpritzgussPage() {
     }));
   };
 
+  const applyMaschinenGroesseResponse = (result: MaschinenGroesseResult | null | undefined) => {
+    setMaschinenGroesse(result ?? null);
+    if (result?.empfohlene_maschine_id != null) {
+      const maschine = machines.find((m) => m.id === result.empfohlene_maschine_id);
+      if (maschine) {
+        handleMaschineChange(String(maschine.id));
+      }
+    }
+  };
+
   const handleBerechnen = async () => {
     setBusy(true);
     setError(null);
@@ -667,6 +709,7 @@ export function SpritzgussPage() {
         setup_mitarbeiter: parsedForm.setup_mitarbeiter,
       });
       setBloecke(result.bloecke);
+      applyMaschinenGroesseResponse(result.maschinen_groesse);
       updateSelectedFromResponse(result.veredelung_zuordnungen);
       setSuccess("Berechnung erfolgreich.");
     } catch (err) {
@@ -718,6 +761,13 @@ export function SpritzgussPage() {
           : await updateKalkulation(editId, payload);
       setEditId(saved.id);
       setBloecke((saved.ergebnis_bloecke as SpritzgussBloecke) ?? null);
+      const savedSizing =
+        (saved.ergebnis as { maschinen_groesse?: MaschinenGroesseResult } | null)?.maschinen_groesse ??
+        null;
+      setMaschinenGroesse(savedSizing);
+      if (saved.maschine_id != null) {
+        setField("maschine_id", saved.maschine_id);
+      }
       loadVeredelungFromSaved(saved.veredelung_zuordnungen);
       setSuccess(
         wasNew
@@ -782,6 +832,12 @@ export function SpritzgussPage() {
         ausschussquote_pct: item.ausschussquote_pct,
         materialpreis_pro_kg: item.materialpreis_pro_kg,
         material_nominierung: item.material_nominierung ?? null,
+        maschinen_groesse_modus: item.maschinen_groesse_modus ?? null,
+        maschinen_groesse_breite_mm: item.maschinen_groesse_breite_mm ?? null,
+        maschinen_groesse_laenge_mm: item.maschinen_groesse_laenge_mm ?? null,
+        maschinen_groesse_oeffnungen_pct: item.maschinen_groesse_oeffnungen_pct ?? null,
+        maschinen_groesse_proj_flaeche_mm2: item.maschinen_groesse_proj_flaeche_mm2 ?? null,
+        maschinen_groesse_schwindung_pct: item.maschinen_groesse_schwindung_pct ?? null,
         werk_id: item.werk_id ?? null,
         losgroesse: item.losgroesse ?? null,
         losgroesse_modus: inferLegacyLosgroesseModus(item.losgroesse_modus, item.losgroesse),
@@ -844,7 +900,16 @@ export function SpritzgussPage() {
             (inferLegacyLosgroesseModus(item.losgroesse_modus, item.losgroesse) === "manuell"
               ? item.losgroesse
               : null),
+          maschinen_groesse_breite_mm: item.maschinen_groesse_breite_mm ?? null,
+          maschinen_groesse_laenge_mm: item.maschinen_groesse_laenge_mm ?? null,
+          maschinen_groesse_oeffnungen_pct: item.maschinen_groesse_oeffnungen_pct ?? null,
+          maschinen_groesse_proj_flaeche_mm2: item.maschinen_groesse_proj_flaeche_mm2 ?? null,
+          maschinen_groesse_schwindung_pct: item.maschinen_groesse_schwindung_pct ?? null,
         }),
+      );
+      setMaschinenGroesse(
+        (item.ergebnis as { maschinen_groesse?: MaschinenGroesseResult } | null)?.maschinen_groesse ??
+          null,
       );
       setBloecke((item.ergebnis_bloecke as SpritzgussBloecke) ?? null);
       loadVeredelungFromSaved(item.veredelung_zuordnungen);
@@ -868,6 +933,7 @@ export function SpritzgussPage() {
     setLegacyHierarchy(null);
     setSelectedVeredelung([]);
     setBloecke(null);
+    setMaschinenGroesse(null);
     setSuccess(null);
     setError(null);
   };
@@ -1097,6 +1163,128 @@ export function SpritzgussPage() {
                 )}
               </label>
             </div>
+          </section>
+
+          <section className="rounded-lg border border-gray-200 bg-white p-4">
+            <h3 className="mb-3 font-semibold text-gray-900">Maschinengröße / Zuhaltekraft</h3>
+            <p className="mb-3 text-xs text-gray-600">
+              Berechnung nach Excel p1-1 (Maße mit Öffnungen oder projizierte Fläche, 20&nbsp;%
+              Sicherheitszuschlag).
+            </p>
+            <div className="mb-4 flex flex-wrap gap-4 text-sm">
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="maschinen_groesse_modus"
+                  checked={form.maschinen_groesse_modus === "masse"}
+                  onChange={() => setField("maschinen_groesse_modus", "masse")}
+                />
+                Maße
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="maschinen_groesse_modus"
+                  checked={form.maschinen_groesse_modus === "flaeche"}
+                  onChange={() => setField("maschinen_groesse_modus", "flaeche")}
+                />
+                Projizierte Fläche
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="maschinen_groesse_modus"
+                  checked={form.maschinen_groesse_modus == null}
+                  onChange={() => setField("maschinen_groesse_modus", null)}
+                />
+                Keine Berechnung
+              </label>
+            </div>
+            {form.maschinen_groesse_modus != null && (
+              <div className="grid gap-3 md:grid-cols-2">
+                {form.maschinen_groesse_modus === "masse" ? (
+                  <>
+                    <NumberInput
+                      fieldKey="maschinen_groesse_breite_mm"
+                      label="Breite (mm)"
+                      value={form.maschinen_groesse_breite_mm ?? 0}
+                      decimalRaw={decimalRaw}
+                      onDecimalChange={handleDecimalChange}
+                    />
+                    <NumberInput
+                      fieldKey="maschinen_groesse_laenge_mm"
+                      label="Länge (mm)"
+                      value={form.maschinen_groesse_laenge_mm ?? 0}
+                      decimalRaw={decimalRaw}
+                      onDecimalChange={handleDecimalChange}
+                    />
+                    <NumberInput
+                      fieldKey="maschinen_groesse_oeffnungen_pct"
+                      label="Öffnungen (%)"
+                      value={form.maschinen_groesse_oeffnungen_pct ?? 0}
+                      decimalRaw={decimalRaw}
+                      onDecimalChange={handleDecimalChange}
+                    />
+                  </>
+                ) : (
+                  <NumberInput
+                    fieldKey="maschinen_groesse_proj_flaeche_mm2"
+                    label="Projizierte Fläche (mm²)"
+                    value={form.maschinen_groesse_proj_flaeche_mm2 ?? 0}
+                    decimalRaw={decimalRaw}
+                    onDecimalChange={handleDecimalChange}
+                  />
+                )}
+                <NumberInput
+                  fieldKey="maschinen_groesse_schwindung_pct"
+                  label="Schwindung (%)"
+                  value={form.maschinen_groesse_schwindung_pct ?? 0}
+                  decimalRaw={decimalRaw}
+                  onDecimalChange={handleDecimalChange}
+                />
+                <div className="text-sm md:col-span-2 rounded-md border border-gray-100 bg-gray-50 p-3">
+                  <div className="font-medium text-gray-800">Materialdaten</div>
+                  <div className="mt-1 text-gray-700">
+                    {selectedMaterial
+                      ? `${selectedMaterial.bezeichnung} (${selectedMaterial.material_nr})`
+                      : "– kein Material gewählt –"}
+                  </div>
+                  <div className="mt-1 text-gray-600">
+                    Einspritzdruck:{" "}
+                    {selectedMaterial
+                      ? `${formatSizingNumber(selectedMaterial.injection_pressure_kg_cm2, 2)} kg/cm²`
+                      : "–"}
+                  </div>
+                  <div className="text-gray-600">Kavitäten: {form.kavitaeten}</div>
+                </div>
+              </div>
+            )}
+            {maschinenGroesse && (
+              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="font-medium text-gray-900">Ergebnis Maschinengröße</div>
+                <div className="mt-2 grid gap-1 md:grid-cols-2">
+                  <div>
+                    Zuhaltekraft ohne Sicherheit:{" "}
+                    {formatSizingNumber(maschinenGroesse.zuhaltekraft_ohne_sicherheit_t)} t
+                  </div>
+                  <div>
+                    Erforderliche Zuhaltekraft (+20&nbsp;%):{" "}
+                    {formatSizingNumber(maschinenGroesse.zuhaltekraft_erforderlich_t)} t
+                  </div>
+                  <div>
+                    Empfohlene Maschine:{" "}
+                    {maschinenGroesse.empfohlene_maschine_name ?? "–"}
+                  </div>
+                  <div>
+                    Verfügbare Zuhaltekraft:{" "}
+                    {formatSizingNumber(maschinenGroesse.empfohlene_maschine_schliesskraft_t, 2)} t
+                  </div>
+                </div>
+                {maschinenGroesse.warnung && (
+                  <p className="mt-2 text-amber-800">{maschinenGroesse.warnung}</p>
+                )}
+              </div>
+            )}
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">

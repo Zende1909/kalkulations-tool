@@ -4,6 +4,7 @@ export interface Material {
   material_nr: string;
   preis_pro_kg: number;
   dichte: number;
+  injection_pressure_kg_cm2: number;
   waehrung: string;
   aktiv: boolean;
   created_at: string;

@@ -168,6 +168,42 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
         ExportRow("Maschine", maschine_name),
         ExportRow("Zykluszeit", f"{obj.zykluszeit_s:.2f} s"),
         ExportRow("Kavitäten", str(obj.kavitaeten)),
+    ]
+    mg = ergebnis.get("maschinen_groesse") if isinstance(ergebnis.get("maschinen_groesse"), dict) else None
+    if mg:
+        inputs.extend(
+            [
+                ExportRow("Maschinengröße Modus", str(mg.get("modus") or "–")),
+                ExportRow(
+                    "Einspritzdruck",
+                    f"{mg.get('injection_pressure_kg_cm2', '–')} kg/cm²",
+                ),
+                ExportRow(
+                    "Zuhaltekraft erforderlich",
+                    f"{mg.get('zuhaltekraft_erforderlich_t', '–')} t",
+                ),
+                ExportRow(
+                    "Empfohlene Maschine",
+                    str(mg.get("empfohlene_maschine_name") or "–"),
+                ),
+            ]
+        )
+    elif getattr(obj, "maschinen_groesse_modus", None):
+        inputs.extend(
+            [
+                ExportRow("Maschinengröße Modus", str(obj.maschinen_groesse_modus)),
+                ExportRow(
+                    "Einspritzdruck",
+                    f"{getattr(obj, 'maschinen_groesse_injection_pressure_kg_cm2', None) or '–'} kg/cm²",
+                ),
+                ExportRow(
+                    "Zuhaltekraft erforderlich",
+                    f"{getattr(obj, 'maschinen_groesse_zuhaltekraft_erforderlich_t', None) or '–'} t",
+                ),
+            ]
+        )
+    inputs.extend(
+        [
         ExportRow("Jahresstückzahl", str(obj.jahresstueckzahl)),
         ExportRow(
             "Werk / Standort",
@@ -246,7 +282,8 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
         ExportRow("SG&A / VVGK", _pct_applied_or_stored(ergebnis, "applied_vvgk_pct", obj.vvgk_pct)),
         ExportRow("Profit / Gewinn", _pct_applied_or_stored(ergebnis, "applied_gewinn_pct", obj.gewinn_pct)),
         ExportRow("Skonto", _pct_applied_or_stored(ergebnis, "applied_skonto_pct", obj.skonto_pct)),
-    ]
+        ]
+    )
 
     def money(label: str, key: str, *, highlight: bool = False) -> ExportMoneyRow:
         val = _float_from(zusammenfassung, key)

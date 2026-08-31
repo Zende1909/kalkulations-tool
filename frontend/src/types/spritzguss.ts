@@ -81,10 +81,32 @@ export interface SpritzgussBloecke {
   zusammenfassung?: Record<string, number | string | null>;
 }
 
+export type MaschinenGroesseModus = "masse" | "flaeche";
+
+export interface MaschinenGroesseResult {
+  modus: MaschinenGroesseModus;
+  injection_pressure_kg_cm2: number;
+  kavitaeten: number;
+  breite_mm?: number | null;
+  laenge_mm?: number | null;
+  oeffnungen_pct?: number | null;
+  proj_flaeche_mm2?: number | null;
+  schwindung_pct?: number | null;
+  proj_flaeche_netto_mm2?: number | null;
+  zuhaltekraft_ohne_sicherheit_t: number;
+  sicherheitszuschlag_faktor: number;
+  zuhaltekraft_erforderlich_t: number;
+  empfohlene_maschine_id?: number | null;
+  empfohlene_maschine_name?: string | null;
+  empfohlene_maschine_schliesskraft_t?: number | null;
+  warnung?: string | null;
+}
+
 export interface SpritzgussCalcResponse {
   ergebnis: SpritzgussErgebnis;
   bloecke: SpritzgussBloecke;
   veredelung_zuordnungen?: VeredelungZuordnung[];
+  maschinen_groesse?: MaschinenGroesseResult | null;
 }
 
 export type WerkzeugAbrechnungsart = "amortisation" | "einmalzahlung";
@@ -109,6 +131,13 @@ export interface SpritzgussFormData {
   materialpreis_pro_kg: number;
   /** Nominierung am Materialeinsatz dieser Kalkulation */
   material_nominierung: "selbstnominiert" | "oem_nominiert" | null;
+
+  maschinen_groesse_modus: MaschinenGroesseModus | null;
+  maschinen_groesse_breite_mm: number | null;
+  maschinen_groesse_laenge_mm: number | null;
+  maschinen_groesse_oeffnungen_pct: number | null;
+  maschinen_groesse_proj_flaeche_mm2: number | null;
+  maschinen_groesse_schwindung_pct: number | null;
 
   werk_id: number | null;
   losgroesse: number | null;
@@ -144,6 +173,13 @@ export interface SpritzgussFormData {
 
 export interface SpritzgussKalkulation extends SpritzgussFormData {
   id: number;
+  maschinen_groesse_injection_pressure_kg_cm2?: number | null;
+  maschinen_groesse_proj_flaeche_netto_mm2?: number | null;
+  maschinen_groesse_zuhaltekraft_ohne_sicherheit_t?: number | null;
+  maschinen_groesse_sicherheitszuschlag_faktor?: number | null;
+  maschinen_groesse_zuhaltekraft_erforderlich_t?: number | null;
+  maschinen_groesse_empfohlene_maschine_id?: number | null;
+  maschinen_groesse_warnung?: string | null;
   ergebnis: SpritzgussErgebnis | null;
   ergebnis_bloecke: SpritzgussBloecke | null;
   veredelung_zuordnungen?: VeredelungZuordnung[];
@@ -182,6 +218,12 @@ export const emptySpritzgussForm = (): SpritzgussFormData => ({
   ausschussquote_pct: 0,
   materialpreis_pro_kg: 0,
   material_nominierung: null,
+  maschinen_groesse_modus: null,
+  maschinen_groesse_breite_mm: null,
+  maschinen_groesse_laenge_mm: null,
+  maschinen_groesse_oeffnungen_pct: null,
+  maschinen_groesse_proj_flaeche_mm2: null,
+  maschinen_groesse_schwindung_pct: null,
   werk_id: null,
   losgroesse: null,
   losgroesse_modus: "automatisch",

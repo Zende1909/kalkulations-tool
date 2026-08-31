@@ -114,10 +114,13 @@ def test_baseline_revision_is_discoverable():
 def test_alembic_head_is_plant_costing_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0014_business_case_manual_prices"]
-    rev = scripts.get_revision("e1a0014_business_case_manual_prices")
+    assert scripts.get_heads() == ["e1a0015_injection_machine_sizing"]
+    rev = scripts.get_revision("e1a0015_injection_machine_sizing")
     assert rev is not None
-    assert rev.down_revision == "e1a0013_investition_cost_bottom_revenue"
+    assert rev.down_revision == "e1a0014_business_case_manual_prices"
+    rev14 = scripts.get_revision("e1a0014_business_case_manual_prices")
+    assert rev14 is not None
+    assert rev14.down_revision == "e1a0013_investition_cost_bottom_revenue"
     rev13 = scripts.get_revision("e1a0013_investition_cost_bottom_revenue")
     assert rev13 is not None
     assert rev13.down_revision == "e1a0012_investition_assignment_hierarchy"

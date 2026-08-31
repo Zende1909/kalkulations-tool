@@ -8,6 +8,7 @@ from app.schemas.numbers import parse_de_float
 _REQUIRED_FLOAT_LABELS = {
     "preis_pro_kg": "Preis pro kg",
     "dichte": "Dichte",
+    "injection_pressure_kg_cm2": "Einspritzdruck",
 }
 _REQUIRED_FLOAT_FIELDS = tuple(_REQUIRED_FLOAT_LABELS.keys())
 
@@ -17,6 +18,7 @@ class MaterialBase(BaseModel):
     material_nr: str
     preis_pro_kg: float
     dichte: float
+    injection_pressure_kg_cm2: float = 500.0
     waehrung: str = "EUR"
     aktiv: bool = True
 
@@ -38,6 +40,7 @@ class MaterialUpdate(BaseModel):
     material_nr: str | None = None
     preis_pro_kg: float | None = None
     dichte: float | None = None
+    injection_pressure_kg_cm2: float | None = None
     waehrung: str | None = None
     aktiv: bool | None = None
 

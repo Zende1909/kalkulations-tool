@@ -33,6 +33,7 @@ def _schema(engine) -> None:
                     material_nr VARCHAR(50) NOT NULL UNIQUE,
                     preis_pro_kg FLOAT NOT NULL,
                     dichte FLOAT NOT NULL,
+                    injection_pressure_kg_cm2 FLOAT NOT NULL DEFAULT 500,
                     waehrung VARCHAR(8) NOT NULL DEFAULT 'EUR',
                     aktiv BOOLEAN NOT NULL DEFAULT 1,
                     created_at TIMESTAMP,

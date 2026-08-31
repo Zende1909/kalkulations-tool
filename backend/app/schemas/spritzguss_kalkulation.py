@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.schemas.numbers import parse_percent_points
 
+from app.schemas.maschinen_groesse import MaschinenGroesseFields, MaschinenGroesseResultSchema
 from app.schemas.spritzguss_veredelung import VeredelungZuordnungInput, VeredelungZuordnungRead
 
 WerkzeugAbrechnungsart = Literal["amortisation", "einmalzahlung"]
@@ -65,7 +66,7 @@ def _require_positive_int_volume(value: Any) -> int:
     return as_int
 
 
-class SpritzgussCalcRequest(BaseModel):
+class SpritzgussCalcRequest(MaschinenGroesseFields):
     teilegewicht_netto_g: float = Field(ge=0)
     schussgewicht_g: float = Field(gt=0)
     materialpreis_pro_kg: float = Field(ge=0)
@@ -94,6 +95,7 @@ class SpritzgussCalcRequest(BaseModel):
     setup_lohnstundensatz: float = Field(ge=0, default=0)
     setup_mitarbeiter: float = Field(ge=0, default=0)
     setup_aktiv: bool = False
+    material_id: int | None = None
 
     @field_validator("ausschussquote_pct", mode="before")
     @classmethod
@@ -188,9 +190,10 @@ class SpritzgussCalcResponse(BaseModel):
     ergebnis: SpritzgussErgebnisSchema
     bloecke: dict[str, dict[str, Any]]
     veredelung_zuordnungen: list[VeredelungZuordnungRead] = Field(default_factory=list)
+    maschinen_groesse: MaschinenGroesseResultSchema | None = None
 
 
-class SpritzgussKalkulationBase(BaseModel):
+class SpritzgussKalkulationBase(MaschinenGroesseFields):
     teilebezeichnung: str = Field(min_length=1, max_length=255)
     teilenummer: str = Field(min_length=1, max_length=100)
     kunde: str = ""
@@ -298,7 +301,7 @@ class SpritzgussKalkulationCreate(SpritzgussKalkulationBase):
         return self
 
 
-class SpritzgussKalkulationUpdate(BaseModel):
+class SpritzgussKalkulationUpdate(MaschinenGroesseFields):
     teilebezeichnung: str | None = Field(default=None, min_length=1, max_length=255)
     teilenummer: str | None = Field(default=None, min_length=1, max_length=100)
     kunde: str | None = None
@@ -346,6 +349,14 @@ class SpritzgussKalkulationUpdate(BaseModel):
     vvgk_pct: float | None = Field(default=None, ge=0)
     gewinn_pct: float | None = Field(default=None, ge=0)
     skonto_pct: float | None = Field(default=None, ge=0)
+
+    maschinen_groesse_injection_pressure_kg_cm2: float | None = None
+    maschinen_groesse_proj_flaeche_netto_mm2: float | None = None
+    maschinen_groesse_zuhaltekraft_ohne_sicherheit_t: float | None = None
+    maschinen_groesse_sicherheitszuschlag_faktor: float | None = None
+    maschinen_groesse_zuhaltekraft_erforderlich_t: float | None = None
+    maschinen_groesse_empfohlene_maschine_id: int | None = None
+    maschinen_groesse_warnung: str | None = None
 
     notizen: str | None = None
     aktiv: bool | None = None

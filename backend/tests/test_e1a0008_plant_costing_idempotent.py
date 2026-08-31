@@ -227,6 +227,19 @@ def _create_pre_plant_skeleton(engine: Engine) -> None:
         CREATE TABLE spritzguss_kalkulationen (
             id SERIAL PRIMARY KEY,
             teilebezeichnung VARCHAR(255) NOT NULL DEFAULT '',
+                    maschinen_groesse_modus VARCHAR(16),
+                    maschinen_groesse_breite_mm FLOAT,
+                    maschinen_groesse_laenge_mm FLOAT,
+                    maschinen_groesse_oeffnungen_pct FLOAT,
+                    maschinen_groesse_proj_flaeche_mm2 FLOAT,
+                    maschinen_groesse_schwindung_pct FLOAT,
+                    maschinen_groesse_injection_pressure_kg_cm2 FLOAT,
+                    maschinen_groesse_proj_flaeche_netto_mm2 FLOAT,
+                    maschinen_groesse_zuhaltekraft_ohne_sicherheit_t FLOAT,
+                    maschinen_groesse_sicherheitszuschlag_faktor FLOAT,
+                    maschinen_groesse_zuhaltekraft_erforderlich_t FLOAT,
+                    maschinen_groesse_empfohlene_maschine_id INTEGER,
+                    maschinen_groesse_warnung VARCHAR(512),
             created_at TIMESTAMP NOT NULL,
             updated_at TIMESTAMP NOT NULL
         )
@@ -308,7 +321,7 @@ def test_alembic_head_is_e1a0009_after_werk_params():
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     heads = ScriptDirectory.from_config(cfg).get_heads()
-    assert heads == ["e1a0014_business_case_manual_prices"]
+    assert heads == ["e1a0015_injection_machine_sizing"]
     rev = ScriptDirectory.from_config(cfg).get_revision(REVISION)
     assert rev is not None
     assert rev.down_revision == PREV

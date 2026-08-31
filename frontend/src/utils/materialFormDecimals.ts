@@ -4,7 +4,7 @@
 
 import { coerceFormDecimal, formatDecimalForInputDe } from "./decimalInput";
 
-export const MATERIAL_NUMERIC_FIELDS = ["preis_pro_kg", "dichte"] as const;
+export const MATERIAL_NUMERIC_FIELDS = ["preis_pro_kg", "dichte", "injection_pressure_kg_cm2"] as const;
 
 export function loadMaterialFormValues(
   values: Record<string, string | number | boolean>,

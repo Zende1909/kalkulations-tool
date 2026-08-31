@@ -14,4 +14,5 @@ class Material(Base, TimestampMixin):
     preis_pro_kg: Mapped[float] = mapped_column(Float, nullable=False)
     dichte: Mapped[float] = mapped_column(Float, nullable=False)
     waehrung: Mapped[str] = mapped_column(String(3), default="EUR", nullable=False)
+    injection_pressure_kg_cm2: Mapped[float] = mapped_column(Float, nullable=False, default=500.0)
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

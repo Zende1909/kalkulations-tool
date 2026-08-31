@@ -13,12 +13,14 @@ from app.database import get_db
 from app.models.assembly_position import AssemblyPosition
 from app.models.baugruppe import BaugruppeSpritzgussZuordnung
 from app.models.investition import Investition
+from app.models.material import Material
 from app.models.maschine import Maschine
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.spritzguss_veredelung_zuordnung import SpritzgussVeredelungZuordnung
 from app.models.user import User
 from app.models.veredelungsschritt import Veredelungsschritt
 from app.models.werk import Werk
+from app.schemas.maschinen_groesse import MaschinenGroesseFields, MaschinenGroesseResultSchema
 from app.schemas.spritzguss_kalkulation import (
     SpritzgussCalcRequest,
     SpritzgussCalcResponse,
@@ -44,6 +46,13 @@ from app.services.losgroesse_berechnung import (
     losgroesse_metadata_dict,
     resolve_losgroesse,
 )
+from app.services.maschinen_groesse import (
+    MaschinenGroesseInput,
+    MaschinenGroesseResult,
+    MaschinenGroesseValidationError,
+    berechne_maschinen_groesse_mit_auswahl,
+    validate_injection_pressure,
+)
 from app.services.spritzguss_gesamt_kalkulation import (
     GesamtValidationError,
     VeredelungSchrittEingabe,
@@ -59,6 +68,151 @@ from app.services.veredelung_kalkulation import berechne_veredelung
 from app.services.veredelung_kalkulation import VeredelungInput as VeredelungCalcInput
 
 router = APIRouter(prefix="/spritzguss", tags=["Spritzguss-Kalkulation"])
+
+
+def _material_injection_pressure(db: Session, material_id: int | None) -> float:
+    if material_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Material ist für die Maschinengrößenberechnung erforderlich.",
+        )
+    material = db.get(Material, material_id)
+    if material is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Material nicht gefunden.",
+        )
+    try:
+        return validate_injection_pressure(
+            material.injection_pressure_kg_cm2,
+            kontext=f"Material {material.material_nr}",
+        )
+    except MaschinenGroesseValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+
+def _maschinen_groesse_input_from_fields(
+    *,
+    modus: str | None,
+    breite_mm: float | None,
+    laenge_mm: float | None,
+    oeffnungen_pct: float | None,
+    proj_flaeche_mm2: float | None,
+    schwindung_pct: float | None,
+    injection_pressure_kg_cm2: float,
+    kavitaeten: int,
+) -> MaschinenGroesseInput | None:
+    if modus is None:
+        return None
+    return MaschinenGroesseInput(
+        modus=modus,  # type: ignore[arg-type]
+        breite_mm=breite_mm,
+        laenge_mm=laenge_mm,
+        oeffnungen_pct=oeffnungen_pct,
+        proj_flaeche_mm2=proj_flaeche_mm2,
+        schwindung_pct=schwindung_pct,
+        injection_pressure_kg_cm2=injection_pressure_kg_cm2,
+        kavitaeten=kavitaeten,
+    )
+
+
+def _apply_maschinen_groesse_result(obj: SpritzgussKalkulation, result: MaschinenGroesseResult) -> None:
+    obj.maschinen_groesse_injection_pressure_kg_cm2 = result.injection_pressure_kg_cm2
+    obj.maschinen_groesse_proj_flaeche_netto_mm2 = result.proj_flaeche_netto_mm2
+    obj.maschinen_groesse_zuhaltekraft_ohne_sicherheit_t = result.zuhaltekraft_ohne_sicherheit_t
+    obj.maschinen_groesse_sicherheitszuschlag_faktor = result.sicherheitszuschlag_faktor
+    obj.maschinen_groesse_zuhaltekraft_erforderlich_t = result.zuhaltekraft_erforderlich_t
+    obj.maschinen_groesse_empfohlene_maschine_id = result.empfohlene_maschine_id
+    obj.maschinen_groesse_warnung = result.warnung
+
+
+def _run_maschinen_groesse_for_model(
+    db: Session,
+    obj: SpritzgussKalkulation,
+) -> MaschinenGroesseResult | None:
+    if obj.maschinen_groesse_modus is None:
+        obj.maschinen_groesse_injection_pressure_kg_cm2 = None
+        obj.maschinen_groesse_proj_flaeche_netto_mm2 = None
+        obj.maschinen_groesse_zuhaltekraft_ohne_sicherheit_t = None
+        obj.maschinen_groesse_sicherheitszuschlag_faktor = None
+        obj.maschinen_groesse_zuhaltekraft_erforderlich_t = None
+        obj.maschinen_groesse_empfohlene_maschine_id = None
+        obj.maschinen_groesse_warnung = None
+        return None
+    pressure = _material_injection_pressure(db, obj.material_id)
+    sizing_input = _maschinen_groesse_input_from_fields(
+        modus=obj.maschinen_groesse_modus,
+        breite_mm=obj.maschinen_groesse_breite_mm,
+        laenge_mm=obj.maschinen_groesse_laenge_mm,
+        oeffnungen_pct=obj.maschinen_groesse_oeffnungen_pct,
+        proj_flaeche_mm2=obj.maschinen_groesse_proj_flaeche_mm2,
+        schwindung_pct=obj.maschinen_groesse_schwindung_pct,
+        injection_pressure_kg_cm2=pressure,
+        kavitaeten=obj.kavitaeten,
+    )
+    if sizing_input is None:
+        return None
+    try:
+        result = berechne_maschinen_groesse_mit_auswahl(
+            db,
+            sizing_input,
+            werk_id=obj.werk_id,
+        )
+    except MaschinenGroesseValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    _apply_maschinen_groesse_result(obj, result)
+    if result.empfohlene_maschine_id is not None:
+        maschine = db.get(Maschine, result.empfohlene_maschine_id)
+        if maschine is not None:
+            obj.maschine_id = maschine.id
+            obj.maschinenstundensatz = maschine.stundensatz
+    return result
+
+
+def _run_maschinen_groesse_for_request(
+    db: Session,
+    body: SpritzgussCalcRequest,
+    *,
+    werk_id: int | None,
+) -> MaschinenGroesseResult | None:
+    if body.maschinen_groesse_modus is None:
+        return None
+    pressure = _material_injection_pressure(db, body.material_id)
+    sizing_input = _maschinen_groesse_input_from_fields(
+        modus=body.maschinen_groesse_modus,
+        breite_mm=body.maschinen_groesse_breite_mm,
+        laenge_mm=body.maschinen_groesse_laenge_mm,
+        oeffnungen_pct=body.maschinen_groesse_oeffnungen_pct,
+        proj_flaeche_mm2=body.maschinen_groesse_proj_flaeche_mm2,
+        schwindung_pct=body.maschinen_groesse_schwindung_pct,
+        injection_pressure_kg_cm2=pressure,
+        kavitaeten=body.kavitaeten,
+    )
+    if sizing_input is None:
+        return None
+    try:
+        return berechne_maschinen_groesse_mit_auswahl(
+            db,
+            sizing_input,
+            werk_id=werk_id,
+        )
+    except MaschinenGroesseValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+
+def _maschinen_groesse_schema(result: MaschinenGroesseResult | None) -> MaschinenGroesseResultSchema | None:
+    if result is None:
+        return None
+    return MaschinenGroesseResultSchema(**result.as_dict())
 
 
 def _apply_central_rates(
@@ -241,9 +395,11 @@ def _to_calc_input_from_request(body: SpritzgussCalcRequest) -> SpritzgussInput:
             "veredelung_zuordnungen",
             "werk_id",
             "project_id",
+            "material_id",
             "losgroesse_modus",
             "losgroesse_manuell",
             "losgroesse",
+            *MaschinenGroesseFields.model_fields.keys(),
         },
     )
     return SpritzgussInput(**data)
@@ -511,6 +667,7 @@ def _build_calc_response(
     losgroesse_modus: str | None = None,
     losgroesse_manuell: int | None = None,
     losgroesse_gespeichert: int | None = None,
+    maschinen_groesse: MaschinenGroesseResult | None = None,
 ) -> SpritzgussCalcResponse:
     zuordnungen = _normalize_veredelung_zuordnungen(zuordnungen)
     calc_input, losgroesse_ctx = _prepare_calc_input_with_losgroesse(
@@ -645,10 +802,15 @@ def _build_calc_response(
                 )
             )
 
+    if maschinen_groesse is not None:
+        ergebnis_dict["maschinen_groesse"] = maschinen_groesse.as_dict()
+        bloecke["maschinen_groesse"] = maschinen_groesse.as_dict()
+
     return SpritzgussCalcResponse(
         ergebnis=SpritzgussErgebnisSchema(**ergebnis_dict),
         bloecke=bloecke,
         veredelung_zuordnungen=zuordnung_reads,
+        maschinen_groesse=_maschinen_groesse_schema(maschinen_groesse),
     )
 
 
@@ -672,6 +834,7 @@ def _apply_calculation(
         ]
         use_snapshots = True
 
+    sizing = _run_maschinen_groesse_for_model(db, obj)
     response = _build_calc_response(
         db,
         _to_calc_input_from_model(obj),
@@ -684,6 +847,7 @@ def _apply_calculation(
         losgroesse_modus=getattr(obj, "losgroesse_modus", None),
         losgroesse_manuell=getattr(obj, "losgroesse_manuell", None),
         losgroesse_gespeichert=getattr(obj, "losgroesse", None),
+        maschinen_groesse=sizing,
     )
     # Angewandte zentrale Sätze am Datensatz spiegeln (Export/Transparenz)
     ergebnis = response.ergebnis
@@ -750,6 +914,8 @@ def _apply_calculation(
                     rate_snap["werk_code"] = werk.code
     if rate_snap:
         dumped["maschinen_rate_snapshot"] = rate_snap
+    if response.maschinen_groesse is not None:
+        dumped["maschinen_groesse"] = response.maschinen_groesse.model_dump()
     if getattr(obj, "werk_id", None):
         werk = db.get(Werk, obj.werk_id)
         if werk:
@@ -804,6 +970,7 @@ def _run_calculation(
     losgroesse_modus: str | None = None,
     losgroesse_manuell: int | None = None,
     losgroesse_gespeichert: int | None = None,
+    maschinen_groesse: MaschinenGroesseResult | None = None,
 ) -> SpritzgussCalcResponse:
     return _build_calc_response(
         db,
@@ -815,6 +982,7 @@ def _run_calculation(
         losgroesse_modus=losgroesse_modus,
         losgroesse_manuell=losgroesse_manuell,
         losgroesse_gespeichert=losgroesse_gespeichert,
+        maschinen_groesse=maschinen_groesse,
     )
 
 
@@ -875,15 +1043,22 @@ def berechnen(
     _: User = Depends(require_viewer),
 ):
     """Berechnet eine Kalkulation ohne Speichern."""
+    sizing = _run_maschinen_groesse_for_request(db, body, werk_id=body.werk_id)
+    calc_input = _to_calc_input_from_request(body)
+    if sizing is not None and sizing.empfohlene_maschine_id is not None:
+        maschine = db.get(Maschine, sizing.empfohlene_maschine_id)
+        if maschine is not None:
+            calc_input = replace(calc_input, maschinenstundensatz=maschine.stundensatz)
     return _run_calculation(
         db,
-        _to_calc_input_from_request(body),
+        calc_input,
         body.veredelung_zuordnungen,
         werk_id=body.werk_id,
         project_id=body.project_id,
         losgroesse_modus=body.losgroesse_modus,
         losgroesse_manuell=body.losgroesse_manuell,
         losgroesse_gespeichert=body.losgroesse,
+        maschinen_groesse=sizing,
     )
 
 

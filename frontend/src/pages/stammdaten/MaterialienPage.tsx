@@ -13,6 +13,7 @@ const columnDefs: ColDef<Material>[] = [
   { field: "bezeichnung", headerName: "Bezeichnung" },
   { field: "preis_pro_kg", headerName: "Preis/kg" },
   { field: "dichte", headerName: "Dichte" },
+  { field: "injection_pressure_kg_cm2", headerName: "Einspritzdruck kg/cm²" },
   { field: "waehrung", headerName: "Währung" },
   { field: "aktiv", headerName: "Aktiv" },
 ];
@@ -37,6 +38,14 @@ const formFields: FormField[] = [
     hint: "Dezimalwert, z. B. 1,04 oder 1.04",
   },
   { name: "waehrung", label: "Währung", type: "text", required: true },
+  {
+    name: "injection_pressure_kg_cm2",
+    label: "Einspritzdruck",
+    type: "number",
+    required: true,
+    step: "0.01",
+    hint: "kg/cm² – Standard 500 bei neuen Materialien",
+  },
   { name: "aktiv", label: "Aktiv", type: "checkbox" },
 ];
 
@@ -45,6 +54,7 @@ const emptyFormValues = {
   material_nr: "",
   preis_pro_kg: 0,
   dichte: 1.0,
+  injection_pressure_kg_cm2: 500,
   waehrung: "EUR",
   aktiv: true,
 };

@@ -54,6 +54,33 @@ class SpritzgussKalkulation(Base, TimestampMixin):
     kavitaeten: Mapped[int] = mapped_column(Integer, nullable=False)
     maschinenstundensatz: Mapped[float] = mapped_column(Float, nullable=False)
 
+    # Maschinengröße / Zuhaltekraft (Excel p1-1)
+    maschinen_groesse_modus: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    maschinen_groesse_breite_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    maschinen_groesse_laenge_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    maschinen_groesse_oeffnungen_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    maschinen_groesse_proj_flaeche_mm2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    maschinen_groesse_schwindung_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    maschinen_groesse_injection_pressure_kg_cm2: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    maschinen_groesse_proj_flaeche_netto_mm2: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    maschinen_groesse_zuhaltekraft_ohne_sicherheit_t: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    maschinen_groesse_sicherheitszuschlag_faktor: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    maschinen_groesse_zuhaltekraft_erforderlich_t: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    maschinen_groesse_empfohlene_maschine_id: Mapped[int | None] = mapped_column(
+        ForeignKey("maschinen.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    maschinen_groesse_warnung: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
     # Lohn
     lohnkosten_id: Mapped[int | None] = mapped_column(ForeignKey("lohnkosten.id"), nullable=True)
     lohnstundensatz: Mapped[float] = mapped_column(Float, nullable=False)

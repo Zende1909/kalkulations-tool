@@ -18,10 +18,17 @@ export const SPRITZGuss_DECIMAL_FIELDS = [
   "setup_maschinenstundensatz",
   "setup_lohnstundensatz",
   "setup_mitarbeiter",
+  "maschinen_groesse_breite_mm",
+  "maschinen_groesse_laenge_mm",
+  "maschinen_groesse_proj_flaeche_mm2",
 ] as const;
 
 /** Prozentpunkte (nicht Bruchanteil). */
-export const SPRITZGuss_PERCENT_FIELDS = ["ausschussquote_pct"] as const;
+export const SPRITZGuss_PERCENT_FIELDS = [
+  "ausschussquote_pct",
+  "maschinen_groesse_oeffnungen_pct",
+  "maschinen_groesse_schwindung_pct",
+] as const;
 
 export const SPRITZGuss_INTEGER_FIELDS = ["kavitaeten", "losgroesse_manuell"] as const;
 
@@ -58,13 +65,22 @@ export function parseSpritzgussDecimalFields(
   const next = { ...form };
 
   for (const key of SPRITZGuss_DECIMAL_FIELDS) {
-    const text = decimalRaw[key] ?? formatDecimalForInputDe(form[key]);
-    next[key] = coerceFormDecimal(text, "2,10 oder 2.10") as SpritzgussFormData[typeof key];
+    const text = decimalRaw[key] ?? (form[key] == null ? "" : formatDecimalForInputDe(form[key]));
+    if (text.trim() === "" && key.startsWith("maschinen_groesse_")) {
+      (next as unknown as Record<string, number | null>)[key] = null;
+      continue;
+    }
+    const parsed = coerceFormDecimal(text, "2,10 oder 2.10");
+    (next as unknown as Record<string, number | null>)[key] = parsed;
   }
 
   for (const key of SPRITZGuss_PERCENT_FIELDS) {
-    const text = decimalRaw[key] ?? formatDecimalForInputDe(form[key]);
-    next[key] = parsePercentPointsInput(text);
+    const text = decimalRaw[key] ?? (form[key] == null ? "" : formatDecimalForInputDe(form[key]));
+    if (text.trim() === "" && key.startsWith("maschinen_groesse_")) {
+      (next as unknown as Record<string, number | null>)[key] = null;
+      continue;
+    }
+    (next as unknown as Record<string, number | null>)[key] = parsePercentPointsInput(text);
   }
 
   for (const key of SPRITZGuss_INTEGER_FIELDS) {
