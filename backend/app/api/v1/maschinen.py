@@ -71,6 +71,7 @@ def get_maschinen_auslastung(
     customer_id: int | None = Query(default=None, ge=1),
     program_id: int | None = Query(default=None, ge=1),
     project_ids: list[int] = Query(default=[], alias="project_ids"),
+    project_status: str | None = Query(default=None, description="Projektstatus-Filter"),
     nur_aktiv: bool = Query(default=True),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
@@ -82,6 +83,7 @@ def get_maschinen_auslastung(
         customer_id=customer_id,
         program_id=program_id,
         project_ids=project_ids,
+        project_status=project_status,
         nur_aktiv=nur_aktiv,
     )
 

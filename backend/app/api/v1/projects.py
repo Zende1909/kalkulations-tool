@@ -51,6 +51,7 @@ def list_projects(
     customer_id: int | None = Query(default=None),
     search: str | None = Query(default=None),
     active: bool | None = Query(default=None),
+    status: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
@@ -67,6 +68,15 @@ def list_projects(
         )
     if active is not None:
         stmt = stmt.where(Project.active.is_(active))
+    if status is not None:
+        from app.models.project import PROJECT_STATUSES
+
+        if status not in PROJECT_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Ungültiger Projektstatus",
+            )
+        stmt = stmt.where(Project.status == status)
     if search and search.strip():
         term = f"%{search.strip()}%"
         stmt = stmt.where(

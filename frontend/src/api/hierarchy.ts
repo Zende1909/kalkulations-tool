@@ -86,6 +86,7 @@ export interface ListProjectsOptions {
   customerId?: number;
   search?: string;
   active?: boolean;
+  status?: string;
 }
 
 export function normalizeListProjectsArgs(
@@ -110,6 +111,7 @@ export async function listProjects(
       customer_id: opts.customerId,
       search: opts.search,
       active: opts.active,
+      status: opts.status,
     })}`,
   );
 }

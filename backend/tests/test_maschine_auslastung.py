@@ -363,11 +363,31 @@ def test_overload_when_demand_exceeds_capacity(seeded):
     assert row["utilization_pct"] > 100
 
 
-def test_no_projects_selected(seeded):
-    db, _ = seeded
+def test_no_projects_selected_uses_all_matching(seeded):
+    db, netto = seeded
     result = build_maschinen_auslastung(db, plant_id=1, project_ids=[])
-    assert result["no_projects_selected"] is True
-    assert all(r["required_hours"] == 0 for r in result["yearly_rows"])
+    assert result["uses_all_matching_projects"] is True
+    assert result["resolved_project_ids"] == [100, 101]
+    busy = next(r for r in result["yearly_rows"] if r["year"] == 2026 and r["machine_id"] == 1)
+    assert busy["run_hours"] > 0
+
+
+def test_project_status_filter(seeded):
+    db, _ = seeded
+    pr = db.get(Project, 100)
+    pr.status = "Laufend"
+    pr2 = db.get(Project, 101)
+    pr2.status = "Anfrage"
+    db.commit()
+    result = build_maschinen_auslastung(db, plant_id=1, project_ids=[], project_status="Laufend")
+    assert result["resolved_project_ids"] == [100]
+
+
+def test_explicit_cross_customer_projects(seeded):
+    db, _ = seeded
+    result = build_maschinen_auslastung(db, plant_id=1, project_ids=[100, 101])
+    assert result["uses_all_matching_projects"] is False
+    assert set(result["resolved_project_ids"]) == {100, 101}
 
 
 def test_api_yearly_breakdown(api_client: TestClient, seeded):

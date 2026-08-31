@@ -39,6 +39,13 @@ describe("Maschinenauslastung Jahres-UI", () => {
     expect(typesSrc).toMatch(/yearly_rows/);
   });
 
+  it("unterstützt Projektstatus und Mehrfachauswahl über Kunden", () => {
+    expect(pageSrc).toMatch(/projectStatusFilter/);
+    expect(pageSrc).toMatch(/PROJECT_STATUSES/);
+    expect(pageSrc).toMatch(/uses_all_matching_projects/);
+    expect(pageSrc).toMatch(/Ausgewählte Projekte/);
+  });
+
   it("Kennzeichnet OEE-Transparenz", () => {
     expect(pageSrc).toMatch(/oee_in_available_hours/);
     expect(pageSrc).toMatch(/formatOee/);

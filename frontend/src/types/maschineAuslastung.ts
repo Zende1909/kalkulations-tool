@@ -82,8 +82,11 @@ export interface MaschineAuslastungResponse {
   plant_name: string;
   customer_id: number | null;
   program_id: number | null;
+  project_status: string | null;
   project_ids: number[];
+  resolved_project_ids: number[];
   no_projects_selected: boolean;
+  uses_all_matching_projects: boolean;
   years: number[];
   planning_period: MaschineAuslastungPlanningPeriod;
   summary: MaschineAuslastungSummary;
@@ -96,6 +99,7 @@ export interface MaschineAuslastungParams {
   customer_id?: number;
   program_id?: number;
   project_ids?: number[];
+  project_status?: string;
 }
 
 export const UTILIZATION_YEARS = Array.from({ length: 15 }, (_, i) => 2026 + i);

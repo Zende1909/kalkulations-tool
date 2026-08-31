@@ -27,7 +27,7 @@ from app.models.baugruppe import Baugruppe, BaugruppeSpritzgussZuordnung
 from app.models.customer import Customer
 from app.models.maschine import Maschine
 from app.models.program import Program, ProgramVolume
-from app.models.project import Project
+from app.models.project import PROJECT_STATUSES, Project
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.werk import Werk
 from app.services.machine_hourly_rate import (
@@ -189,12 +189,11 @@ def _setup_hours(volume: float, losgroesse: int | None, setup_zeit_min: float | 
     return lots * (setup_min / 60.0)
 
 
-def _validate_hierarchy(
+def _validate_hierarchy_refs(
     db: Session,
     *,
     customer_id: int | None,
     program_id: int | None,
-    project_ids: list[int],
 ) -> None:
     if customer_id is not None and customer_id < 1:
         raise HTTPException(status_code=422, detail="Ungültige Kunden-ID")
@@ -208,6 +207,82 @@ def _validate_hierarchy(
             raise HTTPException(status_code=422, detail="Programm nicht gefunden")
         if customer_id is not None and program.customer_id != customer_id:
             raise HTTPException(status_code=422, detail="Programm passt nicht zum Kunden")
+
+
+def _validate_project_status(project_status: str | None) -> None:
+    if project_status is None:
+        return
+    if project_status not in PROJECT_STATUSES:
+        raise HTTPException(status_code=422, detail="Ungültiger Projektstatus")
+
+
+def _matching_projects_stmt(
+    *,
+    customer_id: int | None,
+    program_id: int | None,
+    project_status: str | None,
+    nur_aktiv: bool,
+):
+    stmt = select(Project).join(Program, Program.id == Project.program_id)
+    if nur_aktiv:
+        stmt = stmt.where(Project.active.is_(True))
+    if program_id is not None:
+        stmt = stmt.where(Project.program_id == program_id)
+    if customer_id is not None:
+        stmt = stmt.where(Program.customer_id == customer_id)
+    if project_status is not None:
+        stmt = stmt.where(Project.status == project_status)
+    return stmt.order_by(Project.name.asc())
+
+
+def _resolve_project_ids(
+    db: Session,
+    *,
+    customer_id: int | None,
+    program_id: int | None,
+    project_ids: list[int],
+    project_status: str | None,
+    nur_aktiv: bool,
+) -> tuple[list[int], bool]:
+    """Liefert (aufgelöste Projekt-IDs, explizite Auswahl durch Client)."""
+    _validate_project_status(project_status)
+    requested = list(dict.fromkeys(project_ids))
+
+    if requested:
+        resolved: list[int] = []
+        for pid in requested:
+            if pid < 1:
+                raise HTTPException(status_code=422, detail="Ungültige Projekt-ID")
+            project = db.get(Project, pid)
+            if project is None:
+                raise HTTPException(status_code=422, detail=f"Projekt {pid} nicht gefunden")
+            if nur_aktiv and not project.active:
+                continue
+            if project_status is not None and project.status != project_status:
+                continue
+            resolved.append(pid)
+        return resolved, True
+
+    _validate_hierarchy_refs(db, customer_id=customer_id, program_id=program_id)
+    rows = db.scalars(
+        _matching_projects_stmt(
+            customer_id=customer_id,
+            program_id=program_id,
+            project_status=project_status,
+            nur_aktiv=nur_aktiv,
+        )
+    ).all()
+    return [int(p.id) for p in rows], False
+
+
+def _validate_hierarchy(
+    db: Session,
+    *,
+    customer_id: int | None,
+    program_id: int | None,
+    project_ids: list[int],
+) -> None:
+    _validate_hierarchy_refs(db, customer_id=customer_id, program_id=program_id)
     for pid in project_ids:
         if pid < 1:
             raise HTTPException(status_code=422, detail="Ungültige Projekt-ID")
@@ -517,6 +592,7 @@ def build_maschinen_auslastung(
     customer_id: int | None = None,
     program_id: int | None = None,
     project_ids: list[int] | None = None,
+    project_status: str | None = None,
     nur_aktiv: bool = True,
 ) -> dict:
     if plant_id < 1:
@@ -525,8 +601,15 @@ def build_maschinen_auslastung(
     if werk is None:
         raise HTTPException(status_code=422, detail="Werk nicht gefunden")
 
-    pids = list(dict.fromkeys(project_ids or []))
-    _validate_hierarchy(db, customer_id=customer_id, program_id=program_id, project_ids=pids)
+    requested_pids = list(dict.fromkeys(project_ids or []))
+    resolved_pids, explicit_selection = _resolve_project_ids(
+        db,
+        customer_id=customer_id,
+        program_id=program_id,
+        project_ids=requested_pids,
+        project_status=project_status,
+        nur_aktiv=nur_aktiv,
+    )
 
     stmt = select(Maschine).where(Maschine.werk_id == plant_id).order_by(Maschine.bezeichnung.asc())
     if nur_aktiv:
@@ -535,17 +618,16 @@ def build_maschinen_auslastung(
     plant_machines = {m.id: m for m in machines}
 
     agg: dict[int, _MachineAgg] = {}
-    if pids:
-        for pid in pids:
-            project = db.get(Project, pid)
-            if project is None:
-                continue
-            _collect_project_demand(
-                db,
-                project=project,
-                plant_machines=plant_machines,
-                agg=agg,
-            )
+    for pid in resolved_pids:
+        project = db.get(Project, pid)
+        if project is None:
+            continue
+        _collect_project_demand(
+            db,
+            project=project,
+            plant_machines=plant_machines,
+            agg=agg,
+        )
 
     yearly_rows: list[dict] = []
     machine_rows: list[dict] = []
@@ -606,8 +688,11 @@ def build_maschinen_auslastung(
         "plant_name": werk.name,
         "customer_id": customer_id,
         "program_id": program_id,
-        "project_ids": pids,
-        "no_projects_selected": len(pids) == 0,
+        "project_status": project_status,
+        "project_ids": requested_pids,
+        "resolved_project_ids": resolved_pids,
+        "no_projects_selected": not explicit_selection,
+        "uses_all_matching_projects": not explicit_selection,
         "years": UTILIZATION_YEARS,
         "planning_period": {
             "label": "Jahresauslastung 2026–2040",

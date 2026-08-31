@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { getMaschinenAuslastung } from "../api/maschinen";
-import { listCustomers, listPrograms, listProjects } from "../api/hierarchy";
+import { listCustomers, listPrograms, listProjects, getProject } from "../api/hierarchy";
 import { api } from "../api/client";
 import type { Customer, Program, Project } from "../types/hierarchy";
+import { PROJECT_STATUSES } from "../types/hierarchy";
 import type {
   MaschineAuslastungResponse,
   MaschineAuslastungYearRow,
@@ -109,6 +110,8 @@ export function MaschinenauslastungPage() {
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [programId, setProgramId] = useState<number | null>(null);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
+  const [selectedProjectsById, setSelectedProjectsById] = useState<Record<number, Project>>({});
+  const [projectStatusFilter, setProjectStatusFilter] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<YearSelection>("all");
   const [machineFilter, setMachineFilter] = useState("");
 
@@ -136,8 +139,40 @@ export function MaschinenauslastungPage() {
       setProjects([]);
       return;
     }
-    listProjects(programId).then(setProjects).catch(() => setProjects([]));
-  }, [programId]);
+    listProjects({
+      programId,
+      active: true,
+      status: projectStatusFilter || undefined,
+    })
+      .then(setProjects)
+      .catch(() => setProjects([]));
+  }, [programId, projectStatusFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+    for (const id of selectedProjectIds) {
+      getProject(id)
+        .then((project) => {
+          if (!cancelled) {
+            setSelectedProjectsById((prev) => (prev[id] ? prev : { ...prev, [id]: project }));
+          }
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProjectIds]);
+
+  useEffect(() => {
+    if (!projectStatusFilter) return;
+    setSelectedProjectIds((prev) =>
+      prev.filter((id) => {
+        const project = selectedProjectsById[id];
+        return project == null || project.status === projectStatusFilter;
+      }),
+    );
+  }, [projectStatusFilter]);
 
   const load = useCallback(async () => {
     if (plantId == null) {
@@ -147,12 +182,21 @@ export function MaschinenauslastungPage() {
     setBusy(true);
     setError(null);
     try {
-      const resp = await getMaschinenAuslastung({
-        plant_id: plantId,
-        customer_id: customerId ?? undefined,
-        program_id: programId ?? undefined,
-        project_ids: selectedProjectIds,
-      });
+      const status = projectStatusFilter || undefined;
+      const resp = await getMaschinenAuslastung(
+        selectedProjectIds.length > 0
+          ? {
+              plant_id: plantId,
+              project_ids: selectedProjectIds,
+              project_status: status,
+            }
+          : {
+              plant_id: plantId,
+              customer_id: customerId ?? undefined,
+              program_id: programId ?? undefined,
+              project_status: status,
+            },
+      );
       setData(resp);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Laden fehlgeschlagen");
@@ -160,12 +204,12 @@ export function MaschinenauslastungPage() {
     } finally {
       setBusy(false);
     }
-  }, [plantId, customerId, programId, selectedProjectIds]);
+  }, [plantId, customerId, programId, selectedProjectIds, projectStatusFilter]);
 
   useEffect(() => {
     if (plantId != null) void load();
     else setData(null);
-  }, [plantId, customerId, programId, selectedProjectIds, load]);
+  }, [plantId, customerId, programId, selectedProjectIds, projectStatusFilter, load]);
 
   const showAllYears = selectedYear === "all";
 
@@ -243,10 +287,15 @@ export function MaschinenauslastungPage() {
     }
   };
 
-  const toggleProject = (id: number) => {
+  const toggleProject = (project: Project) => {
+    setSelectedProjectsById((prev) => ({ ...prev, [project.id]: project }));
     setSelectedProjectIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+      prev.includes(project.id) ? prev.filter((x) => x !== project.id) : [...prev, project.id],
     );
+  };
+
+  const removeSelectedProject = (id: number) => {
+    setSelectedProjectIds((prev) => prev.filter((x) => x !== id));
   };
 
   const sortIndicator = (key: YearSortKey) => (sortKey === key ? (sortAsc ? " ▲" : " ▼") : "");
@@ -263,7 +312,7 @@ export function MaschinenauslastungPage() {
 
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Filter</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
           <label className="block text-sm">
             <span className="font-medium text-gray-700">Werk *</span>
             <select
@@ -274,6 +323,7 @@ export function MaschinenauslastungPage() {
                 setCustomerId(null);
                 setProgramId(null);
                 setSelectedProjectIds([]);
+                setSelectedProjectsById({});
               }}
             >
               <option value="">– Werk wählen –</option>
@@ -293,7 +343,6 @@ export function MaschinenauslastungPage() {
               onChange={(e) => {
                 setCustomerId(e.target.value ? Number(e.target.value) : null);
                 setProgramId(null);
-                setSelectedProjectIds([]);
               }}
             >
               <option value="">– optional –</option>
@@ -312,7 +361,6 @@ export function MaschinenauslastungPage() {
               disabled={customerId == null}
               onChange={(e) => {
                 setProgramId(e.target.value ? Number(e.target.value) : null);
-                setSelectedProjectIds([]);
               }}
             >
               <option value="">– optional –</option>
@@ -323,19 +371,41 @@ export function MaschinenauslastungPage() {
               ))}
             </select>
           </label>
-          <div className="text-sm">
-            <span className="font-medium text-gray-700">Projekte</span>
+          <label className="block text-sm">
+            <span className="font-medium text-gray-700">Projektstatus</span>
+            <select
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5"
+              value={projectStatusFilter}
+              disabled={plantId == null}
+              onChange={(e) => setProjectStatusFilter(e.target.value)}
+            >
+              <option value="">– alle –</option>
+              {PROJECT_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="text-sm lg:col-span-2">
+            <span className="font-medium text-gray-700">Projekte hinzufügen</span>
             <div className="mt-1 max-h-32 overflow-y-auto rounded border border-gray-300 p-2">
               {programId == null && <p className="text-gray-500">Zuerst Programm wählen</p>}
+              {programId != null && projects.length === 0 && (
+                <p className="text-gray-500">Keine Projekte für den Filter</p>
+              )}
               {programId != null &&
                 projects.map((p) => (
                   <label key={p.id} className="flex items-center gap-2 py-0.5">
                     <input
                       type="checkbox"
                       checked={selectedProjectIds.includes(p.id)}
-                      onChange={() => toggleProject(p.id)}
+                      onChange={() => toggleProject(p)}
                     />
-                    <span>{p.name}</span>
+                    <span>
+                      {p.name}
+                      <span className="text-xs text-gray-500"> ({p.status})</span>
+                    </span>
                   </label>
                 ))}
             </div>
@@ -375,10 +445,38 @@ export function MaschinenauslastungPage() {
             value={machineFilter}
             onChange={(e) => setMachineFilter(e.target.value)}
           />
-          {data?.no_projects_selected && (
-            <span className="text-sm text-amber-700">Keine Projekte ausgewählt – Auslastung 0 %</span>
+          {data?.uses_all_matching_projects && (
+            <span className="text-sm text-blue-700">
+              Alle passenden Projekte einbezogen ({data.resolved_project_ids.length})
+            </span>
+          )}
+          {selectedProjectIds.length > 0 && (
+            <span className="text-sm text-gray-600">
+              {selectedProjectIds.length} Projekt(e) manuell ausgewählt
+            </span>
           )}
         </div>
+        {selectedProjectIds.length > 0 && (
+          <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-2 text-sm">
+            <div className="mb-1 font-medium text-gray-700">Ausgewählte Projekte (über alle Kunden)</div>
+            <div className="flex flex-wrap gap-2">
+              {selectedProjectIds.map((id) => {
+                const project = selectedProjectsById[id];
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className="rounded border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-100"
+                    onClick={() => removeSelectedProject(id)}
+                    title="Aus Auswahl entfernen"
+                  >
+                    {project?.name ?? `Projekt ${id}`} ×
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </section>
 
       {error && (

@@ -89,8 +89,11 @@ class MaschineAuslastungResponse(BaseModel):
     plant_name: str
     customer_id: int | None
     program_id: int | None
+    project_status: str | None = None
     project_ids: list[int]
+    resolved_project_ids: list[int] = Field(default_factory=list)
     no_projects_selected: bool
+    uses_all_matching_projects: bool = False
     years: list[int]
     planning_period: MaschineAuslastungPlanningPeriod
     summary: MaschineAuslastungSummary
