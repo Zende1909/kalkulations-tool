@@ -8,8 +8,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.numbers import parse_de_float
 from app.services.zykluszeit import (
+    AUSWAHLWERTE,
     DEFAULT_GROESSENKLASSE,
-    GROESSENKLASSEN_KEYS,
+    GROESSENKLASSE_AUTO,
     KUEHLFAKTOR,
     normalisiere_groessenklasse,
 )
@@ -40,8 +41,8 @@ class ZykluszeitFields(BaseModel):
         if value is None or value == "":
             return None
         klasse = str(value).strip().lower()
-        if klasse not in GROESSENKLASSEN_KEYS:
-            zulaessig = ", ".join(GROESSENKLASSEN_KEYS)
+        if klasse not in AUSWAHLWERTE:
+            zulaessig = ", ".join(AUSWAHLWERTE)
             raise ValueError(f"Größenklasse muss eine von {zulaessig} sein.")
         return klasse
 
@@ -60,6 +61,8 @@ class ZykluszeitCalcRequest(ZykluszeitFields):
     """Standalone-Request für die Live-Vorschau der Zykluszeit-Schätzung."""
 
     material_id: int | None = None
+    # Aus der Maschinengrößen-Berechnung des Formulars; enthält die Kavitäten.
+    zuhaltekraft_t: float | None = Field(default=None, ge=0)
 
 
 class ZykluszeitResultSchema(BaseModel):
@@ -69,6 +72,8 @@ class ZykluszeitResultSchema(BaseModel):
     materialgruppe: str | None = None
     material_bezeichnung: str | None = None
     groessenklasse: str | None = None
+    groessenklasse_auswahl: str | None = None
+    zuhaltekraft_t: float | None = None
     kuehlfaktor: float | None = None
     temperaturleitfaehigkeit_m2_s: float | None = None
     werkzeugtemperatur_c: float | None = None
@@ -82,6 +87,7 @@ class ZykluszeitResultSchema(BaseModel):
 
 __all__ = [
     "DEFAULT_GROESSENKLASSE",
+    "GROESSENKLASSE_AUTO",
     "KUEHLFAKTOR",
     "ZykluszeitCalcRequest",
     "ZykluszeitFields",

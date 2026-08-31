@@ -14,6 +14,8 @@ export interface ZykluszeitPreviewPayload {
   zykluszeit_wandstaerke_mm: number | null;
   zykluszeit_groessenklasse: string;
   zykluszeit_nebenzeiten_gesamt_s: number | null;
+  /** Aus der Maschinengrößen-Vorschau; enthält Kavitäten und Fläche. */
+  zuhaltekraft_t: number | null;
 }
 
 export function readZykluszeitDecimal(
@@ -38,6 +40,7 @@ export function readZykluszeitDecimal(
 export function buildZykluszeitPreviewPayload(
   form: SpritzgussFormData,
   decimalRaw: Record<string, string>,
+  zuhaltekraftT: number | null = null,
 ): ZykluszeitPreviewPayload {
   return {
     material_id: form.material_id,
@@ -55,5 +58,7 @@ export function buildZykluszeitPreviewPayload(
       "zykluszeit_nebenzeiten_gesamt_s",
       null,
     ),
+    zuhaltekraft_t:
+      zuhaltekraftT != null && Number.isFinite(zuhaltekraftT) ? zuhaltekraftT : null,
   };
 }

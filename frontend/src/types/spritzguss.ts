@@ -111,16 +111,52 @@ export const ZYKLUSZEIT_GROESSENKLASSEN = [
   { key: "gross", label: "Groß – Großteil, Kernzug oder Einlegeteil", nebenzeiten: 16 },
 ] as const;
 
-export type ZykluszeitGroessenklasse = (typeof ZYKLUSZEIT_GROESSENKLASSEN)[number]["key"];
+export type ZykluszeitTeilegroesse = (typeof ZYKLUSZEIT_GROESSENKLASSEN)[number]["key"];
 
-export const ZYKLUSZEIT_DEFAULT_GROESSENKLASSE: ZykluszeitGroessenklasse = "mittel";
+/**
+ * `auto` leitet die Klasse aus der erforderlichen Zuhaltekraft ab, in die
+ * Kavitäten und projizierte Fläche bereits eingehen.
+ * Muss zu `AUSWAHLWERTE` im Backend-Service `zykluszeit` passen.
+ */
+export const ZYKLUSZEIT_GROESSENKLASSE_AUTO = "auto";
+export type ZykluszeitGroessenklasse = ZykluszeitTeilegroesse | "auto";
+
+export const ZYKLUSZEIT_DEFAULT_GROESSENKLASSE: ZykluszeitGroessenklasse = "auto";
+export const ZYKLUSZEIT_FALLBACK_TEILEGROESSE: ZykluszeitTeilegroesse = "mittel";
 export const ZYKLUSZEIT_KUEHLFAKTOR = 1.5;
 
-export function nebenzeitenRichtwert(klasse: string | null | undefined): number {
-  return (
-    ZYKLUSZEIT_GROESSENKLASSEN.find((k) => k.key === klasse)?.nebenzeiten ??
-    ZYKLUSZEIT_GROESSENKLASSEN.find((k) => k.key === ZYKLUSZEIT_DEFAULT_GROESSENKLASSE)!.nebenzeiten
-  );
+/** Schwellen aus `AUTO_SCHWELLEN_T` im Backend-Service `zykluszeit`. */
+export const ZYKLUSZEIT_AUTO_SCHWELLEN_T: ReadonlyArray<[number, ZykluszeitTeilegroesse]> = [
+  [100, "klein"],
+  [300, "mittel"],
+];
+
+export function teilegroesseAusZuhaltekraft(
+  zuhaltekraftT: number | null | undefined,
+): ZykluszeitTeilegroesse {
+  if (zuhaltekraftT == null || !Number.isFinite(zuhaltekraftT) || zuhaltekraftT <= 0) {
+    return ZYKLUSZEIT_FALLBACK_TEILEGROESSE;
+  }
+  for (const [grenze, klasse] of ZYKLUSZEIT_AUTO_SCHWELLEN_T) {
+    if (zuhaltekraftT <= grenze) return klasse;
+  }
+  return "gross";
+}
+
+export function effektiveGroessenklasse(
+  klasse: string | null | undefined,
+  zuhaltekraftT: number | null | undefined,
+): ZykluszeitTeilegroesse {
+  const treffer = ZYKLUSZEIT_GROESSENKLASSEN.find((k) => k.key === klasse);
+  return treffer ? treffer.key : teilegroesseAusZuhaltekraft(zuhaltekraftT);
+}
+
+export function nebenzeitenRichtwert(
+  klasse: string | null | undefined,
+  zuhaltekraftT: number | null | undefined = null,
+): number {
+  const key = effektiveGroessenklasse(klasse, zuhaltekraftT);
+  return ZYKLUSZEIT_GROESSENKLASSEN.find((k) => k.key === key)!.nebenzeiten;
 }
 
 export type ZykluszeitQuelle = "manuell" | "vorschlag";
@@ -132,6 +168,8 @@ export interface ZykluszeitVorschlag {
   materialgruppe?: string | null;
   material_bezeichnung?: string | null;
   groessenklasse?: string | null;
+  groessenklasse_auswahl?: string | null;
+  zuhaltekraft_t?: number | null;
   kuehlfaktor?: number | null;
   temperaturleitfaehigkeit_m2_s?: number | null;
   werkzeugtemperatur_c?: number | null;

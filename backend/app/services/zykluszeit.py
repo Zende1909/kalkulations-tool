@@ -6,7 +6,13 @@ Deshalb gibt es genau drei Eingaben:
 * Materialgruppe (am Material gepflegt) – liefert alle thermischen Kennwerte
   aus :mod:`app.services.material_thermik`
 * äquivalente Wandstärke in mm
-* Größenklasse des Teils – liefert die Summe der Nebenzeiten
+* Größenklasse des Teils – liefert die Summe der Nebenzeiten; im Modus
+  ``auto`` wird sie aus der erforderlichen Zuhaltekraft abgeleitet, in die
+  Kavitätenzahl und projizierte Fläche bereits eingehen
+
+Die Kavitätenzahl verlängert die Kühlzeit nicht, weil alle Kavitäten
+gleichzeitig kühlen. Sie wirkt nur über die Werkzeug- und Maschinengröße auf
+die Nebenzeiten und multipliziert in der Kostenrechnung die Stückzahl je Schuss.
 
 Kühlzeit nach IKET (``Dosing Guide``, Blatt ``Zykluszeitbestimmung``, sowie
 ``IKET-Kostenkalkulation-von-Kunststoff-Formteilen-Version-2024.pdf``, S. 83),
@@ -48,16 +54,44 @@ GROESSENKLASSEN_LABELS: dict[str, str] = {key: label for key, label, _s in GROES
 NEBENZEITEN_JE_KLASSE: dict[str, float] = {key: sekunden for key, _label, sekunden in GROESSENKLASSEN}
 DEFAULT_GROESSENKLASSE = "mittel"
 
+# Kavitätenzahl und Teilefläche wirken über die Zuhaltekraft: ein größeres
+# Werkzeug braucht längere Öffnungs-, Auswerfer- und Einspritzwege. Die
+# Schwellen entsprechen den üblichen Maschinenklassen, deren Trockenzyklus mit
+# der Schließkraft wächst (bis 100 t, 100–300 t, darüber).
+GROESSENKLASSE_AUTO = "auto"
+AUTO_SCHWELLEN_T: tuple[tuple[float, str], ...] = ((100.0, "klein"), (300.0, "mittel"))
+AUSWAHLWERTE: tuple[str, ...] = (GROESSENKLASSE_AUTO, *GROESSENKLASSEN_KEYS)
+
+
+def klasse_aus_zuhaltekraft(zuhaltekraft_t: float) -> str:
+    for grenze, klasse in AUTO_SCHWELLEN_T:
+        if zuhaltekraft_t <= grenze:
+            return klasse
+    return "gross"
+
 
 def normalisiere_groessenklasse(wert: str | None) -> str:
+    """Auswahlwert normalisieren; unbekannte Werte gelten als ``auto``."""
     if wert is None:
-        return DEFAULT_GROESSENKLASSE
+        return GROESSENKLASSE_AUTO
     key = str(wert).strip().lower()
-    return key if key in NEBENZEITEN_JE_KLASSE else DEFAULT_GROESSENKLASSE
+    return key if key in AUSWAHLWERTE else GROESSENKLASSE_AUTO
 
 
-def default_nebenzeiten_s(groessenklasse: str | None = None) -> float:
-    return NEBENZEITEN_JE_KLASSE[normalisiere_groessenklasse(groessenklasse)]
+def effektive_groessenklasse(wert: str | None, zuhaltekraft_t: float | None) -> str:
+    """Löst ``auto`` gegen die Zuhaltekraft auf; ohne sie gilt der Default."""
+    klasse = normalisiere_groessenklasse(wert)
+    if klasse != GROESSENKLASSE_AUTO:
+        return klasse
+    if zuhaltekraft_t is None or not math.isfinite(float(zuhaltekraft_t)) or zuhaltekraft_t <= 0:
+        return DEFAULT_GROESSENKLASSE
+    return klasse_aus_zuhaltekraft(float(zuhaltekraft_t))
+
+
+def default_nebenzeiten_s(
+    groessenklasse: str | None = None, zuhaltekraft_t: float | None = None
+) -> float:
+    return NEBENZEITEN_JE_KLASSE[effektive_groessenklasse(groessenklasse, zuhaltekraft_t)]
 
 
 @dataclass
@@ -66,8 +100,9 @@ class ZykluszeitInput:
 
     wandstaerke_mm: float | None
     materialgruppe: str | None
-    groessenklasse: str | None = DEFAULT_GROESSENKLASSE
+    groessenklasse: str | None = GROESSENKLASSE_AUTO
     nebenzeiten_gesamt_s: float | None = None
+    zuhaltekraft_t: float | None = None
 
 
 @dataclass
@@ -78,6 +113,8 @@ class ZykluszeitResult:
     materialgruppe: str | None = None
     material_bezeichnung: str | None = None
     groessenklasse: str | None = None
+    groessenklasse_auswahl: str | None = None
+    zuhaltekraft_t: float | None = None
     kuehlfaktor: float | None = None
     temperaturleitfaehigkeit_m2_s: float | None = None
     werkzeugtemperatur_c: float | None = None
@@ -96,6 +133,8 @@ class ZykluszeitResult:
             "materialgruppe": self.materialgruppe,
             "material_bezeichnung": self.material_bezeichnung,
             "groessenklasse": self.groessenklasse,
+            "groessenklasse_auswahl": self.groessenklasse_auswahl,
+            "zuhaltekraft_t": self.zuhaltekraft_t,
             "kuehlfaktor": self.kuehlfaktor,
             "temperaturleitfaehigkeit_m2_s": self.temperaturleitfaehigkeit_m2_s,
             "werkzeugtemperatur_c": self.werkzeugtemperatur_c,
@@ -131,7 +170,9 @@ def _teilergebnis(hinweis: str, inp: ZykluszeitInput, nebenzeiten: float) -> Zyk
         hinweis=hinweis,
         wandstaerke_mm=inp.wandstaerke_mm,
         materialgruppe=inp.materialgruppe,
-        groessenklasse=normalisiere_groessenklasse(inp.groessenklasse),
+        groessenklasse=effektive_groessenklasse(inp.groessenklasse, inp.zuhaltekraft_t),
+        groessenklasse_auswahl=normalisiere_groessenklasse(inp.groessenklasse),
+        zuhaltekraft_t=inp.zuhaltekraft_t,
         kuehlfaktor=KUEHLFAKTOR,
         nebenzeiten_gesamt_s=nebenzeiten,
     )
@@ -139,11 +180,12 @@ def _teilergebnis(hinweis: str, inp: ZykluszeitInput, nebenzeiten: float) -> Zyk
 
 def berechne_zykluszeit(inp: ZykluszeitInput) -> ZykluszeitResult:
     """Liefert den Zykluszeitvorschlag oder einen verständlichen Hinweis."""
-    klasse = normalisiere_groessenklasse(inp.groessenklasse)
+    auswahl = normalisiere_groessenklasse(inp.groessenklasse)
+    klasse = effektive_groessenklasse(auswahl, inp.zuhaltekraft_t)
     nebenzeiten = (
         float(inp.nebenzeiten_gesamt_s)
         if inp.nebenzeiten_gesamt_s is not None and math.isfinite(float(inp.nebenzeiten_gesamt_s))
-        else default_nebenzeiten_s(klasse)
+        else NEBENZEITEN_JE_KLASSE[klasse]
     )
     if nebenzeiten < 0:
         return _teilergebnis("Die Nebenzeiten dürfen nicht negativ sein.", inp, nebenzeiten)
@@ -203,6 +245,8 @@ def berechne_zykluszeit(inp: ZykluszeitInput) -> ZykluszeitResult:
         materialgruppe=thermik.gruppe,
         material_bezeichnung=thermik.bezeichnung,
         groessenklasse=klasse,
+        groessenklasse_auswahl=auswahl,
+        zuhaltekraft_t=inp.zuhaltekraft_t,
         kuehlfaktor=KUEHLFAKTOR,
         temperaturleitfaehigkeit_m2_s=temperaturleitfaehigkeit(thermik),
         werkzeugtemperatur_c=thermik.werkzeugtemperatur_c,

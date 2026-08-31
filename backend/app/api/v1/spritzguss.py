@@ -261,6 +261,8 @@ def _run_zykluszeit_for_model(
             materialgruppe=_materialgruppe(db, obj.material_id),
             groessenklasse=obj.zykluszeit_groessenklasse,
             nebenzeiten_gesamt_s=obj.zykluszeit_nebenzeiten_gesamt_s,
+            # Von `_run_maschinen_groesse_for_model` unmittelbar zuvor gesetzt.
+            zuhaltekraft_t=obj.maschinen_groesse_zuhaltekraft_erforderlich_t,
         )
     )
     _apply_zykluszeit_result(obj, result)
@@ -268,7 +270,10 @@ def _run_zykluszeit_for_model(
 
 
 def _run_zykluszeit_for_request(
-    db: Session, body: ZykluszeitCalcRequest | SpritzgussCalcRequest
+    db: Session,
+    body: ZykluszeitCalcRequest | SpritzgussCalcRequest,
+    *,
+    zuhaltekraft_t: float | None = None,
 ) -> ZykluszeitResult:
     return berechne_zykluszeit(
         ZykluszeitInput(
@@ -276,6 +281,7 @@ def _run_zykluszeit_for_request(
             materialgruppe=_materialgruppe(db, body.material_id),
             groessenklasse=body.zykluszeit_groessenklasse,
             nebenzeiten_gesamt_s=body.zykluszeit_nebenzeiten_gesamt_s,
+            zuhaltekraft_t=zuhaltekraft_t,
         )
     )
 
@@ -1150,7 +1156,9 @@ def berechne_zykluszeit_endpoint(
     Liefert auch bei unvollständigen oder unzulässigen Eingaben HTTP 200 mit
     ``berechenbar=false`` und einem verständlichen Hinweis.
     """
-    schema = _zykluszeit_schema(_run_zykluszeit_for_request(db, body))
+    schema = _zykluszeit_schema(
+        _run_zykluszeit_for_request(db, body, zuhaltekraft_t=body.zuhaltekraft_t)
+    )
     assert schema is not None
     return schema
 
@@ -1164,7 +1172,11 @@ def berechnen(
     """Berechnet eine Kalkulation ohne Speichern."""
     sizing = _run_maschinen_groesse_for_request(db, body, werk_id=body.werk_id)
     zykluszeit = (
-        _run_zykluszeit_for_request(db, body)
+        _run_zykluszeit_for_request(
+            db,
+            body,
+            zuhaltekraft_t=sizing.zuhaltekraft_erforderlich_t if sizing else None,
+        )
         if body.zykluszeit_wandstaerke_mm is not None
         else None
     )

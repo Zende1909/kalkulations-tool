@@ -29,7 +29,9 @@ import type { Veredelungsschritt } from "../types/veredelung";
 import {
   emptySpritzgussForm,
   nebenzeitenRichtwert,
+  teilegroesseAusZuhaltekraft,
   ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
+  ZYKLUSZEIT_GROESSENKLASSE_AUTO,
   ZYKLUSZEIT_GROESSENKLASSEN,
   type SpritzgussBloecke,
   type SpritzgussFormData,
@@ -70,6 +72,7 @@ interface SelectedVeredelung extends VeredelungZuordnungInput {
 }
 
 function gespeicherteGroessenklasse(wert: unknown): ZykluszeitGroessenklasse {
+  if (wert === ZYKLUSZEIT_GROESSENKLASSE_AUTO) return ZYKLUSZEIT_GROESSENKLASSE_AUTO;
   return ZYKLUSZEIT_GROESSENKLASSEN.some((k) => k.key === wert)
     ? (wert as ZykluszeitGroessenklasse)
     : ZYKLUSZEIT_DEFAULT_GROESSENKLASSE;
@@ -512,9 +515,19 @@ export function SpritzgussPage() {
     };
   }, [maschinenGroessePreviewPayload]);
 
+  const zuhaltekraftT = maschinenGroesse?.zuhaltekraft_erforderlich_t ?? null;
+
+  const autoTeilegroesseLabel = useMemo(() => {
+    const key = teilegroesseAusZuhaltekraft(zuhaltekraftT);
+    const klasse = ZYKLUSZEIT_GROESSENKLASSEN.find((k) => k.key === key)!;
+    return zuhaltekraftT == null
+      ? `noch ohne Zuhaltekraft: ${klasse.nebenzeiten} s`
+      : `${formatSizingNumber(zuhaltekraftT)} t → ${klasse.nebenzeiten} s`;
+  }, [zuhaltekraftT]);
+
   const zykluszeitPreviewPayload = useMemo(
-    () => buildZykluszeitPreviewPayload(form, decimalRaw),
-    [form, decimalRaw],
+    () => buildZykluszeitPreviewPayload(form, decimalRaw, zuhaltekraftT),
+    [form, decimalRaw, zuhaltekraftT],
   );
 
   useEffect(() => {
@@ -1402,7 +1415,9 @@ export function SpritzgussPage() {
             <p className="mb-3 text-xs text-gray-600">
               Grobe Abschätzung für 1-Komponenten-Thermoplaste aus Materialgruppe und
               Wandstärke. Der Wert ist ein Vorschlag und wird erst nach „Übernehmen“ in das
-              Zykluszeitfeld geschrieben.
+              Zykluszeitfeld geschrieben. Die Kavitätenzahl verlängert die Kühlzeit nicht – alle
+              Kavitäten kühlen gleichzeitig – sie wirkt über die Zuhaltekraft auf die Nebenzeiten
+              und vervielfacht die Stückzahl je Schuss.
             </p>
             <div className="grid gap-3 md:grid-cols-3">
               <NumberInput
@@ -1424,6 +1439,9 @@ export function SpritzgussPage() {
                   }
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
+                  <option value={ZYKLUSZEIT_GROESSENKLASSE_AUTO}>
+                    Automatisch aus Zuhaltekraft ({autoTeilegroesseLabel})
+                  </option>
                   {ZYKLUSZEIT_GROESSENKLASSEN.map(({ key, label, nebenzeiten }) => (
                     <option key={key} value={key}>
                       {label} ({nebenzeiten} s)
@@ -1436,7 +1454,7 @@ export function SpritzgussPage() {
                 label="Nebenzeiten gesamt (s)"
                 value={
                   form.zykluszeit_nebenzeiten_gesamt_s ??
-                  nebenzeitenRichtwert(form.zykluszeit_groessenklasse)
+                  nebenzeitenRichtwert(form.zykluszeit_groessenklasse, zuhaltekraftT)
                 }
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
@@ -1444,7 +1462,9 @@ export function SpritzgussPage() {
             </div>
             <p className="mt-1 text-xs text-gray-500">
               Nebenzeiten = Schließen, Einspritzen, Öffnen und Entnahme. Leer lassen, um den
-              Richtwert der Teilegröße zu verwenden.
+              Richtwert der Teilegröße zu verwenden. Im Modus „Automatisch“ folgt die Teilegröße
+              der erforderlichen Zuhaltekraft aus „Maschinengröße“, in die Kavitäten und
+              projizierte Fläche eingehen (bis 100 t klein, bis 300 t mittel, darüber groß).
             </p>
 
             <div className="mt-4 rounded-md border border-gray-100 bg-gray-50 p-3 text-sm">
@@ -1456,6 +1476,23 @@ export function SpritzgussPage() {
                   <div className="mt-1 text-gray-700">
                     Kühlzeit {formatSekunden(zykluszeitVorschlag.kuehlzeit_s)} s + Nebenzeiten{" "}
                     {formatSekunden(zykluszeitVorschlag.nebenzeiten_gesamt_s)} s
+                    {zykluszeitVorschlag.groessenklasse_auswahl ===
+                      ZYKLUSZEIT_GROESSENKLASSE_AUTO && (
+                      <>
+                        {" "}
+                        (Teilegröße{" "}
+                        {
+                          ZYKLUSZEIT_GROESSENKLASSEN.find(
+                            (k) => k.key === zykluszeitVorschlag.groessenklasse,
+                          )?.key
+                        }{" "}
+                        automatisch aus{" "}
+                        {zykluszeitVorschlag.zuhaltekraft_t == null
+                          ? "fehlender Zuhaltekraft"
+                          : `${formatSizingNumber(zykluszeitVorschlag.zuhaltekraft_t)} t`}
+                        )
+                      </>
+                    )}
                   </div>
                   <div className="mt-2 text-xs text-gray-500">
                     {zykluszeitVorschlag.materialgruppe} (

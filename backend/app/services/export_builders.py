@@ -71,14 +71,20 @@ def _zykluszeit_export_rows(obj: SpritzgussKalkulation, ergebnis: dict) -> list[
         return rows
 
     klasse = vorschlag.get("groessenklasse") or getattr(obj, "zykluszeit_groessenklasse", None)
+    klasse_text = GROESSENKLASSEN_LABELS.get(str(klasse or ""), "–")
+    if str(vorschlag.get("groessenklasse_auswahl") or "") == "auto":
+        zuhaltekraft = vorschlag.get("zuhaltekraft_t")
+        herkunft = (
+            f"automatisch aus {_num_str(zuhaltekraft, 't')}"
+            if zuhaltekraft
+            else "automatisch, ohne Zuhaltekraft"
+        )
+        klasse_text = f"{klasse_text} ({herkunft})"
     rows.extend(
         [
             ExportRow("Äquivalente Wandstärke", _num_str(wandstaerke, "mm")),
             ExportRow("Materialgruppe", str(vorschlag.get("materialgruppe") or "–")),
-            ExportRow(
-                "Teilegröße (Nebenzeiten)",
-                GROESSENKLASSEN_LABELS.get(str(klasse or ""), "–"),
-            ),
+            ExportRow("Teilegröße (Nebenzeiten)", klasse_text),
             ExportRow(
                 "Kühlzeit inkl. Zuschlag 1,5",
                 _num_str(wert("kuehlzeit_s", "zykluszeit_kuehlzeit_s"), "s"),

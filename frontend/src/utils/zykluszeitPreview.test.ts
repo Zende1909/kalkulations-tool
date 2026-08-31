@@ -2,8 +2,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  effektiveGroessenklasse,
   emptySpritzgussForm,
   nebenzeitenRichtwert,
+  teilegroesseAusZuhaltekraft,
   ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
   ZYKLUSZEIT_GROESSENKLASSEN,
 } from "../types/spritzguss";
@@ -28,12 +30,44 @@ describe("Größenklassen", () => {
   });
 });
 
+describe("Automatische Teilegröße aus der Zuhaltekraft", () => {
+  it("folgt den Backend-Schwellen 100 t und 300 t", () => {
+    expect(teilegroesseAusZuhaltekraft(60)).toBe("klein");
+    expect(teilegroesseAusZuhaltekraft(100)).toBe("klein");
+    expect(teilegroesseAusZuhaltekraft(100.1)).toBe("mittel");
+    expect(teilegroesseAusZuhaltekraft(300)).toBe("mittel");
+    expect(teilegroesseAusZuhaltekraft(300.1)).toBe("gross");
+  });
+
+  it("fällt ohne Zuhaltekraft auf mittel zurück", () => {
+    expect(teilegroesseAusZuhaltekraft(null)).toBe("mittel");
+    expect(teilegroesseAusZuhaltekraft(0)).toBe("mittel");
+  });
+
+  it("löst auto gegen die Zuhaltekraft auf, manuelle Klassen bleiben stehen", () => {
+    expect(effektiveGroessenklasse("auto", 480)).toBe("gross");
+    expect(effektiveGroessenklasse("klein", 480)).toBe("klein");
+    expect(nebenzeitenRichtwert("auto", 480)).toBe(16);
+    expect(nebenzeitenRichtwert("klein", 480)).toBe(6);
+  });
+});
+
 describe("buildZykluszeitPreviewPayload", () => {
   it("nutzt die Default-Größenklasse und keine eigenen Nebenzeiten", () => {
     const payload = buildZykluszeitPreviewPayload(emptySpritzgussForm(), {});
     expect(payload.zykluszeit_groessenklasse).toBe(ZYKLUSZEIT_DEFAULT_GROESSENKLASSE);
-    expect(payload.zykluszeit_groessenklasse).toBe("mittel");
+    expect(payload.zykluszeit_groessenklasse).toBe("auto");
     expect(payload.zykluszeit_nebenzeiten_gesamt_s).toBeNull();
+    expect(payload.zuhaltekraft_t).toBeNull();
+  });
+
+  it("reicht die Zuhaltekraft aus der Maschinengrößen-Vorschau durch", () => {
+    const payload = buildZykluszeitPreviewPayload(emptySpritzgussForm(), {}, 480);
+    expect(payload.zuhaltekraft_t).toBe(480);
+  });
+
+  it("verwirft eine unbrauchbare Zuhaltekraft", () => {
+    expect(buildZykluszeitPreviewPayload(emptySpritzgussForm(), {}, NaN).zuhaltekraft_t).toBeNull();
   });
 
   it("liest Wandstärke live aus decimalRaw", () => {

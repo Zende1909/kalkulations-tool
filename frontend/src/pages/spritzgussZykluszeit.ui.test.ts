@@ -37,7 +37,24 @@ describe("Zykluszeit-Schätzung UI", () => {
   it("bietet die Größenklassen mit ihrem Nebenzeiten-Richtwert an", () => {
     expect(pageSrc).toMatch(/ZYKLUSZEIT_GROESSENKLASSEN\.map/);
     expect(pageSrc).toMatch(/zykluszeit_groessenklasse/);
-    expect(pageSrc).toMatch(/nebenzeitenRichtwert\(form\.zykluszeit_groessenklasse\)/);
+    expect(pageSrc).toMatch(
+      /nebenzeitenRichtwert\(form\.zykluszeit_groessenklasse,\s*zuhaltekraftT\)/,
+    );
+  });
+
+  it("leitet die Teilegröße auf Wunsch aus der Zuhaltekraft ab", () => {
+    expect(pageSrc).toMatch(/Automatisch aus Zuhaltekraft/);
+    expect(pageSrc).toMatch(/ZYKLUSZEIT_GROESSENKLASSE_AUTO/);
+    expect(pageSrc).toMatch(/maschinenGroesse\?\.zuhaltekraft_erforderlich_t/);
+    expect(pageSrc).toMatch(/teilegroesseAusZuhaltekraft/);
+    expect(pageSrc).toMatch(
+      /buildZykluszeitPreviewPayload\(form,\s*decimalRaw,\s*zuhaltekraftT\)/,
+    );
+  });
+
+  it("erklärt, dass Kavitäten nur über die Nebenzeiten wirken", () => {
+    expect(pageSrc).toMatch(/Kavitätenzahl verlängert die Kühlzeit nicht/);
+    expect(pageSrc).toMatch(/bis 100 t klein, bis 300 t mittel, darüber groß/);
   });
 
   it("rechnet live mit Debounce wie die Maschinengrößen-Vorschau", () => {

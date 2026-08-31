@@ -28,9 +28,11 @@ from app.services.material_thermik import (
     defaults_fuer_gruppe,
     normalisiere_gruppe,
 )
+from app.services.maschinen_groesse import MaschinenGroesseInput, berechne_maschinen_groesse
 from app.services.spritzguss_kalkulation import SpritzgussInput, berechne_spritzguss
 from app.services.zykluszeit import (
     DEFAULT_GROESSENKLASSE,
+    GROESSENKLASSE_AUTO,
     GROESSENKLASSEN,
     KUEHLFAKTOR,
     MAX_WANDSTAERKE_MM,
@@ -38,6 +40,8 @@ from app.services.zykluszeit import (
     ZykluszeitInput,
     berechne_zykluszeit,
     default_nebenzeiten_s,
+    klasse_aus_zuhaltekraft,
+    normalisiere_groessenklasse,
 )
 
 API = "/api/v1"
@@ -170,6 +174,99 @@ def test_negative_nebenzeiten_werden_abgelehnt():
     result = berechne_zykluszeit(_pom_input(nebenzeiten_gesamt_s=-1))
     assert result.berechenbar is False
     assert "nicht negativ" in result.hinweis
+
+
+# --------------------------------------------------------------------------------------
+# Werkzeugauslegung: Kavitäten wirken über die Zuhaltekraft
+# --------------------------------------------------------------------------------------
+
+
+def test_kavitaeten_verlaengern_die_kuehlzeit_nicht():
+    """Alle Kavitäten kühlen gleichzeitig; nur die Nebenzeiten dürfen wachsen."""
+    einfach = berechne_zykluszeit(_pom_input(groessenklasse="auto", zuhaltekraft_t=60.0))
+    vierfach = berechne_zykluszeit(_pom_input(groessenklasse="auto", zuhaltekraft_t=240.0))
+    assert vierfach.kuehlzeit_s == pytest.approx(einfach.kuehlzeit_s)
+    assert vierfach.nebenzeiten_gesamt_s > einfach.nebenzeiten_gesamt_s
+
+
+@pytest.mark.parametrize(
+    ("zuhaltekraft_t", "erwartete_klasse"),
+    [(1.0, "klein"), (99.9, "klein"), (100.0, "klein"), (100.1, "mittel"), (300.0, "mittel"),
+     (300.1, "gross"), (1200.0, "gross")],
+)
+def test_auto_klasse_folgt_der_zuhaltekraft(zuhaltekraft_t: float, erwartete_klasse: str):
+    assert klasse_aus_zuhaltekraft(zuhaltekraft_t) == erwartete_klasse
+    result = berechne_zykluszeit(_pom_input(groessenklasse="auto", zuhaltekraft_t=zuhaltekraft_t))
+    assert result.groessenklasse == erwartete_klasse
+    assert result.groessenklasse_auswahl == "auto"
+    assert result.zuhaltekraft_t == pytest.approx(zuhaltekraft_t)
+    assert result.nebenzeiten_gesamt_s == pytest.approx(NEBENZEITEN_JE_KLASSE[erwartete_klasse])
+
+
+def test_auto_ohne_zuhaltekraft_nutzt_den_default():
+    for zuhaltekraft in (None, 0.0, -5.0):
+        result = berechne_zykluszeit(_pom_input(groessenklasse="auto", zuhaltekraft_t=zuhaltekraft))
+        assert result.groessenklasse == DEFAULT_GROESSENKLASSE
+        assert result.groessenklasse_auswahl == GROESSENKLASSE_AUTO
+
+
+def test_auto_ist_der_default_und_unbekannte_werte_landen_dort():
+    assert DEFAULT_GROESSENKLASSE == "mittel"
+    assert normalisiere_groessenklasse(None) == GROESSENKLASSE_AUTO
+    assert normalisiere_groessenklasse("gibtsnicht") == GROESSENKLASSE_AUTO
+    assert normalisiere_groessenklasse("KLEIN") == "klein"
+    result = berechne_zykluszeit(_pom_input(zuhaltekraft_t=500.0))
+    assert result.groessenklasse == "gross"
+
+
+def test_manuelle_klasse_ignoriert_die_zuhaltekraft():
+    result = berechne_zykluszeit(_pom_input(groessenklasse="klein", zuhaltekraft_t=800.0))
+    assert result.groessenklasse == "klein"
+    assert result.groessenklasse_auswahl == "klein"
+    assert result.nebenzeiten_gesamt_s == pytest.approx(NEBENZEITEN_JE_KLASSE["klein"])
+
+
+def test_eigene_nebenzeiten_uebersteuern_auch_die_auto_klasse():
+    result = berechne_zykluszeit(
+        _pom_input(groessenklasse="auto", zuhaltekraft_t=800.0, nebenzeiten_gesamt_s=7.0)
+    )
+    assert result.groessenklasse == "gross"
+    assert result.nebenzeiten_gesamt_s == pytest.approx(7.0)
+
+
+def test_teilergebnis_traegt_die_auto_aufloesung_mit():
+    result = berechne_zykluszeit(
+        _pom_input(wandstaerke_mm=None, groessenklasse="auto", zuhaltekraft_t=500.0)
+    )
+    assert result.berechenbar is False
+    assert result.groessenklasse == "gross"
+    assert result.groessenklasse_auswahl == GROESSENKLASSE_AUTO
+    assert result.nebenzeiten_gesamt_s == pytest.approx(NEBENZEITEN_JE_KLASSE["gross"])
+
+
+def test_zuhaltekraft_aus_kavitaeten_hebt_die_klasse():
+    """4 Kavitäten eines Teils, das einfach noch als klein durchginge."""
+    einfach = berechne_maschinen_groesse(
+        MaschinenGroesseInput(
+            modus="flaeche",
+            injection_pressure_kg_cm2=500.0,
+            kavitaeten=1,
+            proj_flaeche_mm2=12000.0,
+        )
+    )
+    vierfach = berechne_maschinen_groesse(
+        MaschinenGroesseInput(
+            modus="flaeche",
+            injection_pressure_kg_cm2=500.0,
+            kavitaeten=4,
+            proj_flaeche_mm2=12000.0,
+        )
+    )
+    assert vierfach.zuhaltekraft_erforderlich_t == pytest.approx(
+        einfach.zuhaltekraft_erforderlich_t * 4
+    )
+    assert klasse_aus_zuhaltekraft(einfach.zuhaltekraft_erforderlich_t) == "klein"
+    assert klasse_aus_zuhaltekraft(vierfach.zuhaltekraft_erforderlich_t) == "mittel"
 
 
 # --------------------------------------------------------------------------------------
@@ -462,8 +559,34 @@ def test_schema_quelle_nur_manuell_oder_vorschlag():
 
 def test_schema_lehnt_ungueltige_groessenklasse_ab():
     assert ZykluszeitFields(zykluszeit_groessenklasse="GROSS").zykluszeit_groessenklasse == "gross"
+    assert ZykluszeitFields(zykluszeit_groessenklasse="auto").zykluszeit_groessenklasse == "auto"
     with pytest.raises(Exception, match="Größenklasse"):
         ZykluszeitFields(zykluszeit_groessenklasse="riesig")
+
+
+def test_preview_endpoint_leitet_klasse_aus_zuhaltekraft_ab(client: TestClient):
+    material_id = _pom_material_ueber_api(client, "POM-AUTO")
+
+    def preview(zuhaltekraft_t: float | None) -> dict:
+        return client.post(
+            f"{API}/spritzguss/zykluszeit/berechnen",
+            json={
+                "material_id": material_id,
+                "zykluszeit_wandstaerke_mm": "4,5",
+                "zykluszeit_groessenklasse": "auto",
+                "zuhaltekraft_t": zuhaltekraft_t,
+            },
+        ).json()
+
+    klein = preview(80.0)
+    gross = preview(650.0)
+    assert klein["groessenklasse"] == "klein"
+    assert klein["nebenzeiten_gesamt_s"] == pytest.approx(6.0)
+    assert gross["groessenklasse"] == "gross"
+    assert gross["groessenklasse_auswahl"] == "auto"
+    assert gross["zuhaltekraft_t"] == pytest.approx(650.0)
+    # Nur die Nebenzeiten unterscheiden sich, die Kühlzeit bleibt gleich.
+    assert gross["kuehlzeit_s"] == pytest.approx(klein["kuehlzeit_s"])
 
 
 # --------------------------------------------------------------------------------------
@@ -637,6 +760,24 @@ def test_schaetzung_am_datensatz_wird_berechnet_und_gespeichert(kalk_db: Session
     # Der Vorschlag überschreibt die bestehende Zykluszeit nicht.
     assert geladen.zykluszeit_s == pytest.approx(30.0)
     assert geladen.zykluszeit_quelle == "manuell"
+
+
+def test_datensatz_nutzt_gespeicherte_zuhaltekraft_fuer_die_auto_klasse(kalk_db: Session):
+    material = _pom_material(kalk_db)
+    obj = _kalkulation(
+        material_id=material.id,
+        zykluszeit_wandstaerke_mm=POM_WANDSTAERKE_MM,
+        zykluszeit_groessenklasse="auto",
+        kavitaeten=4,
+        maschinen_groesse_zuhaltekraft_erforderlich_t=480.0,
+    )
+    kalk_db.add(obj)
+    kalk_db.flush()
+
+    result = _run_zykluszeit_for_model(kalk_db, obj)
+    assert result.groessenklasse == "gross"
+    assert result.nebenzeiten_gesamt_s == pytest.approx(NEBENZEITEN_JE_KLASSE["gross"])
+    assert obj.zykluszeit_vorschlag_s == pytest.approx(result.kuehlzeit_s + 16.0)
 
 
 def test_eigene_nebenzeiten_bleiben_beim_neuberechnen_erhalten(kalk_db: Session):
