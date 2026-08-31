@@ -16,6 +16,8 @@ from app.schemas.maschine import (
     MaschineRecalculateRequest,
     MaschineUpdate,
 )
+from app.schemas.maschine_auslastung import MaschineAuslastungResponse
+from app.services.maschine_auslastung import build_maschinen_auslastung
 from app.services.machine_hourly_rate import (
     MachineRateValidationError,
     apply_rate_to_maschine,
@@ -61,6 +63,27 @@ def list_maschinen(
     if werk_id is not None:
         stmt = stmt.where(Maschine.werk_id == werk_id)
     return list(db.scalars(stmt).all())
+
+
+@router.get("/auslastung", response_model=MaschineAuslastungResponse)
+def get_maschinen_auslastung(
+    plant_id: int = Query(..., ge=1, description="Werk-ID"),
+    customer_id: int | None = Query(default=None, ge=1),
+    program_id: int | None = Query(default=None, ge=1),
+    project_ids: list[int] = Query(default=[], alias="project_ids"),
+    nur_aktiv: bool = Query(default=True),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_viewer),
+):
+    """Maschinenauslastung je Werk, filterbar über Kunde → Programm → Projekte."""
+    return build_maschinen_auslastung(
+        db,
+        plant_id=plant_id,
+        customer_id=customer_id,
+        program_id=program_id,
+        project_ids=project_ids,
+        nur_aktiv=nur_aktiv,
+    )
 
 
 @router.get("/{item_id}", response_model=MaschineRead)

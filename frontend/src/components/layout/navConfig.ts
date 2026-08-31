@@ -27,6 +27,7 @@ export const navItems: NavItem[] = [
   { to: "/stammdaten/kaufteile", label: "Kaufteile" },
   { to: "/veredelung", label: "Veredelung" },
   { to: "/baugruppen", label: "Baugruppen" },
+  { to: "/maschinenauslastung", label: "Maschinenauslastung" },
   { to: "/investitionen", label: "Investitionen" },
   { to: "/business-case", label: "Business Case" },
 ];

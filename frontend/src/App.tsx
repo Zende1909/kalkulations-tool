@@ -9,6 +9,7 @@ import {
   BaugruppenPage,
   BusinessCasePage,
   InvestitionenPage,
+  MaschinenauslastungPage,
   SpritzgussPage,
   VeredelungPage,
 } from "./pages/ModulePages";
@@ -43,6 +44,7 @@ export default function App() {
               <Route path="spritzguss" element={<SpritzgussPage />} />
               <Route path="veredelung" element={<VeredelungPage />} />
               <Route path="baugruppen" element={<BaugruppenPage />} />
+              <Route path="maschinenauslastung" element={<MaschinenauslastungPage />} />
               <Route path="investitionen" element={<InvestitionenPage />} />
               <Route path="business-case" element={<BusinessCasePage />} />
             </Route>
