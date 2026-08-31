@@ -240,6 +240,26 @@ def _create_pre_plant_skeleton(engine: Engine) -> None:
                     maschinen_groesse_zuhaltekraft_erforderlich_t FLOAT,
                     maschinen_groesse_empfohlene_maschine_id INTEGER,
                     maschinen_groesse_warnung VARCHAR(512),
+                    zykluszeit_quelle VARCHAR(16),
+                    zykluszeit_wandstaerke_mm FLOAT,
+                    zykluszeit_variante INTEGER,
+                    zykluszeit_kuehlfaktor FLOAT,
+                    zykluszeit_komponenten INTEGER,
+                    zykluszeit_nz_werkzeug_schliessen_s FLOAT,
+                    zykluszeit_nz_duese_anlegen_s FLOAT,
+                    zykluszeit_nz_einspritzen_s FLOAT,
+                    zykluszeit_nz_werkzeug_oeffnen_s FLOAT,
+                    zykluszeit_nz_auswerfen_s FLOAT,
+                    zykluszeit_nz_kernzug_s FLOAT,
+                    zykluszeit_nz_ausschrauben_s FLOAT,
+                    zykluszeit_nz_einlegen_s FLOAT,
+                    zykluszeit_nz_ausblasen_s FLOAT,
+                    zykluszeit_temperaturleitfaehigkeit_m2_s FLOAT,
+                    zykluszeit_optimale_kuehlzeit_s FLOAT,
+                    zykluszeit_kuehlzeit_s FLOAT,
+                    zykluszeit_nebenzeiten_gesamt_s FLOAT,
+                    zykluszeit_vorschlag_s FLOAT,
+                    zykluszeit_hinweis VARCHAR(512),
             created_at TIMESTAMP NOT NULL,
             updated_at TIMESTAMP NOT NULL
         )
@@ -321,7 +341,7 @@ def test_alembic_head_is_e1a0009_after_werk_params():
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     heads = ScriptDirectory.from_config(cfg).get_heads()
-    assert heads == ["e1a0015_injection_machine_sizing"]
+    assert heads == ["e1a0016_cycle_time_suggestion"]
     rev = ScriptDirectory.from_config(cfg).get_revision(REVISION)
     assert rev is not None
     assert rev.down_revision == PREV

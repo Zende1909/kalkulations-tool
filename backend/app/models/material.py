@@ -15,4 +15,15 @@ class Material(Base, TimestampMixin):
     dichte: Mapped[float] = mapped_column(Float, nullable=False)
     waehrung: Mapped[str] = mapped_column(String(3), default="EUR", nullable=False)
     injection_pressure_kg_cm2: Mapped[float] = mapped_column(Float, nullable=False, default=500.0)
+
+    # Thermische Daten für die Kühlzeitberechnung (IKET).
+    # Die Schmelzdichte ist bewusst getrennt von `dichte` (Feststoff) geführt.
+    materialgruppe: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    schmelzdichte_kg_m3: Mapped[float | None] = mapped_column(Float, nullable=True)
+    waermekapazitaet_j_kg_k: Mapped[float | None] = mapped_column(Float, nullable=True)
+    waermeleitfaehigkeit_w_m_k: Mapped[float | None] = mapped_column(Float, nullable=True)
+    werkzeugtemperatur_c: Mapped[float | None] = mapped_column(Float, nullable=True)
+    schmelzetemperatur_c: Mapped[float | None] = mapped_column(Float, nullable=True)
+    entformungstemperatur_c: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

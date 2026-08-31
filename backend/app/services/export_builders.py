@@ -29,6 +29,7 @@ from app.services.dashboard import (
 from app.services.investition_financials import financial_fields_for_export
 from app.services.baugruppe_export_detail import build_baugruppe_detail_kalkulation
 from app.services.dashboard_assembly import build_assembly_overview
+from app.services.zykluszeit import NEBENZEIT_FELDER
 from app.services.export_models import (
     BaugruppeExportData,
     DashboardExportData,
@@ -38,6 +39,117 @@ from app.services.export_models import (
     ExportTable,
     SpritzgussExportData,
 )
+
+
+def _num_str(value, unit: str = "", digits: int = 2) -> str:
+    if value is None:
+        return "–"
+    try:
+        text = f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return "–"
+    return f"{text} {unit}".strip()
+
+
+def _zykluszeit_export_rows(obj: SpritzgussKalkulation, ergebnis: dict) -> list[ExportRow]:
+    """Eingaben, Kühlzeit, Nebenzeiten, Gesamtzykluszeit und Quelle des Vorschlags."""
+    quelle = getattr(obj, "zykluszeit_quelle", None) or ergebnis.get("zykluszeit_quelle")
+    quelle_text = {
+        "vorschlag": "Übernommen aus Zykluszeitvorschlag",
+        "manuell": "Manuell erfasst",
+    }.get(str(quelle or ""), "Manuell erfasst")
+    rows = [ExportRow("Zykluszeit Quelle", quelle_text)]
+
+    vorschlag = ergebnis.get("zykluszeit_vorschlag")
+    vorschlag = vorschlag if isinstance(vorschlag, dict) else {}
+    wandstaerke = vorschlag.get("wandstaerke_mm") or getattr(
+        obj, "zykluszeit_wandstaerke_mm", None
+    )
+    if wandstaerke is None:
+        return rows
+
+    rows.extend(
+        [
+            ExportRow("Äquivalente Wandstärke", _num_str(wandstaerke, "mm")),
+            ExportRow(
+                "Kühlzeit-Variante (IKET)",
+                str(vorschlag.get("variante") or getattr(obj, "zykluszeit_variante", None) or "–"),
+            ),
+            ExportRow(
+                "Zuschlagfaktor Werkzeugkühlung",
+                _num_str(
+                    vorschlag.get("kuehlfaktor")
+                    if vorschlag.get("kuehlfaktor") is not None
+                    else getattr(obj, "zykluszeit_kuehlfaktor", None)
+                ),
+            ),
+            ExportRow(
+                "Temperaturleitfähigkeit",
+                _num_str(
+                    (
+                        vorschlag.get("temperaturleitfaehigkeit_m2_s")
+                        if vorschlag.get("temperaturleitfaehigkeit_m2_s") is not None
+                        else getattr(obj, "zykluszeit_temperaturleitfaehigkeit_m2_s", None)
+                    ),
+                    "m²/s",
+                    digits=10,
+                ),
+            ),
+            ExportRow(
+                "Optimale Kühlzeit",
+                _num_str(
+                    vorschlag.get("optimale_kuehlzeit_s")
+                    if vorschlag.get("optimale_kuehlzeit_s") is not None
+                    else getattr(obj, "zykluszeit_optimale_kuehlzeit_s", None),
+                    "s",
+                ),
+            ),
+            ExportRow(
+                "Kühlzeit inkl. Zuschlag",
+                _num_str(
+                    vorschlag.get("kuehlzeit_s")
+                    if vorschlag.get("kuehlzeit_s") is not None
+                    else getattr(obj, "zykluszeit_kuehlzeit_s", None),
+                    "s",
+                ),
+            ),
+        ]
+    )
+
+    nebenzeiten = vorschlag.get("nebenzeiten")
+    nebenzeiten = nebenzeiten if isinstance(nebenzeiten, dict) else {}
+    for key, label, default in NEBENZEIT_FELDER:
+        wert = nebenzeiten.get(key)
+        if wert is None:
+            wert = getattr(obj, f"zykluszeit_nz_{key}", None)
+        rows.append(ExportRow(f"Nebenzeit {label}", _num_str(wert if wert is not None else default, "s")))
+
+    rows.append(
+        ExportRow(
+            "Nebenzeiten gesamt",
+            _num_str(
+                vorschlag.get("nebenzeiten_gesamt_s")
+                if vorschlag.get("nebenzeiten_gesamt_s") is not None
+                else getattr(obj, "zykluszeit_nebenzeiten_gesamt_s", None),
+                "s",
+            ),
+        )
+    )
+    rows.append(
+        ExportRow(
+            "Zykluszeit-Vorschlag gesamt",
+            _num_str(
+                vorschlag.get("gesamtzykluszeit_s")
+                if vorschlag.get("gesamtzykluszeit_s") is not None
+                else getattr(obj, "zykluszeit_vorschlag_s", None),
+                "s",
+            ),
+        )
+    )
+    hinweis = vorschlag.get("hinweis") or getattr(obj, "zykluszeit_hinweis", None)
+    if hinweis:
+        rows.append(ExportRow("Zykluszeitvorschlag Hinweis", str(hinweis)))
+    return rows
 
 
 def safe_filename_part(value: str, fallback: str = "export") -> str:
@@ -202,6 +314,7 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
                 ),
             ]
         )
+    inputs.extend(_zykluszeit_export_rows(obj, ergebnis))
     inputs.extend(
         [
         ExportRow("Jahresstückzahl", str(obj.jahresstueckzahl)),

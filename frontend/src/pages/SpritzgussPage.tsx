@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import {
   berechnen,
   berechneMaschinenGroesse,
+  berechneZykluszeit,
   createKalkulation,
   deleteKalkulation,
   getKalkulation,
@@ -27,13 +28,19 @@ import type { Lohnkosten, Land, Maschine, Material, Werk } from "../types/stammd
 import type { Veredelungsschritt } from "../types/veredelung";
 import {
   emptySpritzgussForm,
+  ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
+  ZYKLUSZEIT_DEFAULT_VARIANTE,
+  ZYKLUSZEIT_NEBENZEITEN,
+  ZYKLUSZEIT_NEBENZEIT_DEFAULTS,
   type SpritzgussBloecke,
   type SpritzgussFormData,
+  type SpritzgussKalkulation,
   type SpritzgussListItem,
   type MaschinenGroesseResult,
   type VeredelungZuordnung,
   type VeredelungZuordnungInput,
   type WerkzeugAbrechnungsart,
+  type ZykluszeitVorschlag,
 } from "../types/spritzguss";
 import { FormDecimalInput } from "../components/FormDecimalInput";
 import {
@@ -49,6 +56,7 @@ import {
   buildMaschinenGroessePreviewPayload,
   readKavitaeten,
 } from "../utils/maschinenGroessePreview";
+import { buildZykluszeitPreviewPayload } from "../utils/zykluszeitPreview";
 import {
   berechneAutomatischeLosgroesse,
   inferLegacyLosgroesseModus,
@@ -60,6 +68,32 @@ interface SelectedVeredelung extends VeredelungZuordnungInput {
   veredelungsart: string;
   kosten_inkl_ausschuss: number;
   kosten_gesamt?: number;
+}
+
+type NebenzeitFeld = (typeof ZYKLUSZEIT_NEBENZEITEN)[number]["feld"];
+
+/** Gespeicherte Nebenzeiten übernehmen; fehlende fallen auf die IKET-Defaults. */
+function nebenzeitenAusGespeichert(
+  item: SpritzgussKalkulation,
+): Pick<SpritzgussFormData, NebenzeitFeld> {
+  const quelle = item as unknown as Record<string, unknown>;
+  const werte = {} as Record<NebenzeitFeld, number>;
+  for (const { feld } of ZYKLUSZEIT_NEBENZEITEN) {
+    const gespeichert = quelle[feld];
+    werte[feld] =
+      typeof gespeichert === "number" && Number.isFinite(gespeichert)
+        ? gespeichert
+        : ZYKLUSZEIT_NEBENZEIT_DEFAULTS[feld];
+  }
+  return werte;
+}
+
+function formatSekunden(value: number | null | undefined, digits = 2): string {
+  if (value == null || !Number.isFinite(value)) return "–";
+  return value.toLocaleString("de-DE", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
 }
 
 function euro(value: number | undefined | null): string {
@@ -321,6 +355,9 @@ export function SpritzgussPage() {
   const [jahresbedarfHint, setJahresbedarfHint] = useState<string | null>(null);
   const [jahresbedarfLoading, setJahresbedarfLoading] = useState(false);
   const [maschinenGroesse, setMaschinenGroesse] = useState<MaschinenGroesseResult | null>(null);
+  const [zykluszeitVorschlag, setZykluszeitVorschlag] = useState<ZykluszeitVorschlag | null>(
+    null,
+  );
 
   const setField = <K extends keyof SpritzgussFormData>(key: K, value: SpritzgussFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -333,6 +370,9 @@ export function SpritzgussPage() {
       if (raw.trim() === "" || parsed >= 1) {
         setForm((current) => ({ ...current, kavitaeten: parsed }));
       }
+    }
+    if (fieldKey === "zykluszeit_s") {
+      setForm((current) => ({ ...current, zykluszeit_quelle: "manuell" }));
     }
   };
 
@@ -485,6 +525,39 @@ export function SpritzgussPage() {
     };
   }, [maschinenGroessePreviewPayload]);
 
+  const zykluszeitPreviewPayload = useMemo(
+    () => buildZykluszeitPreviewPayload(form, decimalRaw),
+    [form, decimalRaw],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      berechneZykluszeit(zykluszeitPreviewPayload)
+        .then((result) => {
+          if (!cancelled) setZykluszeitVorschlag(result);
+        })
+        .catch(() => {
+          if (!cancelled) setZykluszeitVorschlag(null);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [zykluszeitPreviewPayload]);
+
+  const uebernehmeZykluszeit = () => {
+    const wert = zykluszeitVorschlag?.gesamtzykluszeit_s;
+    if (wert == null || !Number.isFinite(wert)) return;
+    setForm((current) => ({ ...current, zykluszeit_s: wert, zykluszeit_quelle: "vorschlag" }));
+    setDecimalRaw((current) => ({
+      ...current,
+      zykluszeit_s: formatDecimalForInputDe(wert),
+    }));
+    setSuccess("Zykluszeitvorschlag in das Zykluszeitfeld übernommen.");
+  };
+
   const selectedMaterial = useMemo(
     () => materials.find((m) => m.id === form.material_id) ?? null,
     [materials, form.material_id],
@@ -525,6 +598,20 @@ export function SpritzgussPage() {
       maschinen_groesse_laenge_mm: form.maschinen_groesse_laenge_mm,
       maschinen_groesse_oeffnungen_pct: form.maschinen_groesse_oeffnungen_pct,
       maschinen_groesse_proj_flaeche_mm2: form.maschinen_groesse_proj_flaeche_mm2,
+      zykluszeit_quelle: form.zykluszeit_quelle,
+      zykluszeit_wandstaerke_mm: form.zykluszeit_wandstaerke_mm,
+      zykluszeit_variante: form.zykluszeit_variante,
+      zykluszeit_kuehlfaktor: form.zykluszeit_kuehlfaktor,
+      zykluszeit_komponenten: form.zykluszeit_komponenten,
+      zykluszeit_nz_werkzeug_schliessen_s: form.zykluszeit_nz_werkzeug_schliessen_s,
+      zykluszeit_nz_duese_anlegen_s: form.zykluszeit_nz_duese_anlegen_s,
+      zykluszeit_nz_einspritzen_s: form.zykluszeit_nz_einspritzen_s,
+      zykluszeit_nz_werkzeug_oeffnen_s: form.zykluszeit_nz_werkzeug_oeffnen_s,
+      zykluszeit_nz_auswerfen_s: form.zykluszeit_nz_auswerfen_s,
+      zykluszeit_nz_kernzug_s: form.zykluszeit_nz_kernzug_s,
+      zykluszeit_nz_ausschrauben_s: form.zykluszeit_nz_ausschrauben_s,
+      zykluszeit_nz_einlegen_s: form.zykluszeit_nz_einlegen_s,
+      zykluszeit_nz_ausblasen_s: form.zykluszeit_nz_ausblasen_s,
     }),
     [form, veredelungZuordnungen, hierarchy.project_id],
   );
@@ -800,6 +887,10 @@ export function SpritzgussPage() {
         (saved.ergebnis as { maschinen_groesse?: MaschinenGroesseResult } | null)?.maschinen_groesse ??
         null;
       setMaschinenGroesse(savedSizing);
+      setZykluszeitVorschlag(
+        (saved.ergebnis as { zykluszeit_vorschlag?: ZykluszeitVorschlag } | null)
+          ?.zykluszeit_vorschlag ?? null,
+      );
       if (saved.maschine_id != null) {
         setField("maschine_id", saved.maschine_id);
       }
@@ -889,6 +980,12 @@ export function SpritzgussPage() {
         zykluszeit_s: item.zykluszeit_s,
         kavitaeten: item.kavitaeten,
         maschinenstundensatz: item.maschinenstundensatz,
+        zykluszeit_quelle: item.zykluszeit_quelle ?? "manuell",
+        zykluszeit_wandstaerke_mm: item.zykluszeit_wandstaerke_mm ?? null,
+        zykluszeit_variante: item.zykluszeit_variante ?? ZYKLUSZEIT_DEFAULT_VARIANTE,
+        zykluszeit_kuehlfaktor: item.zykluszeit_kuehlfaktor ?? ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
+        zykluszeit_komponenten: item.zykluszeit_komponenten ?? 1,
+        ...nebenzeitenAusGespeichert(item),
         lohnkosten_id: item.lohnkosten_id,
         lohnstundensatz: item.lohnstundensatz,
         werkzeugkosten_eur: item.werkzeugkosten_eur,
@@ -938,11 +1035,18 @@ export function SpritzgussPage() {
           maschinen_groesse_laenge_mm: item.maschinen_groesse_laenge_mm ?? null,
           maschinen_groesse_oeffnungen_pct: item.maschinen_groesse_oeffnungen_pct ?? null,
           maschinen_groesse_proj_flaeche_mm2: item.maschinen_groesse_proj_flaeche_mm2 ?? null,
+          zykluszeit_wandstaerke_mm: item.zykluszeit_wandstaerke_mm ?? null,
+          zykluszeit_kuehlfaktor: item.zykluszeit_kuehlfaktor ?? ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
+          ...nebenzeitenAusGespeichert(item),
         }),
       );
       setMaschinenGroesse(
         (item.ergebnis as { maschinen_groesse?: MaschinenGroesseResult } | null)?.maschinen_groesse ??
           null,
+      );
+      setZykluszeitVorschlag(
+        (item.ergebnis as { zykluszeit_vorschlag?: ZykluszeitVorschlag } | null)
+          ?.zykluszeit_vorschlag ?? null,
       );
       setBloecke((item.ergebnis_bloecke as SpritzgussBloecke) ?? null);
       loadVeredelungFromSaved(item.veredelung_zuordnungen);
@@ -967,6 +1071,7 @@ export function SpritzgussPage() {
     setSelectedVeredelung([]);
     setBloecke(null);
     setMaschinenGroesse(null);
+    setZykluszeitVorschlag(null);
     setSuccess(null);
     setError(null);
   };
@@ -1316,6 +1421,138 @@ export function SpritzgussPage() {
             {maschinenGroesse?.warnung && (
               <p className="mt-3 text-sm text-amber-800">{maschinenGroesse.warnung}</p>
             )}
+          </section>
+
+          <section className="rounded-lg border border-gray-200 bg-white p-4">
+            <h3 className="mb-1 font-semibold text-gray-900">Zykluszeitvorschlag (IKET)</h3>
+            <p className="mb-3 text-xs text-gray-600">
+              Kühlzeitkalkulation nach IKET für 1-Komponenten-Thermoplast-Spritzguss. Der Wert
+              ist ein Vorschlag und wird erst nach „Übernehmen“ in das Zykluszeitfeld
+              geschrieben.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <NumberInput
+                fieldKey="zykluszeit_wandstaerke_mm"
+                label="Äquivalente Wandstärke (mm)"
+                value={form.zykluszeit_wandstaerke_mm ?? 0}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
+              />
+              <label className="block text-sm">
+                <span className="font-medium text-gray-700">Berechnungsvariante</span>
+                <select
+                  value={form.zykluszeit_variante}
+                  onChange={(e) => setField("zykluszeit_variante", Number(e.target.value))}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                >
+                  <option value={2}>Variante 2 – Temperatur in Formteilmitte</option>
+                  <option value={1}>Variante 1 – mittlere Wandtemperatur</option>
+                </select>
+              </label>
+              <NumberInput
+                fieldKey="zykluszeit_kuehlfaktor"
+                label="Zuschlagfaktor Werkzeugkühlung"
+                value={form.zykluszeit_kuehlfaktor}
+                decimalRaw={decimalRaw}
+                onDecimalChange={handleDecimalChange}
+              />
+              <label className="block text-sm">
+                <span className="font-medium text-gray-700">Verfahren</span>
+                <select
+                  value={form.zykluszeit_komponenten}
+                  onChange={(e) => setField("zykluszeit_komponenten", Number(e.target.value))}
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                >
+                  <option value={1}>1-Komponenten-Spritzguss</option>
+                  <option value={2}>2-Komponenten-Spritzguss</option>
+                  <option value={3}>3-Komponenten-Spritzguss</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-2 text-sm font-medium text-gray-800">Nebenzeiten (s)</div>
+              <div className="grid gap-3 md:grid-cols-3">
+                {ZYKLUSZEIT_NEBENZEITEN.map(({ feld, label }) => (
+                  <NumberInput
+                    key={feld}
+                    fieldKey={feld}
+                    label={label}
+                    value={
+                      (form as unknown as Record<string, number>)[feld] ??
+                      ZYKLUSZEIT_NEBENZEIT_DEFAULTS[feld]
+                    }
+                    decimalRaw={decimalRaw}
+                    onDecimalChange={handleDecimalChange}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-md border border-gray-100 bg-gray-50 p-3 text-sm">
+              <div className="font-medium text-gray-800">Rechenschritte</div>
+              {zykluszeitVorschlag?.berechenbar ? (
+                <>
+                  <div className="mt-1 text-gray-600">
+                    Temperaturleitfähigkeit α = λ / (ρ · c<sub>p</sub>) ={" "}
+                    {zykluszeitVorschlag.temperaturleitfaehigkeit_m2_s?.toExponential(6)} m²/s
+                  </div>
+                  <div className="text-gray-600">
+                    Vorfaktor s² / (α · π²) = {formatSekunden(zykluszeitVorschlag.vorfaktor_s, 4)} s
+                  </div>
+                  <div className="text-gray-600">
+                    Variantenfaktor = {formatSekunden(zykluszeitVorschlag.variantenfaktor, 6)}
+                  </div>
+                  <div className="text-gray-600">
+                    Temperaturquotient (T<sub>M</sub> − T<sub>W</sub>) / (T<sub>E</sub> − T
+                    <sub>W</sub>) = {formatSekunden(zykluszeitVorschlag.temperaturquotient, 4)}
+                  </div>
+                  <div className="text-gray-600">
+                    ln({formatSekunden(zykluszeitVorschlag.ln_argument, 6)}) ={" "}
+                    {formatSekunden(zykluszeitVorschlag.ln_wert, 6)}
+                  </div>
+                  <div className="mt-2 text-gray-700">
+                    Optimale Kühlzeit ={" "}
+                    {formatSekunden(zykluszeitVorschlag.optimale_kuehlzeit_s)} s
+                  </div>
+                  <div className="text-gray-700">
+                    Kühlzeit × Zuschlagfaktor {formatSekunden(zykluszeitVorschlag.kuehlfaktor, 2)}{" "}
+                    = {formatSekunden(zykluszeitVorschlag.kuehlzeit_s)} s
+                  </div>
+                  <div className="text-gray-700">
+                    Nebenzeiten gesamt ={" "}
+                    {formatSekunden(zykluszeitVorschlag.nebenzeiten_gesamt_s)} s
+                  </div>
+                  <div className="mt-1 font-medium text-gray-900">
+                    Gesamtzykluszeit ={" "}
+                    {formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s)} s
+                  </div>
+                </>
+              ) : (
+                <p className="mt-1 text-amber-800">
+                  {zykluszeitVorschlag?.hinweis ??
+                    "Zykluszeitvorschlag wird berechnet, sobald Material und Wandstärke vollständig sind."}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={uebernehmeZykluszeit}
+                disabled={!zykluszeitVorschlag?.berechenbar}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+              >
+                Übernehmen
+              </button>
+              <span className="text-sm text-gray-600">
+                Aktuelle Zykluszeit: {formatSekunden(form.zykluszeit_s)} s (
+                {form.zykluszeit_quelle === "vorschlag"
+                  ? "aus Vorschlag übernommen"
+                  : "manuell erfasst"}
+                )
+              </span>
+            </div>
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">

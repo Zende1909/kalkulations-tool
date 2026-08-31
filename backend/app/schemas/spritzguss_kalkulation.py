@@ -7,6 +7,7 @@ from app.schemas.numbers import parse_percent_points
 
 from app.schemas.maschinen_groesse import MaschinenGroesseFields, MaschinenGroesseResultSchema
 from app.schemas.spritzguss_veredelung import VeredelungZuordnungInput, VeredelungZuordnungRead
+from app.schemas.zykluszeit import ZykluszeitFields, ZykluszeitResultSchema
 
 WerkzeugAbrechnungsart = Literal["amortisation", "einmalzahlung"]
 LosgroesseModus = Literal["automatisch", "manuell"]
@@ -66,7 +67,7 @@ def _require_positive_int_volume(value: Any) -> int:
     return as_int
 
 
-class SpritzgussCalcRequest(MaschinenGroesseFields):
+class SpritzgussCalcRequest(MaschinenGroesseFields, ZykluszeitFields):
     teilegewicht_netto_g: float = Field(ge=0)
     schussgewicht_g: float = Field(gt=0)
     materialpreis_pro_kg: float = Field(ge=0)
@@ -191,9 +192,10 @@ class SpritzgussCalcResponse(BaseModel):
     bloecke: dict[str, dict[str, Any]]
     veredelung_zuordnungen: list[VeredelungZuordnungRead] = Field(default_factory=list)
     maschinen_groesse: MaschinenGroesseResultSchema | None = None
+    zykluszeit_vorschlag: ZykluszeitResultSchema | None = None
 
 
-class SpritzgussKalkulationBase(MaschinenGroesseFields):
+class SpritzgussKalkulationBase(MaschinenGroesseFields, ZykluszeitFields):
     teilebezeichnung: str = Field(min_length=1, max_length=255)
     teilenummer: str = Field(min_length=1, max_length=100)
     kunde: str = ""
@@ -301,7 +303,7 @@ class SpritzgussKalkulationCreate(SpritzgussKalkulationBase):
         return self
 
 
-class SpritzgussKalkulationUpdate(MaschinenGroesseFields):
+class SpritzgussKalkulationUpdate(MaschinenGroesseFields, ZykluszeitFields):
     teilebezeichnung: str | None = Field(default=None, min_length=1, max_length=255)
     teilenummer: str | None = Field(default=None, min_length=1, max_length=100)
     kunde: str | None = None
@@ -358,6 +360,13 @@ class SpritzgussKalkulationUpdate(MaschinenGroesseFields):
     maschinen_groesse_empfohlene_maschine_id: int | None = None
     maschinen_groesse_warnung: str | None = None
 
+    zykluszeit_temperaturleitfaehigkeit_m2_s: float | None = None
+    zykluszeit_optimale_kuehlzeit_s: float | None = None
+    zykluszeit_kuehlzeit_s: float | None = None
+    zykluszeit_nebenzeiten_gesamt_s: float | None = None
+    zykluszeit_vorschlag_s: float | None = None
+    zykluszeit_hinweis: str | None = None
+
     notizen: str | None = None
     aktiv: bool | None = None
     veredelung_zuordnungen: list[VeredelungZuordnungInput] | None = None
@@ -393,6 +402,12 @@ class SpritzgussKalkulationRead(SpritzgussKalkulationBase):
     setup_lohnstundensatz: float = 0
     setup_mitarbeiter: float = 0
     setup_aktiv: bool = False
+    zykluszeit_temperaturleitfaehigkeit_m2_s: float | None = None
+    zykluszeit_optimale_kuehlzeit_s: float | None = None
+    zykluszeit_kuehlzeit_s: float | None = None
+    zykluszeit_nebenzeiten_gesamt_s: float | None = None
+    zykluszeit_vorschlag_s: float | None = None
+    zykluszeit_hinweis: str | None = None
     ergebnis: dict[str, Any] | None = None
     ergebnis_bloecke: dict[str, Any] | None = None
     veredelung_zuordnungen: list[VeredelungZuordnungRead] = Field(default_factory=list)

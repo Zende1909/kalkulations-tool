@@ -81,6 +81,13 @@ def _machine_schema(engine) -> None:
                     dichte FLOAT NOT NULL DEFAULT 0,
                     waehrung VARCHAR(8) NOT NULL DEFAULT 'EUR',
                     injection_pressure_kg_cm2 FLOAT NOT NULL DEFAULT 500,
+                    materialgruppe VARCHAR(32),
+                    schmelzdichte_kg_m3 FLOAT,
+                    waermekapazitaet_j_kg_k FLOAT,
+                    waermeleitfaehigkeit_w_m_k FLOAT,
+                    werkzeugtemperatur_c FLOAT,
+                    schmelzetemperatur_c FLOAT,
+                    entformungstemperatur_c FLOAT,
                     aktiv BOOLEAN NOT NULL DEFAULT 1,
                     created_at TIMESTAMP, updated_at TIMESTAMP
                 )

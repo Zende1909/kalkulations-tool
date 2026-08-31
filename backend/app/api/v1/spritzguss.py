@@ -40,6 +40,12 @@ from app.schemas.spritzguss_veredelung import (
     VeredelungZuordnungRead,
     VeredelungZuordnungUpdate,
 )
+from app.schemas.zykluszeit import (
+    NEBENZEIT_MODEL_FIELDS,
+    ZykluszeitCalcRequest,
+    ZykluszeitFields,
+    ZykluszeitResultSchema,
+)
 from app.services.central_markup_rates import (
     CentralMarkupRatesError,
     load_central_markup_rates,
@@ -68,6 +74,15 @@ from app.services.spritzguss_kalkulation import (
     berechne_spritzguss,
 )
 from app.services.spritzguss_hierarchy import resolve_hierarchy_for_spritzguss
+from app.services.zykluszeit import (
+    DEFAULT_KOMPONENTEN,
+    DEFAULT_KUEHLFAKTOR,
+    DEFAULT_NEBENZEITEN,
+    DEFAULT_VARIANTE,
+    ZykluszeitInput,
+    ZykluszeitResult,
+    berechne_zykluszeit,
+)
 from app.services.veredelung_kalkulation import berechne_veredelung
 from app.services.veredelung_kalkulation import VeredelungInput as VeredelungCalcInput
 
@@ -208,6 +223,123 @@ def _maschinen_groesse_schema(result: MaschinenGroesseResult | None) -> Maschine
     if result is None:
         return None
     return MaschinenGroesseResultSchema(**result.as_dict())
+
+
+_THERMIK_ATTRS = (
+    "schmelzdichte_kg_m3",
+    "waermekapazitaet_j_kg_k",
+    "waermeleitfaehigkeit_w_m_k",
+    "werkzeugtemperatur_c",
+    "schmelzetemperatur_c",
+    "entformungstemperatur_c",
+)
+
+_ZYKLUSZEIT_RESULT_ATTRS = (
+    "zykluszeit_temperaturleitfaehigkeit_m2_s",
+    "zykluszeit_optimale_kuehlzeit_s",
+    "zykluszeit_kuehlzeit_s",
+    "zykluszeit_nebenzeiten_gesamt_s",
+    "zykluszeit_vorschlag_s",
+    "zykluszeit_hinweis",
+)
+
+
+def _material_thermik(db: Session, material_id: int | None) -> dict[str, float | None]:
+    """Thermische Kennwerte des Materials; fehlende Werte bleiben ``None``."""
+    if material_id is None:
+        return {attr: None for attr in _THERMIK_ATTRS}
+    material = db.get(Material, material_id)
+    if material is None:
+        return {attr: None for attr in _THERMIK_ATTRS}
+    return {attr: getattr(material, attr, None) for attr in _THERMIK_ATTRS}
+
+
+def _zykluszeit_input_from_fields(
+    db: Session,
+    *,
+    material_id: int | None,
+    wandstaerke_mm: float | None,
+    variante: int | None,
+    kuehlfaktor: float | None,
+    komponenten: int | None,
+    nebenzeiten: dict[str, float],
+) -> ZykluszeitInput:
+    thermik = _material_thermik(db, material_id)
+    return ZykluszeitInput(
+        wandstaerke_mm=wandstaerke_mm,
+        variante=variante if variante is not None else DEFAULT_VARIANTE,
+        kuehlfaktor=kuehlfaktor if kuehlfaktor is not None else DEFAULT_KUEHLFAKTOR,
+        komponenten=komponenten if komponenten is not None else DEFAULT_KOMPONENTEN,
+        nebenzeiten=nebenzeiten,
+        **thermik,  # type: ignore[arg-type]
+    )
+
+
+def _nebenzeiten_from_obj(obj: SpritzgussKalkulation) -> dict[str, float]:
+    werte: dict[str, float] = {}
+    for key, model_field in NEBENZEIT_MODEL_FIELDS.items():
+        wert = getattr(obj, model_field, None)
+        werte[key] = float(wert) if wert is not None else DEFAULT_NEBENZEITEN[key]
+    return werte
+
+
+def _apply_zykluszeit_result(obj: SpritzgussKalkulation, result: ZykluszeitResult) -> None:
+    obj.zykluszeit_temperaturleitfaehigkeit_m2_s = result.temperaturleitfaehigkeit_m2_s
+    obj.zykluszeit_optimale_kuehlzeit_s = result.optimale_kuehlzeit_s
+    obj.zykluszeit_kuehlzeit_s = result.kuehlzeit_s
+    obj.zykluszeit_nebenzeiten_gesamt_s = result.nebenzeiten_gesamt_s
+    obj.zykluszeit_vorschlag_s = result.gesamtzykluszeit_s
+    obj.zykluszeit_hinweis = result.hinweis
+
+
+def _run_zykluszeit_for_model(
+    db: Session, obj: SpritzgussKalkulation
+) -> ZykluszeitResult | None:
+    """Zykluszeitvorschlag am Datensatz aktualisieren.
+
+    Der Vorschlag ist rein informativ: er blockiert das Speichern nie und
+    überschreibt ``zykluszeit_s`` nicht. Ohne gepflegte Wandstärke gilt der
+    Bereich als ungenutzt und die berechneten Spalten werden geleert.
+    """
+    if obj.zykluszeit_wandstaerke_mm is None:
+        for attr in _ZYKLUSZEIT_RESULT_ATTRS:
+            setattr(obj, attr, None)
+        return None
+    result = berechne_zykluszeit(
+        _zykluszeit_input_from_fields(
+            db,
+            material_id=obj.material_id,
+            wandstaerke_mm=obj.zykluszeit_wandstaerke_mm,
+            variante=obj.zykluszeit_variante,
+            kuehlfaktor=obj.zykluszeit_kuehlfaktor,
+            komponenten=obj.zykluszeit_komponenten,
+            nebenzeiten=_nebenzeiten_from_obj(obj),
+        )
+    )
+    _apply_zykluszeit_result(obj, result)
+    return result
+
+
+def _run_zykluszeit_for_request(
+    db: Session, body: ZykluszeitCalcRequest | SpritzgussCalcRequest
+) -> ZykluszeitResult:
+    return berechne_zykluszeit(
+        _zykluszeit_input_from_fields(
+            db,
+            material_id=body.material_id,
+            wandstaerke_mm=body.zykluszeit_wandstaerke_mm,
+            variante=body.zykluszeit_variante,
+            kuehlfaktor=body.zykluszeit_kuehlfaktor,
+            komponenten=body.zykluszeit_komponenten,
+            nebenzeiten=body.nebenzeiten_dict(),
+        )
+    )
+
+
+def _zykluszeit_schema(result: ZykluszeitResult | None) -> ZykluszeitResultSchema | None:
+    if result is None:
+        return None
+    return ZykluszeitResultSchema(**result.as_dict())
 
 
 def _apply_central_rates(
@@ -395,6 +527,7 @@ def _to_calc_input_from_request(body: SpritzgussCalcRequest) -> SpritzgussInput:
             "losgroesse_manuell",
             "losgroesse",
             *MaschinenGroesseFields.model_fields.keys(),
+            *ZykluszeitFields.model_fields.keys(),
         },
     )
     return SpritzgussInput(**data)
@@ -663,6 +796,7 @@ def _build_calc_response(
     losgroesse_manuell: int | None = None,
     losgroesse_gespeichert: int | None = None,
     maschinen_groesse: MaschinenGroesseResult | None = None,
+    zykluszeit_vorschlag: ZykluszeitResult | None = None,
 ) -> SpritzgussCalcResponse:
     zuordnungen = _normalize_veredelung_zuordnungen(zuordnungen)
     calc_input, losgroesse_ctx = _prepare_calc_input_with_losgroesse(
@@ -801,11 +935,16 @@ def _build_calc_response(
         ergebnis_dict["maschinen_groesse"] = maschinen_groesse.as_dict()
         bloecke["maschinen_groesse"] = maschinen_groesse.as_dict()
 
+    if zykluszeit_vorschlag is not None:
+        ergebnis_dict["zykluszeit_vorschlag"] = zykluszeit_vorschlag.as_dict()
+        bloecke["zykluszeit_vorschlag"] = zykluszeit_vorschlag.as_dict()
+
     return SpritzgussCalcResponse(
         ergebnis=SpritzgussErgebnisSchema(**ergebnis_dict),
         bloecke=bloecke,
         veredelung_zuordnungen=zuordnung_reads,
         maschinen_groesse=_maschinen_groesse_schema(maschinen_groesse),
+        zykluszeit_vorschlag=_zykluszeit_schema(zykluszeit_vorschlag),
     )
 
 
@@ -830,6 +969,7 @@ def _apply_calculation(
         use_snapshots = True
 
     sizing = _run_maschinen_groesse_for_model(db, obj)
+    zykluszeit = _run_zykluszeit_for_model(db, obj)
     response = _build_calc_response(
         db,
         _to_calc_input_from_model(obj),
@@ -843,6 +983,7 @@ def _apply_calculation(
         losgroesse_manuell=getattr(obj, "losgroesse_manuell", None),
         losgroesse_gespeichert=getattr(obj, "losgroesse", None),
         maschinen_groesse=sizing,
+        zykluszeit_vorschlag=zykluszeit,
     )
     # Angewandte zentrale Sätze am Datensatz spiegeln (Export/Transparenz)
     ergebnis = response.ergebnis
@@ -911,6 +1052,9 @@ def _apply_calculation(
         dumped["maschinen_rate_snapshot"] = rate_snap
     if response.maschinen_groesse is not None:
         dumped["maschinen_groesse"] = response.maschinen_groesse.model_dump()
+    if response.zykluszeit_vorschlag is not None:
+        dumped["zykluszeit_vorschlag"] = response.zykluszeit_vorschlag.model_dump()
+    dumped["zykluszeit_quelle"] = getattr(obj, "zykluszeit_quelle", None) or "manuell"
     if getattr(obj, "werk_id", None):
         werk = db.get(Werk, obj.werk_id)
         if werk:
@@ -966,6 +1110,7 @@ def _run_calculation(
     losgroesse_manuell: int | None = None,
     losgroesse_gespeichert: int | None = None,
     maschinen_groesse: MaschinenGroesseResult | None = None,
+    zykluszeit_vorschlag: ZykluszeitResult | None = None,
 ) -> SpritzgussCalcResponse:
     return _build_calc_response(
         db,
@@ -978,6 +1123,7 @@ def _run_calculation(
         losgroesse_manuell=losgroesse_manuell,
         losgroesse_gespeichert=losgroesse_gespeichert,
         maschinen_groesse=maschinen_groesse,
+        zykluszeit_vorschlag=zykluszeit_vorschlag,
     )
 
 
@@ -1049,6 +1195,22 @@ def berechne_maschinen_groesse_endpoint(
     return schema
 
 
+@router.post("/zykluszeit/berechnen", response_model=ZykluszeitResultSchema)
+def berechne_zykluszeit_endpoint(
+    body: ZykluszeitCalcRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_viewer),
+):
+    """Zykluszeitvorschlag nach IKET ohne vollständige Kalkulation.
+
+    Liefert auch bei unvollständigen oder unzulässigen Eingaben HTTP 200 mit
+    ``berechenbar=false`` und einem verständlichen Hinweis.
+    """
+    schema = _zykluszeit_schema(_run_zykluszeit_for_request(db, body))
+    assert schema is not None
+    return schema
+
+
 @router.post("/berechnen", response_model=SpritzgussCalcResponse)
 def berechnen(
     body: SpritzgussCalcRequest,
@@ -1057,6 +1219,11 @@ def berechnen(
 ):
     """Berechnet eine Kalkulation ohne Speichern."""
     sizing = _run_maschinen_groesse_for_request(db, body, werk_id=body.werk_id)
+    zykluszeit = (
+        _run_zykluszeit_for_request(db, body)
+        if body.zykluszeit_wandstaerke_mm is not None
+        else None
+    )
     calc_input = _to_calc_input_from_request(body)
     return _run_calculation(
         db,
@@ -1068,6 +1235,7 @@ def berechnen(
         losgroesse_manuell=body.losgroesse_manuell,
         losgroesse_gespeichert=body.losgroesse,
         maschinen_groesse=sizing,
+        zykluszeit_vorschlag=zykluszeit,
     )
 
 

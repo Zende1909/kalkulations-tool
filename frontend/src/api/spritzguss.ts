@@ -6,10 +6,12 @@ import type {
   SpritzgussKalkulation,
   SpritzgussListItem,
   VeredelungZuordnungInput,
+  ZykluszeitVorschlag,
 } from "../types/spritzguss";
 import type { MaschinenGroessePreviewPayload } from "../utils/maschinenGroessePreview";
+import type { ZykluszeitPreviewPayload } from "../utils/zykluszeitPreview";
 
-export type { MaschinenGroessePreviewPayload };
+export type { MaschinenGroessePreviewPayload, ZykluszeitPreviewPayload };
 
 export type CalcPayload = Pick<
   SpritzgussFormData,
@@ -45,6 +47,20 @@ export type CalcPayload = Pick<
   | "maschinen_groesse_laenge_mm"
   | "maschinen_groesse_oeffnungen_pct"
   | "maschinen_groesse_proj_flaeche_mm2"
+  | "zykluszeit_quelle"
+  | "zykluszeit_wandstaerke_mm"
+  | "zykluszeit_variante"
+  | "zykluszeit_kuehlfaktor"
+  | "zykluszeit_komponenten"
+  | "zykluszeit_nz_werkzeug_schliessen_s"
+  | "zykluszeit_nz_duese_anlegen_s"
+  | "zykluszeit_nz_einspritzen_s"
+  | "zykluszeit_nz_werkzeug_oeffnen_s"
+  | "zykluszeit_nz_auswerfen_s"
+  | "zykluszeit_nz_kernzug_s"
+  | "zykluszeit_nz_ausschrauben_s"
+  | "zykluszeit_nz_einlegen_s"
+  | "zykluszeit_nz_ausblasen_s"
 > & {
   veredelung_zuordnungen?: VeredelungZuordnungInput[];
 };
@@ -59,6 +75,10 @@ export function berechnen(payload: CalcPayload) {
 
 export function berechneMaschinenGroesse(payload: MaschinenGroessePreviewPayload) {
   return api.post<MaschinenGroesseResult>("/spritzguss/maschinen-groesse/berechnen", payload);
+}
+
+export function berechneZykluszeit(payload: ZykluszeitPreviewPayload) {
+  return api.post<ZykluszeitVorschlag>("/spritzguss/zykluszeit/berechnen", payload);
 }
 
 export function listKalkulationen(

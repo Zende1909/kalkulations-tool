@@ -1,5 +1,9 @@
 import type { SpritzgussFormData } from "../types/spritzguss";
 import {
+  ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
+  ZYKLUSZEIT_NEBENZEIT_DEFAULTS,
+} from "../types/spritzguss";
+import {
   coerceFormDecimal,
   formatDecimalForInputDe,
   parsePercentPointsInput,
@@ -21,6 +25,17 @@ export const SPRITZGuss_DECIMAL_FIELDS = [
   "maschinen_groesse_breite_mm",
   "maschinen_groesse_laenge_mm",
   "maschinen_groesse_proj_flaeche_mm2",
+  "zykluszeit_wandstaerke_mm",
+  "zykluszeit_kuehlfaktor",
+  "zykluszeit_nz_werkzeug_schliessen_s",
+  "zykluszeit_nz_duese_anlegen_s",
+  "zykluszeit_nz_einspritzen_s",
+  "zykluszeit_nz_werkzeug_oeffnen_s",
+  "zykluszeit_nz_auswerfen_s",
+  "zykluszeit_nz_kernzug_s",
+  "zykluszeit_nz_ausschrauben_s",
+  "zykluszeit_nz_einlegen_s",
+  "zykluszeit_nz_ausblasen_s",
 ] as const;
 
 /** Prozentpunkte (nicht Bruchanteil). */
@@ -57,6 +72,21 @@ export function loadSpritzgussDecimalRaw(
   return raw;
 }
 
+/** Felder, die bei leerer Eingabe `null` bleiben statt auf 0 zu fallen. */
+const NULLABLE_WHEN_EMPTY = new Set<string>([
+  "maschinen_groesse_breite_mm",
+  "maschinen_groesse_laenge_mm",
+  "maschinen_groesse_proj_flaeche_mm2",
+  "maschinen_groesse_oeffnungen_pct",
+  "zykluszeit_wandstaerke_mm",
+]);
+
+/** Felder, die bei leerer Eingabe auf ihren IKET-Default zurückfallen. */
+const DEFAULT_WHEN_EMPTY: Record<string, number> = {
+  zykluszeit_kuehlfaktor: ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
+  ...ZYKLUSZEIT_NEBENZEIT_DEFAULTS,
+};
+
 export function parseSpritzgussDecimalFields(
   decimalRaw: Record<string, string>,
   form: SpritzgussFormData,
@@ -65,9 +95,15 @@ export function parseSpritzgussDecimalFields(
 
   for (const key of SPRITZGuss_DECIMAL_FIELDS) {
     const text = decimalRaw[key] ?? (form[key] == null ? "" : formatDecimalForInputDe(form[key]));
-    if (text.trim() === "" && key.startsWith("maschinen_groesse_")) {
-      (next as unknown as Record<string, number | null>)[key] = null;
-      continue;
+    if (text.trim() === "") {
+      if (NULLABLE_WHEN_EMPTY.has(key)) {
+        (next as unknown as Record<string, number | null>)[key] = null;
+        continue;
+      }
+      if (key in DEFAULT_WHEN_EMPTY) {
+        (next as unknown as Record<string, number | null>)[key] = DEFAULT_WHEN_EMPTY[key];
+        continue;
+      }
     }
     const parsed = coerceFormDecimal(text, "2,10 oder 2.10");
     (next as unknown as Record<string, number | null>)[key] = parsed;
@@ -75,7 +111,7 @@ export function parseSpritzgussDecimalFields(
 
   for (const key of SPRITZGuss_PERCENT_FIELDS) {
     const text = decimalRaw[key] ?? (form[key] == null ? "" : formatDecimalForInputDe(form[key]));
-    if (text.trim() === "" && key.startsWith("maschinen_groesse_")) {
+    if (text.trim() === "" && NULLABLE_WHEN_EMPTY.has(key)) {
       (next as unknown as Record<string, number | null>)[key] = null;
       continue;
     }

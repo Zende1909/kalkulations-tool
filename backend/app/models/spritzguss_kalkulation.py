@@ -81,6 +81,30 @@ class SpritzgussKalkulation(Base, TimestampMixin):
     )
     maschinen_groesse_warnung: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
+    # Zykluszeitvorschlag nach IKET (Blatt "Zykluszeitbestimmung")
+    zykluszeit_quelle: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    zykluszeit_wandstaerke_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_variante: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    zykluszeit_kuehlfaktor: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_komponenten: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    zykluszeit_nz_werkzeug_schliessen_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_nz_duese_anlegen_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_nz_einspritzen_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_nz_werkzeug_oeffnen_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_nz_auswerfen_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_nz_kernzug_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_nz_ausschrauben_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_nz_einlegen_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_nz_ausblasen_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_temperaturleitfaehigkeit_m2_s: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    zykluszeit_optimale_kuehlzeit_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_kuehlzeit_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_nebenzeiten_gesamt_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_vorschlag_s: Mapped[float | None] = mapped_column(Float, nullable=True)
+    zykluszeit_hinweis: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
     # Lohn
     lohnkosten_id: Mapped[int | None] = mapped_column(ForeignKey("lohnkosten.id"), nullable=True)
     lohnstundensatz: Mapped[float] = mapped_column(Float, nullable=False)

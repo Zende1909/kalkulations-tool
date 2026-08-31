@@ -5,7 +5,13 @@ from app.core.permissions import require_kalkulator, require_viewer
 from app.crud import material as material_crud
 from app.database import get_db
 from app.models.user import User
-from app.schemas.material import MaterialCreate, MaterialRead, MaterialUpdate
+from app.schemas.material import (
+    MaterialCreate,
+    MaterialRead,
+    MaterialThermikDefaultRead,
+    MaterialUpdate,
+)
+from app.services.material_thermik import alle_defaults
 
 router = APIRouter(prefix="/materialien", tags=["Materialien"])
 
@@ -18,6 +24,12 @@ def list_materialien(
     _: User = Depends(require_viewer),
 ):
     return material_crud.material.get_multi(db, skip=skip, limit=limit)
+
+
+@router.get("/thermik-defaults", response_model=list[MaterialThermikDefaultRead])
+def list_thermik_defaults(_: User = Depends(require_viewer)):
+    """Materialgruppen-Richtwerte für die thermischen Kennwerte (Kühlzeit)."""
+    return [d.as_dict() for d in alle_defaults()]
 
 
 @router.get("/{item_id}", response_model=MaterialRead)
