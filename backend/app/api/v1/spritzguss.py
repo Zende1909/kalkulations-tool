@@ -105,7 +105,6 @@ def _maschinen_groesse_input_from_fields(
     laenge_mm: float | None,
     oeffnungen_pct: float | None,
     proj_flaeche_mm2: float | None,
-    schwindung_pct: float | None,
     injection_pressure_kg_cm2: float,
     kavitaeten: int,
 ) -> MaschinenGroesseInput | None:
@@ -117,7 +116,6 @@ def _maschinen_groesse_input_from_fields(
         laenge_mm=laenge_mm,
         oeffnungen_pct=oeffnungen_pct,
         proj_flaeche_mm2=proj_flaeche_mm2,
-        schwindung_pct=schwindung_pct,
         injection_pressure_kg_cm2=injection_pressure_kg_cm2,
         kavitaeten=kavitaeten,
     )
@@ -153,7 +151,6 @@ def _run_maschinen_groesse_for_model(
         laenge_mm=obj.maschinen_groesse_laenge_mm,
         oeffnungen_pct=obj.maschinen_groesse_oeffnungen_pct,
         proj_flaeche_mm2=obj.maschinen_groesse_proj_flaeche_mm2,
-        schwindung_pct=obj.maschinen_groesse_schwindung_pct,
         injection_pressure_kg_cm2=pressure,
         kavitaeten=obj.kavitaeten,
     )
@@ -189,7 +186,6 @@ def _run_maschinen_groesse_for_request(
         laenge_mm=body.maschinen_groesse_laenge_mm,
         oeffnungen_pct=body.maschinen_groesse_oeffnungen_pct,
         proj_flaeche_mm2=body.maschinen_groesse_proj_flaeche_mm2,
-        schwindung_pct=body.maschinen_groesse_schwindung_pct,
         injection_pressure_kg_cm2=pressure,
         kavitaeten=body.kavitaeten,
     )

@@ -1,21 +1,16 @@
 """Maschinengröße / Zuhaltekraft nach Excel ``p1-1`` ab ``AC27``.
 
-Referenz ``Maschinengröße.xlsm``, Blatt ``p1-1``:
+Maßeingabe::
 
-Maßeingabe (Zelle ``AD35``)::
+    Projizierte Fläche netto = Breite × Länge × (1 - Öffnungen/100)
+    Zuhaltekraft (t) = netto / 100 × Injection Pressure (kg/cm²) × Kavitäten / 1000
 
-    Zuhaltekraft (t) = Breite × Länge × (1 + Schwindung/100) / 100
-        × Injection Pressure (kg/cm²) × Kavitäten / 1000 × (1 - Öffnungen/100)
+Flächeneingabe::
 
-    Entspricht: Projizierte Fläche netto = Breite × Länge × (1 + Schwindung/100)
-    × (1 - Öffnungen/100); Zuhaltekraft = netto / 100 × Druck × Kavitäten / 1000.
+    Projizierte Fläche netto = eingegebene projizierte Fläche
+    Zuhaltekraft (t) = netto / 100 × Injection Pressure (kg/cm²) × Kavitäten / 1000
 
-Flächeneingabe (Zelle ``AG33``)::
-
-    Zuhaltekraft (t) = Projizierte Fläche × (1 + Schwindung/100) / 100
-        × Injection Pressure (kg/cm²) × Kavitäten / 1000
-
-Sicherheitszuschlag (``AD36`` / ``AG34``): erforderliche Zuhaltekraft = ohne Sicherheit × 1,20.
+Sicherheitszuschlag: erforderliche Zuhaltekraft = ohne Sicherheit × 1,20.
 
 Keine Zwischenrundung in der Berechnungskette.
 """
@@ -51,7 +46,6 @@ class MaschinenGroesseInput:
     laenge_mm: float | None = None
     oeffnungen_pct: float | None = None
     proj_flaeche_mm2: float | None = None
-    schwindung_pct: float | None = None
 
 
 @dataclass(frozen=True)
@@ -63,7 +57,6 @@ class MaschinenGroesseResult:
     laenge_mm: float | None
     oeffnungen_pct: float | None
     proj_flaeche_mm2: float | None
-    schwindung_pct: float | None
     proj_flaeche_netto_mm2: float | None
     zuhaltekraft_ohne_sicherheit_t: float
     sicherheitszuschlag_faktor: float
@@ -82,7 +75,6 @@ class MaschinenGroesseResult:
             "laenge_mm": self.laenge_mm,
             "oeffnungen_pct": self.oeffnungen_pct,
             "proj_flaeche_mm2": self.proj_flaeche_mm2,
-            "schwindung_pct": self.schwindung_pct,
             "proj_flaeche_netto_mm2": self.proj_flaeche_netto_mm2,
             "zuhaltekraft_ohne_sicherheit_t": self.zuhaltekraft_ohne_sicherheit_t,
             "sicherheitszuschlag_faktor": self.sicherheitszuschlag_faktor,
@@ -115,22 +107,15 @@ def proj_flaeche_netto_masse(
     *,
     breite_mm: float,
     laenge_mm: float,
-    schwindung_pct: float,
     oeffnungen_pct: float,
 ) -> float:
-    return (
-        breite_mm
-        * laenge_mm
-        * (1 + schwindung_pct / 100)
-        * (1 - oeffnungen_pct / 100)
-    )
+    return breite_mm * laenge_mm * (1 - oeffnungen_pct / 100)
 
 
 def zuhaltekraft_aus_masse(
     *,
     breite_mm: float,
     laenge_mm: float,
-    schwindung_pct: float,
     oeffnungen_pct: float,
     injection_pressure_kg_cm2: float,
     kavitaeten: int,
@@ -139,7 +124,6 @@ def zuhaltekraft_aus_masse(
     netto = proj_flaeche_netto_masse(
         breite_mm=breite_mm,
         laenge_mm=laenge_mm,
-        schwindung_pct=schwindung_pct,
         oeffnungen_pct=oeffnungen_pct,
     )
     ohne = netto / 100 * injection_pressure_kg_cm2 * kavitaeten / 1000
@@ -149,12 +133,11 @@ def zuhaltekraft_aus_masse(
 def zuhaltekraft_aus_flaeche(
     *,
     proj_flaeche_mm2: float,
-    schwindung_pct: float,
     injection_pressure_kg_cm2: float,
     kavitaeten: int,
 ) -> tuple[float, float]:
     """Returns (proj_flaeche_netto_mm2, zuhaltekraft_ohne_sicherheit_t)."""
-    netto = proj_flaeche_mm2 * (1 + schwindung_pct / 100)
+    netto = proj_flaeche_mm2
     ohne = netto / 100 * injection_pressure_kg_cm2 * kavitaeten / 1000
     return netto, ohne
 
@@ -180,7 +163,6 @@ def berechne_maschinen_groesse(inp: MaschinenGroesseInput) -> MaschinenGroesseRe
     if inp.kavitaeten < 1:
         raise MaschinenGroesseValidationError("Kavitäten müssen mindestens 1 sein.")
 
-    schwindung = _validate_pct("Schwindung", inp.schwindung_pct)
     proj_netto: float | None
 
     if inp.modus == "masse":
@@ -190,7 +172,6 @@ def berechne_maschinen_groesse(inp: MaschinenGroesseInput) -> MaschinenGroesseRe
         proj_netto, ohne = zuhaltekraft_aus_masse(
             breite_mm=breite,
             laenge_mm=laenge,
-            schwindung_pct=schwindung,
             oeffnungen_pct=oeffnungen,
             injection_pressure_kg_cm2=pressure,
             kavitaeten=inp.kavitaeten,
@@ -201,7 +182,6 @@ def berechne_maschinen_groesse(inp: MaschinenGroesseInput) -> MaschinenGroesseRe
         flaeche = _validate_positive("Projizierte Fläche", inp.proj_flaeche_mm2)
         proj_netto, ohne = zuhaltekraft_aus_flaeche(
             proj_flaeche_mm2=flaeche,
-            schwindung_pct=schwindung,
             injection_pressure_kg_cm2=pressure,
             kavitaeten=inp.kavitaeten,
         )
@@ -217,7 +197,6 @@ def berechne_maschinen_groesse(inp: MaschinenGroesseInput) -> MaschinenGroesseRe
         laenge_mm=laenge_mm,
         oeffnungen_pct=oeffnungen_pct,
         proj_flaeche_mm2=proj_flaeche_mm2,
-        schwindung_pct=schwindung,
         proj_flaeche_netto_mm2=proj_netto,
         zuhaltekraft_ohne_sicherheit_t=ohne,
         sicherheitszuschlag_faktor=SAFETY_FACTOR,

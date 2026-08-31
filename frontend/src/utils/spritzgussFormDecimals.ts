@@ -27,7 +27,6 @@ export const SPRITZGuss_DECIMAL_FIELDS = [
 export const SPRITZGuss_PERCENT_FIELDS = [
   "ausschussquote_pct",
   "maschinen_groesse_oeffnungen_pct",
-  "maschinen_groesse_schwindung_pct",
 ] as const;
 
 export const SPRITZGuss_INTEGER_FIELDS = ["kavitaeten", "losgroesse_manuell"] as const;

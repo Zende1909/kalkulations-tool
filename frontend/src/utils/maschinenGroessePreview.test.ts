@@ -24,7 +24,6 @@ describe("maschinenGroessePreview", () => {
       maschinen_groesse_breite_mm: "100",
       maschinen_groesse_laenge_mm: "200",
       maschinen_groesse_oeffnungen_pct: "10",
-      maschinen_groesse_schwindung_pct: "2",
       kavitaeten: "4",
     });
     expect(payload?.kavitaeten).toBe(4);
@@ -41,14 +40,12 @@ describe("maschinenGroessePreview", () => {
     expect(
       buildMaschinenGroessePreviewPayload(form, {
         maschinen_groesse_proj_flaeche_mm2: "",
-        maschinen_groesse_schwindung_pct: "2",
         kavitaeten: "1",
       }),
     ).toBeNull();
     expect(
       buildMaschinenGroessePreviewPayload(form, {
         maschinen_groesse_proj_flaeche_mm2: "50000",
-        maschinen_groesse_schwindung_pct: "2",
         kavitaeten: "1",
       })?.maschinen_groesse_proj_flaeche_mm2,
     ).toBe(50000);

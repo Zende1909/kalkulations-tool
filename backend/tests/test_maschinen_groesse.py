@@ -174,16 +174,15 @@ def test_validate_injection_pressure_rejects_invalid():
 
 
 def test_masse_excel_example_ad35():
-    """Excel p1-1: Width 1751, Length 555, Openings 35 %, Shrinkage 2 %, Pressure 500, Cavities 1."""
+    """Excel p1-1: Width 1751, Length 555, Openings 35 %, Pressure 500, Cavities 1."""
     netto, ohne = zuhaltekraft_aus_masse(
         breite_mm=1751,
         laenge_mm=555,
-        schwindung_pct=2,
         oeffnungen_pct=35,
         injection_pressure_kg_cm2=500,
         kavitaeten=1,
     )
-    expected_netto = 1751 * 555 * (1 + 2 / 100) * (1 - 35 / 100)
+    expected_netto = 1751 * 555 * (1 - 35 / 100)
     expected_ohne = expected_netto / 100 * 500 * 1 / 1000
     assert netto == expected_netto
     assert ohne == expected_ohne
@@ -191,14 +190,13 @@ def test_masse_excel_example_ad35():
 
 
 def test_flaeche_excel_example_ag33():
-    """Excel p1-1: Proj. Surface 631653 mm², Shrinkage 2 %, Pressure 500, Cavities 1."""
+    """Excel p1-1: Proj. Surface 631653 mm², Pressure 500, Cavities 1."""
     netto, ohne = zuhaltekraft_aus_flaeche(
         proj_flaeche_mm2=631653,
-        schwindung_pct=2,
         injection_pressure_kg_cm2=500,
         kavitaeten=1,
     )
-    expected_netto = 631653 * (1 + 2 / 100)
+    expected_netto = 631653
     expected_ohne = expected_netto / 100 * 500 / 1000
     assert netto == expected_netto
     assert ohne == expected_ohne
@@ -209,7 +207,6 @@ def test_safety_factor_20_percent():
         MaschinenGroesseInput(
             modus="flaeche",
             proj_flaeche_mm2=100000,
-            schwindung_pct=0,
             injection_pressure_kg_cm2=400,
             kavitaeten=2,
         )
@@ -263,7 +260,6 @@ def test_waehle_kleinste_passende_maschine(db: Session):
         MaschinenGroesseInput(
             modus="flaeche",
             proj_flaeche_mm2=10000,
-            schwindung_pct=0,
             injection_pressure_kg_cm2=500,
             kavitaeten=1,
         ),
@@ -280,7 +276,6 @@ def test_kavitaeten_1_vs_4_unterschiedliche_zuhaltekraft():
         MaschinenGroesseInput(
             modus="flaeche",
             proj_flaeche_mm2=100000,
-            schwindung_pct=0,
             injection_pressure_kg_cm2=500,
             kavitaeten=1,
         )
@@ -289,7 +284,6 @@ def test_kavitaeten_1_vs_4_unterschiedliche_zuhaltekraft():
         MaschinenGroesseInput(
             modus="flaeche",
             proj_flaeche_mm2=100000,
-            schwindung_pct=0,
             injection_pressure_kg_cm2=500,
             kavitaeten=4,
         )
@@ -325,7 +319,6 @@ def test_keine_passende_maschine_warnung_text(db: Session):
             breite_mm=5000,
             laenge_mm=5000,
             oeffnungen_pct=0,
-            schwindung_pct=0,
             injection_pressure_kg_cm2=500,
             kavitaeten=4,
         ),
@@ -369,7 +362,6 @@ def test_api_preview_uses_kavitaeten_and_recommends_machine(db: Session):
         MaschinenGroesseCalcRequest(
             maschinen_groesse_modus="flaeche",
             maschinen_groesse_proj_flaeche_mm2=1000,
-            maschinen_groesse_schwindung_pct=0,
             material_id=material.id,
             kavitaeten=4,
             werk_id=werk.id,
@@ -389,7 +381,6 @@ def test_invalid_masse_input():
                 breite_mm=None,
                 laenge_mm=100,
                 oeffnungen_pct=10,
-                schwindung_pct=2,
                 injection_pressure_kg_cm2=500,
                 kavitaeten=1,
             )

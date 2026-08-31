@@ -525,7 +525,6 @@ export function SpritzgussPage() {
       maschinen_groesse_laenge_mm: form.maschinen_groesse_laenge_mm,
       maschinen_groesse_oeffnungen_pct: form.maschinen_groesse_oeffnungen_pct,
       maschinen_groesse_proj_flaeche_mm2: form.maschinen_groesse_proj_flaeche_mm2,
-      maschinen_groesse_schwindung_pct: form.maschinen_groesse_schwindung_pct,
     }),
     [form, veredelungZuordnungen, hierarchy.project_id],
   );
@@ -873,7 +872,6 @@ export function SpritzgussPage() {
         maschinen_groesse_laenge_mm: item.maschinen_groesse_laenge_mm ?? null,
         maschinen_groesse_oeffnungen_pct: item.maschinen_groesse_oeffnungen_pct ?? null,
         maschinen_groesse_proj_flaeche_mm2: item.maschinen_groesse_proj_flaeche_mm2 ?? null,
-        maschinen_groesse_schwindung_pct: item.maschinen_groesse_schwindung_pct ?? null,
         werk_id: item.werk_id ?? null,
         losgroesse: item.losgroesse ?? null,
         losgroesse_modus: inferLegacyLosgroesseModus(item.losgroesse_modus, item.losgroesse),
@@ -940,7 +938,6 @@ export function SpritzgussPage() {
           maschinen_groesse_laenge_mm: item.maschinen_groesse_laenge_mm ?? null,
           maschinen_groesse_oeffnungen_pct: item.maschinen_groesse_oeffnungen_pct ?? null,
           maschinen_groesse_proj_flaeche_mm2: item.maschinen_groesse_proj_flaeche_mm2 ?? null,
-          maschinen_groesse_schwindung_pct: item.maschinen_groesse_schwindung_pct ?? null,
         }),
       );
       setMaschinenGroesse(
@@ -1271,13 +1268,6 @@ export function SpritzgussPage() {
                     onDecimalChange={handleDecimalChange}
                   />
                 )}
-                <NumberInput
-                  fieldKey="maschinen_groesse_schwindung_pct"
-                  label="Schwindung (%)"
-                  value={form.maschinen_groesse_schwindung_pct ?? 0}
-                  decimalRaw={decimalRaw}
-                  onDecimalChange={handleDecimalChange}
-                />
                 <div className="text-sm md:col-span-2 rounded-md border border-gray-100 bg-gray-50 p-3">
                   <div className="font-medium text-gray-800">Materialdaten</div>
                   <div className="mt-1 text-gray-700">

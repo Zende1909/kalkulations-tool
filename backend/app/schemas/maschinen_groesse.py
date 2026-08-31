@@ -13,14 +13,11 @@ class MaschinenGroesseFields(BaseModel):
     maschinen_groesse_laenge_mm: float | None = Field(default=None, ge=0)
     maschinen_groesse_oeffnungen_pct: float | None = Field(default=None, ge=0, le=100)
     maschinen_groesse_proj_flaeche_mm2: float | None = Field(default=None, ge=0)
-    maschinen_groesse_schwindung_pct: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_modus_fields(self) -> "MaschinenGroesseFields":
         if self.maschinen_groesse_modus is None:
             return self
-        if self.maschinen_groesse_schwindung_pct is None:
-            raise ValueError("Schwindung ist für die Maschinengrößenberechnung erforderlich.")
         if self.maschinen_groesse_modus == "masse":
             missing = [
                 name
@@ -59,7 +56,6 @@ class MaschinenGroesseResultSchema(BaseModel):
     laenge_mm: float | None = None
     oeffnungen_pct: float | None = None
     proj_flaeche_mm2: float | None = None
-    schwindung_pct: float | None = None
     proj_flaeche_netto_mm2: float | None = None
     zuhaltekraft_ohne_sicherheit_t: float
     sicherheitszuschlag_faktor: float

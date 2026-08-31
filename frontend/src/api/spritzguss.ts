@@ -45,7 +45,6 @@ export type CalcPayload = Pick<
   | "maschinen_groesse_laenge_mm"
   | "maschinen_groesse_oeffnungen_pct"
   | "maschinen_groesse_proj_flaeche_mm2"
-  | "maschinen_groesse_schwindung_pct"
 > & {
   veredelung_zuordnungen?: VeredelungZuordnungInput[];
 };

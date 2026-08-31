@@ -91,7 +91,6 @@ export interface MaschinenGroesseResult {
   laenge_mm?: number | null;
   oeffnungen_pct?: number | null;
   proj_flaeche_mm2?: number | null;
-  schwindung_pct?: number | null;
   proj_flaeche_netto_mm2?: number | null;
   zuhaltekraft_ohne_sicherheit_t: number;
   sicherheitszuschlag_faktor: number;
@@ -137,7 +136,6 @@ export interface SpritzgussFormData {
   maschinen_groesse_laenge_mm: number | null;
   maschinen_groesse_oeffnungen_pct: number | null;
   maschinen_groesse_proj_flaeche_mm2: number | null;
-  maschinen_groesse_schwindung_pct: number | null;
 
   werk_id: number | null;
   losgroesse: number | null;
@@ -223,7 +221,6 @@ export const emptySpritzgussForm = (): SpritzgussFormData => ({
   maschinen_groesse_laenge_mm: null,
   maschinen_groesse_oeffnungen_pct: null,
   maschinen_groesse_proj_flaeche_mm2: null,
-  maschinen_groesse_schwindung_pct: null,
   werk_id: null,
   losgroesse: null,
   losgroesse_modus: "automatisch",

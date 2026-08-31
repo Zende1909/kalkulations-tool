@@ -7,7 +7,6 @@ export interface MaschinenGroessePreviewPayload {
   maschinen_groesse_laenge_mm?: number | null;
   maschinen_groesse_oeffnungen_pct?: number | null;
   maschinen_groesse_proj_flaeche_mm2?: number | null;
-  maschinen_groesse_schwindung_pct: number;
   material_id: number | null;
   kavitaeten: number;
   werk_id: number | null;
@@ -66,17 +65,9 @@ export function buildMaschinenGroessePreviewPayload(
 ): MaschinenGroessePreviewPayload | null {
   if (form.maschinen_groesse_modus == null) return null;
 
-  const schwindung = readPercentField(
-    decimalRaw,
-    form,
-    "maschinen_groesse_schwindung_pct",
-  );
-  if (schwindung == null) return null;
-
   const kavitaeten = readKavitaeten(decimalRaw, form.kavitaeten);
   const payload: MaschinenGroessePreviewPayload = {
     maschinen_groesse_modus: form.maschinen_groesse_modus,
-    maschinen_groesse_schwindung_pct: schwindung,
     material_id: form.material_id,
     kavitaeten,
     werk_id: form.werk_id,
