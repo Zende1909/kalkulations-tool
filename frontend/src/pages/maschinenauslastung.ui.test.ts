@@ -17,7 +17,14 @@ describe("Maschinenauslastung Jahres-UI", () => {
     expect(UTILIZATION_YEARS).toHaveLength(15);
   });
 
-  it("zeigt Jahrestabelle mit Lauf- und Rüstzeit", () => {
+  it("bietet Alle Jahre mit Jahresmatrix-Ansicht", () => {
+    expect(pageSrc).toMatch(/Alle Jahre/);
+    expect(pageSrc).toMatch(/showAllYears/);
+    expect(pageSrc).toMatch(/matrixRows/);
+    expect(pageSrc).not.toMatch(/Jahr \(KPIs\)/);
+  });
+
+  it("zeigt Jahrestabelle mit Lauf- und Rüstzeit bei Einzeljahr", () => {
     expect(pageSrc).toMatch(/Laufzeit/);
     expect(pageSrc).toMatch(/Rüstzeit/);
     expect(pageSrc).toMatch(/Brutto h/);

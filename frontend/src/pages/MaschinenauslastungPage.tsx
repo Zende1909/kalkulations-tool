@@ -20,6 +20,8 @@ type YearSortKey =
   | "required_hours"
   | "utilization_pct";
 
+type YearSelection = number | "all";
+
 function KpiCard({
   label,
   value,
@@ -68,6 +70,13 @@ function restLabel(row: MaschineAuslastungYearRow): string {
   return "–";
 }
 
+function utilizationCell(row: MaschineAuslastungYearRow | undefined): string {
+  if (row == null) return formatPercentOrDash(0);
+  if (row.utilization_pct != null) return formatPercentOrDash(row.utilization_pct);
+  if (row.has_demand) return "nicht berechenbar";
+  return formatPercentOrDash(0);
+}
+
 function summaryForYear(data: MaschineAuslastungResponse, year: number) {
   const rows = data.yearly_rows.filter((r) => r.year === year);
   const utilPcts = rows
@@ -100,7 +109,7 @@ export function MaschinenauslastungPage() {
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [programId, setProgramId] = useState<number | null>(null);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
-  const [selectedYear, setSelectedYear] = useState<number>(2026);
+  const [selectedYear, setSelectedYear] = useState<YearSelection>("all");
   const [machineFilter, setMachineFilter] = useState("");
 
   const [data, setData] = useState<MaschineAuslastungResponse | null>(null);
@@ -158,13 +167,49 @@ export function MaschinenauslastungPage() {
     else setData(null);
   }, [plantId, customerId, programId, selectedProjectIds, load]);
 
-  const yearSummary = useMemo(
-    () => (data ? summaryForYear(data, selectedYear) : null),
-    [data, selectedYear],
-  );
+  const showAllYears = selectedYear === "all";
+
+  const kpiSummary = useMemo(() => {
+    if (!data) return null;
+    if (showAllYears) {
+      return {
+        labelSuffix: "Alle Jahre",
+        machineCount: data.summary.machine_count,
+        average: data.summary.average_utilization_pct,
+        maxPct: data.summary.max_utilization_pct,
+        maxName: data.summary.max_utilization_maschine_name,
+        overloaded: data.summary.overloaded_count,
+      };
+    }
+    const yearStats = summaryForYear(data, selectedYear);
+    return {
+      labelSuffix: String(selectedYear),
+      machineCount: yearStats.machineCount,
+      average: yearStats.average,
+      maxPct: yearStats.maxPct,
+      maxName: yearStats.maxName,
+      overloaded: yearStats.overloaded,
+    };
+  }, [data, selectedYear, showAllYears]);
+
+  const matrixRows = useMemo(() => {
+    if (!data || !showAllYears) return [];
+    const term = machineFilter.trim().toLowerCase();
+    let rows = [...data.machines];
+    if (term) {
+      rows = rows.filter(
+        (m) =>
+          m.bezeichnung.toLowerCase().includes(term) ||
+          m.maschinen_nr.toLowerCase().includes(term) ||
+          String(m.maschine_id).includes(term),
+      );
+    }
+    rows.sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung, "de"));
+    return rows;
+  }, [data, showAllYears, machineFilter]);
 
   const filteredYearRows = useMemo(() => {
-    if (!data) return [];
+    if (!data || showAllYears) return [];
     const term = machineFilter.trim().toLowerCase();
     let rows = data.yearly_rows.filter((r) => r.year === selectedYear);
     if (term) {
@@ -188,7 +233,7 @@ export function MaschinenauslastungPage() {
       return sortAsc ? Number(av) - Number(bv) : Number(bv) - Number(av);
     });
     return rows;
-  }, [data, selectedYear, machineFilter, sortKey, sortAsc]);
+  }, [data, selectedYear, showAllYears, machineFilter, sortKey, sortAsc]);
 
   const toggleSort = (key: YearSortKey) => {
     if (sortKey === key) setSortAsc((v) => !v);
@@ -296,12 +341,16 @@ export function MaschinenauslastungPage() {
             </div>
           </div>
           <label className="block text-sm">
-            <span className="font-medium text-gray-700">Jahr (KPIs)</span>
+            <span className="font-medium text-gray-700">Jahr</span>
             <select
               className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5"
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              value={selectedYear === "all" ? "all" : String(selectedYear)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSelectedYear(value === "all" ? "all" : Number(value));
+              }}
             >
+              <option value="all">Alle Jahre</option>
               {UTILIZATION_YEARS.map((y) => (
                 <option key={y} value={y}>
                   {y}
@@ -342,29 +391,29 @@ export function MaschinenauslastungPage() {
         <p className="text-sm text-gray-500">Bitte Werk auswählen, um Maschinen anzuzeigen.</p>
       )}
 
-      {data && plantId != null && yearSummary && (
+      {data && plantId != null && kpiSummary && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard
-              label={`Maschinen gesamt (${selectedYear})`}
-              value={String(yearSummary.machineCount)}
+              label={`Maschinen gesamt (${kpiSummary.labelSuffix})`}
+              value={String(kpiSummary.machineCount)}
             />
             <KpiCard
-              label={`Ø Auslastung ${selectedYear}`}
-              value={formatPercentOrDash(yearSummary.average)}
+              label={`Ø Auslastung ${kpiSummary.labelSuffix}`}
+              value={formatPercentOrDash(kpiSummary.average)}
             />
             <KpiCard
-              label={`Max. Auslastung ${selectedYear}`}
-              value={formatPercentOrDash(yearSummary.maxPct)}
-              hint={yearSummary.maxName ?? undefined}
+              label={`Max. Auslastung ${kpiSummary.labelSuffix}`}
+              value={formatPercentOrDash(kpiSummary.maxPct)}
+              hint={kpiSummary.maxName ?? undefined}
               tone={
-                yearSummary.maxPct != null && yearSummary.maxPct > 100 ? "warning" : "neutral"
+                kpiSummary.maxPct != null && kpiSummary.maxPct > 100 ? "warning" : "neutral"
               }
             />
             <KpiCard
-              label={`Überlastungen ${selectedYear}`}
-              value={String(yearSummary.overloaded)}
-              tone={yearSummary.overloaded > 0 ? "negative" : "positive"}
+              label={`Überlastungen ${kpiSummary.labelSuffix}`}
+              value={String(kpiSummary.overloaded)}
+              tone={kpiSummary.overloaded > 0 ? "negative" : "positive"}
             />
           </div>
 
@@ -374,87 +423,129 @@ export function MaschinenauslastungPage() {
               " · OEE ist in den verfügbaren Stunden enthalten (nicht doppelt angewendet)."}
           </p>
 
-          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 text-left text-gray-600">
-                <tr>
-                  <th className="cursor-pointer px-3 py-2" onClick={() => toggleSort("year")}>
-                    Jahr{sortIndicator("year")}
-                  </th>
-                  <th className="cursor-pointer px-3 py-2" onClick={() => toggleSort("machine_name")}>
-                    Maschine{sortIndicator("machine_name")}
-                  </th>
-                  <th className="px-3 py-2 text-right">Brutto h</th>
-                  <th className="px-3 py-2 text-right">OEE</th>
-                  <th className="px-3 py-2 text-right">Verfügbar h</th>
-                  <th className="cursor-pointer px-3 py-2 text-right" onClick={() => toggleSort("run_hours")}>
-                    Laufzeit{sortIndicator("run_hours")}
-                  </th>
-                  <th className="cursor-pointer px-3 py-2 text-right" onClick={() => toggleSort("setup_hours")}>
-                    Rüstzeit{sortIndicator("setup_hours")}
-                  </th>
-                  <th
-                    className="cursor-pointer px-3 py-2 text-right"
-                    onClick={() => toggleSort("required_hours")}
-                  >
-                    Gesamtbedarf{sortIndicator("required_hours")}
-                  </th>
-                  <th
-                    className="cursor-pointer px-3 py-2 text-right"
-                    onClick={() => toggleSort("utilization_pct")}
-                  >
-                    Auslastung %{sortIndicator("utilization_pct")}
-                  </th>
-                  <th className="px-3 py-2 text-right">Rest / Überlast</th>
-                  <th className="px-3 py-2">Projekte</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredYearRows.map((row) => (
-                  <tr
-                    key={`${row.machine_id}-${row.year}`}
-                    className={`border-t border-gray-100 ${row.is_overloaded ? "bg-red-50" : ""}`}
-                  >
-                    <td className="px-3 py-2">{row.year}</td>
-                    <td className="px-3 py-2 font-medium">
-                      {row.machine_name}
-                      <div className="text-xs text-gray-500">ID {row.machine_id} · {row.maschinen_nr}</div>
-                    </td>
-                    <td className="px-3 py-2 text-right">{formatHours(row.gross_hours)}</td>
-                    <td className="px-3 py-2 text-right">{formatOee(row.oee)}</td>
-                    <td className="px-3 py-2 text-right">{formatHours(row.available_hours)}</td>
-                    <td className="px-3 py-2 text-right">
-                      {row.has_demand ? formatHours(row.run_hours) : "kein Bedarf"}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {row.setup_hours > 0 ? formatHours(row.setup_hours) : row.has_demand ? "0,00" : "–"}
-                    </td>
-                    <td className="px-3 py-2 text-right">{formatHours(row.required_hours)}</td>
-                    <td
-                      className={`px-3 py-2 text-right font-semibold ${row.is_overloaded ? "text-red-700" : ""}`}
-                    >
-                      {row.utilization_pct != null
-                        ? formatPercentOrDash(row.utilization_pct)
-                        : row.has_demand
-                          ? "nicht berechenbar"
-                          : formatPercentOrDash(0)}
-                    </td>
-                    <td className={`px-3 py-2 text-right ${row.is_overloaded ? "text-red-700" : ""}`}>
-                      {row.has_demand ? restLabel(row) : "–"}
-                    </td>
-                    <td className="px-3 py-2 text-xs">
-                      {row.project_ids.length === 0 ? (
-                        "–"
-                      ) : (
-                        <span>{row.project_ids.join(", ")}</span>
-                      )}
-                    </td>
+          {showAllYears ? (
+            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-gray-600">
+                  <tr>
+                    <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2">Maschine</th>
+                    <th className="px-3 py-2 text-right whitespace-nowrap">Verfügbar h</th>
+                    {UTILIZATION_YEARS.map((year) => (
+                      <th key={year} className="px-3 py-2 text-right whitespace-nowrap">
+                        {year}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {matrixRows.map((machine) => (
+                    <tr key={machine.maschine_id} className="border-t border-gray-100">
+                      <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium">
+                        {machine.bezeichnung}
+                        <div className="text-xs text-gray-500">
+                          ID {machine.maschine_id} · {machine.maschinen_nr}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {formatHours(machine.available_hours)}
+                      </td>
+                      {UTILIZATION_YEARS.map((year) => {
+                        const yearRow = machine.yearly_breakdown.find((y) => y.year === year);
+                        const overloaded = yearRow?.is_overloaded ?? false;
+                        return (
+                          <td
+                            key={year}
+                            className={`px-3 py-2 text-right whitespace-nowrap ${overloaded ? "bg-red-50 font-semibold text-red-700" : ""}`}
+                          >
+                            {utilizationCell(yearRow)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+              <table className="min-w-full text-sm">
+                <thead className="bg-gray-50 text-left text-gray-600">
+                  <tr>
+                    <th className="cursor-pointer px-3 py-2" onClick={() => toggleSort("year")}>
+                      Jahr{sortIndicator("year")}
+                    </th>
+                    <th className="cursor-pointer px-3 py-2" onClick={() => toggleSort("machine_name")}>
+                      Maschine{sortIndicator("machine_name")}
+                    </th>
+                    <th className="px-3 py-2 text-right">Brutto h</th>
+                    <th className="px-3 py-2 text-right">OEE</th>
+                    <th className="px-3 py-2 text-right">Verfügbar h</th>
+                    <th className="cursor-pointer px-3 py-2 text-right" onClick={() => toggleSort("run_hours")}>
+                      Laufzeit{sortIndicator("run_hours")}
+                    </th>
+                    <th className="cursor-pointer px-3 py-2 text-right" onClick={() => toggleSort("setup_hours")}>
+                      Rüstzeit{sortIndicator("setup_hours")}
+                    </th>
+                    <th
+                      className="cursor-pointer px-3 py-2 text-right"
+                      onClick={() => toggleSort("required_hours")}
+                    >
+                      Gesamtbedarf{sortIndicator("required_hours")}
+                    </th>
+                    <th
+                      className="cursor-pointer px-3 py-2 text-right"
+                      onClick={() => toggleSort("utilization_pct")}
+                    >
+                      Auslastung %{sortIndicator("utilization_pct")}
+                    </th>
+                    <th className="px-3 py-2 text-right">Rest / Überlast</th>
+                    <th className="px-3 py-2">Projekte</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredYearRows.map((row) => (
+                    <tr
+                      key={`${row.machine_id}-${row.year}`}
+                      className={`border-t border-gray-100 ${row.is_overloaded ? "bg-red-50" : ""}`}
+                    >
+                      <td className="px-3 py-2">{row.year}</td>
+                      <td className="px-3 py-2 font-medium">
+                        {row.machine_name}
+                        <div className="text-xs text-gray-500">ID {row.machine_id} · {row.maschinen_nr}</div>
+                      </td>
+                      <td className="px-3 py-2 text-right">{formatHours(row.gross_hours)}</td>
+                      <td className="px-3 py-2 text-right">{formatOee(row.oee)}</td>
+                      <td className="px-3 py-2 text-right">{formatHours(row.available_hours)}</td>
+                      <td className="px-3 py-2 text-right">
+                        {row.has_demand ? formatHours(row.run_hours) : "kein Bedarf"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {row.setup_hours > 0 ? formatHours(row.setup_hours) : row.has_demand ? "0,00" : "–"}
+                      </td>
+                      <td className="px-3 py-2 text-right">{formatHours(row.required_hours)}</td>
+                      <td
+                        className={`px-3 py-2 text-right font-semibold ${row.is_overloaded ? "text-red-700" : ""}`}
+                      >
+                        {utilizationCell(row)}
+                      </td>
+                      <td className={`px-3 py-2 text-right ${row.is_overloaded ? "text-red-700" : ""}`}>
+                        {row.has_demand ? restLabel(row) : "–"}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {row.project_ids.length === 0 ? (
+                          "–"
+                        ) : (
+                          <span>{row.project_ids.join(", ")}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
+          {!showAllYears && (
           <details className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
             <summary className="cursor-pointer font-medium text-gray-800">
               Maschinenübersicht (Jahresdetails je Maschine)
@@ -496,6 +587,7 @@ export function MaschinenauslastungPage() {
               ))}
             </div>
           </details>
+          )}
         </>
       )}
     </div>
