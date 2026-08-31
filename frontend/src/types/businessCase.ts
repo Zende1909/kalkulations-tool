@@ -98,6 +98,42 @@ export interface BusinessCaseFilter {
   project: string;
 }
 
+export interface BusinessCaseSegmentKpis {
+  cost_total: number | null;
+  bottom_price_revenue_total: number | null;
+  actual_revenue_total: number | null;
+  ebit_bottom: number | null;
+  ebit_bottom_pct: number | null;
+  ebit_actual: number | null;
+  ebit_actual_pct: number | null;
+  roi_bottom_pct: number | null;
+  roi_actual_pct: number | null;
+}
+
+export interface BusinessCaseKpiSummary {
+  parts: BusinessCaseSegmentKpis;
+  investments: BusinessCaseSegmentKpis;
+  total: BusinessCaseSegmentKpis;
+  revenue_breakdown: {
+    parts_bottom_price_revenue: number | null;
+    parts_actual_revenue: number | null;
+    investments_bottom_price_revenue: number | null;
+    investments_actual_revenue: number | null;
+    total_bottom_price_revenue: number | null;
+    total_actual_revenue: number | null;
+  };
+  cost_breakdown: {
+    parts_standalone: number | null;
+    assemblies: number | null;
+    capex: number;
+    entwicklung: number;
+    legacy: number;
+    investments_total: number;
+    total: number | null;
+  };
+  roi_note: string;
+}
+
 export interface BusinessCaseKpis {
   kunde: string;
   programm: string;
@@ -106,13 +142,34 @@ export interface BusinessCaseKpis {
   program_id: number;
   linked_project_id: number;
   project_volume_total: number;
+  parts_cost_total: number | null;
   cost_total: number | null;
   bottom_price_revenue_total: number | null;
   actual_revenue_total: number | null;
+  parts_bottom_price_revenue_total: number | null;
+  parts_actual_revenue_total: number | null;
   margin_bottom_price_total: number | null;
   margin_actual_total: number | null;
   margin_bottom_price_total_pct: number | null;
   margin_actual_total_pct: number | null;
+  ebit_bottom_total: number | null;
+  ebit_bottom_total_pct: number | null;
+  ebit_actual_total: number | null;
+  ebit_actual_total_pct: number | null;
+  roi_bottom_pct: number | null;
+  roi_actual_pct: number | null;
+  parts_ebit_bottom: number | null;
+  parts_ebit_bottom_pct: number | null;
+  parts_ebit_actual: number | null;
+  parts_ebit_actual_pct: number | null;
+  parts_roi_bottom_pct: number | null;
+  parts_roi_actual_pct: number | null;
+  investments_ebit_bottom: number | null;
+  investments_ebit_bottom_pct: number | null;
+  investments_ebit_actual: number | null;
+  investments_ebit_actual_pct: number | null;
+  investments_roi_bottom_pct: number | null;
+  investments_roi_actual_pct: number | null;
   anzahl_einzelteile: number;
   anzahl_baugruppen: number;
   anzahl_einzelteile_in_baugruppen_ausgeschlossen: number;
@@ -156,6 +213,7 @@ export interface BusinessCaseResponse {
     project_assignments: InvestmentFinancialBlock;
     totals: InvestmentFinancialBlock;
   };
+  kpi_summary: BusinessCaseKpiSummary;
   revenue_summary: {
     hinweis: string;
     excluded_einzelteile_in_baugruppen: number;

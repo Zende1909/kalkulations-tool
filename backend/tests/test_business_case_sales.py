@@ -249,6 +249,73 @@ def test_manual_price_save_and_reload(api_client: TestClient, seeded: Session):
     assert part["has_manual_bottom_price"] is True
 
 
+def test_total_revenue_includes_investment_revenue(seeded: Session):
+    from app.models.investition import Investition
+
+    seeded.add(
+        Investition(
+            name="Entwicklung",
+            investment_type="Sonstige",
+            payment_type="Entwicklung",
+            amount=50000,
+            cost_amount=50000,
+            bottom_price=55000,
+            revenue_amount=60000,
+            customer_id=1,
+            program_id=10,
+            linked_project_id=100,
+            assignment_type="gesamtprojekt",
+            project_id="Projekt Alpha",
+            customer="OEM A",
+        )
+    )
+    seeded.commit()
+    result = build_project_business_case(
+        seeded, customer_id=1, program_id=10, linked_project_id=100
+    )
+    inv_actual = result["kpi_summary"]["revenue_breakdown"]["investments_actual_revenue"]
+    assert inv_actual is not None
+    assert inv_actual >= 60000.0
+    assert result["kpis"]["actual_revenue_total"] == inv_actual
+    assert result["kpis"]["cost_total"] >= 50000.0
+
+
+def test_capex_only_increases_total_cost(seeded: Session):
+    from app.models.investition import Investition
+
+    before = build_project_business_case(
+        seeded, customer_id=1, program_id=10, linked_project_id=100
+    )
+    cost_before = before["kpis"]["cost_total"] or 0
+    revenue_before = before["kpi_summary"]["revenue_breakdown"]["investments_actual_revenue"]
+
+    seeded.add(
+        Investition(
+            name="Anlage",
+            investment_type="Maschine",
+            payment_type="CAPEX",
+            amount=120000,
+            cost_amount=120000,
+            customer_id=1,
+            program_id=10,
+            linked_project_id=100,
+            assignment_type="gesamtprojekt",
+            project_id="Projekt Alpha",
+            customer="OEM A",
+        )
+    )
+    seeded.commit()
+    after = build_project_business_case(
+        seeded, customer_id=1, program_id=10, linked_project_id=100
+    )
+    assert after["kpi_summary"]["cost_breakdown"]["capex"] == 120000.0
+    assert after["kpis"]["cost_total"] == pytest.approx(cost_before + 120000.0)
+    assert (
+        after["kpi_summary"]["revenue_breakdown"]["investments_actual_revenue"]
+        == revenue_before
+    )
+
+
 def test_negative_margin_warning(seeded: Session):
     seeded.add(
         BusinessCaseManualPrice(

@@ -61,6 +61,23 @@ export function formatInvestmentNotApplicable(): string {
   return "nicht zutreffend";
 }
 
+export function formatPercentOrDash(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "–";
+  return formatMarginPercent(value);
+}
+
+export function valueColorClass(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value) || value === 0) return "";
+  return value > 0 ? "text-emerald-700" : "text-red-700";
+}
+
+export function formatEbitWithPercent(
+  amount: number | null | undefined,
+  percent: number | null | undefined,
+): string {
+  return formatMarginWithPercent(amount, percent);
+}
+
 export function formatInteger(value: number | null | undefined): string {
   if (value == null) return "–";
   return value.toLocaleString("de-DE");

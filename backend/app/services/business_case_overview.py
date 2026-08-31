@@ -17,6 +17,7 @@ from app.models.program import Program
 from app.models.project import Project
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.models.spritzguss_veredelung_zuordnung import SpritzgussVeredelungZuordnung
+from app.services.business_case_kpis import build_business_case_kpis
 from app.services.business_case_pricing import (
     aggregate_sales_totals,
     build_position_pricing,
@@ -384,6 +385,13 @@ def build_project_business_case(
     fin_entwicklung = investment_financial_summary["entwicklung"]
     fin_legacy = investment_financial_summary["legacy"]
     investitionen_gesamt = round(fin_totals["cost_amount_total"], 2)
+    kpi_summary = build_business_case_kpis(
+        sales_totals=sales_totals,
+        investment_financial_summary=investment_financial_summary,
+        parts=parts,
+        assemblies=assemblies,
+    )
+    total_kpis = kpi_summary["total"]
 
     excluded_in_baugruppe_count = len(linked_sg_ids & {r.id for r in sg_rows})
 
@@ -410,13 +418,34 @@ def build_project_business_case(
             "program_id": program_id,
             "linked_project_id": linked_project_id,
             "project_volume_total": sales_totals["project_volume_total"],
-            "cost_total": sales_totals["cost_total"],
-            "bottom_price_revenue_total": sales_totals["bottom_price_revenue_total"],
-            "actual_revenue_total": sales_totals["actual_revenue_total"],
+            "parts_cost_total": sales_totals["cost_total"],
+            "cost_total": total_kpis["cost_total"],
+            "bottom_price_revenue_total": total_kpis["bottom_price_revenue_total"],
+            "actual_revenue_total": total_kpis["actual_revenue_total"],
+            "parts_bottom_price_revenue_total": sales_totals["bottom_price_revenue_total"],
+            "parts_actual_revenue_total": sales_totals["actual_revenue_total"],
             "margin_bottom_price_total": sales_totals["margin_bottom_price_total"],
             "margin_actual_total": sales_totals["margin_actual_total"],
             "margin_bottom_price_total_pct": sales_totals["margin_bottom_price_total_pct"],
             "margin_actual_total_pct": sales_totals["margin_actual_total_pct"],
+            "ebit_bottom_total": total_kpis["ebit_bottom"],
+            "ebit_bottom_total_pct": total_kpis["ebit_bottom_pct"],
+            "ebit_actual_total": total_kpis["ebit_actual"],
+            "ebit_actual_total_pct": total_kpis["ebit_actual_pct"],
+            "roi_bottom_pct": total_kpis["roi_bottom_pct"],
+            "roi_actual_pct": total_kpis["roi_actual_pct"],
+            "parts_ebit_bottom": kpi_summary["parts"]["ebit_bottom"],
+            "parts_ebit_bottom_pct": kpi_summary["parts"]["ebit_bottom_pct"],
+            "parts_ebit_actual": kpi_summary["parts"]["ebit_actual"],
+            "parts_ebit_actual_pct": kpi_summary["parts"]["ebit_actual_pct"],
+            "parts_roi_bottom_pct": kpi_summary["parts"]["roi_bottom_pct"],
+            "parts_roi_actual_pct": kpi_summary["parts"]["roi_actual_pct"],
+            "investments_ebit_bottom": kpi_summary["investments"]["ebit_bottom"],
+            "investments_ebit_bottom_pct": kpi_summary["investments"]["ebit_bottom_pct"],
+            "investments_ebit_actual": kpi_summary["investments"]["ebit_actual"],
+            "investments_ebit_actual_pct": kpi_summary["investments"]["ebit_actual_pct"],
+            "investments_roi_bottom_pct": kpi_summary["investments"]["roi_bottom_pct"],
+            "investments_roi_actual_pct": kpi_summary["investments"]["roi_actual_pct"],
             "anzahl_einzelteile": len(parts),
             "anzahl_baugruppen": len(assemblies),
             "anzahl_einzelteile_in_baugruppen_ausgeschlossen": excluded_in_baugruppe_count,
@@ -465,10 +494,13 @@ def build_project_business_case(
             "project_assignments": investment_financial_summary["project_assignments"],
         },
         "investment_financial_summary": investment_financial_summary,
+        "kpi_summary": kpi_summary,
         "revenue_summary": {
             "hinweis": (
                 "Einzelteile innerhalb von Baugruppen sind aus der Einzelteil-Liste "
-                "und den Teilepreis-Summen ausgeschlossen. Investitionen werden separat ausgewiesen."
+                "und den Teilepreis-Summen ausgeschlossen. Teilepreise sind stückbezogen "
+                "über die Projektstückzahl; Investitionsbeträge sind einmalig. "
+                "Gesamtumsatz = Teileumsatz + Investitionserlöse (ohne CAPEX)."
             ),
             "excluded_einzelteile_in_baugruppen": excluded_in_baugruppe_count,
         },

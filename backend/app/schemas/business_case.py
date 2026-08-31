@@ -108,13 +108,34 @@ class BusinessCaseKpis(BaseModel):
     program_id: int | None = None
     linked_project_id: int | None = None
     project_volume_total: float = 0
+    parts_cost_total: float | None = None
     cost_total: float | None = None
     bottom_price_revenue_total: float | None = None
     actual_revenue_total: float | None = None
+    parts_bottom_price_revenue_total: float | None = None
+    parts_actual_revenue_total: float | None = None
     margin_bottom_price_total: float | None = None
     margin_actual_total: float | None = None
     margin_bottom_price_total_pct: float | None = None
     margin_actual_total_pct: float | None = None
+    ebit_bottom_total: float | None = None
+    ebit_bottom_total_pct: float | None = None
+    ebit_actual_total: float | None = None
+    ebit_actual_total_pct: float | None = None
+    roi_bottom_pct: float | None = None
+    roi_actual_pct: float | None = None
+    parts_ebit_bottom: float | None = None
+    parts_ebit_bottom_pct: float | None = None
+    parts_ebit_actual: float | None = None
+    parts_ebit_actual_pct: float | None = None
+    parts_roi_bottom_pct: float | None = None
+    parts_roi_actual_pct: float | None = None
+    investments_ebit_bottom: float | None = None
+    investments_ebit_bottom_pct: float | None = None
+    investments_ebit_actual: float | None = None
+    investments_ebit_actual_pct: float | None = None
+    investments_roi_bottom_pct: float | None = None
+    investments_roi_actual_pct: float | None = None
     anzahl_einzelteile: int = 0
     anzahl_baugruppen: int = 0
     anzahl_einzelteile_in_baugruppen_ausgeschlossen: int = 0
@@ -160,6 +181,7 @@ class BusinessCaseResponse(BaseModel):
     sales_summary: dict = Field(default_factory=dict)
     investment_summary: dict = Field(default_factory=dict)
     investment_financial_summary: dict = Field(default_factory=dict)
+    kpi_summary: dict = Field(default_factory=dict)
     revenue_summary: dict = Field(default_factory=dict)
 
 

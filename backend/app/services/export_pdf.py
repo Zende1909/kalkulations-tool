@@ -573,6 +573,12 @@ def _fmt_optional_revenue(value: float | None) -> str:
     return f"{whole:,}".replace(",", "X").replace(".", ",").replace("X", ".") + " €"
 
 
+def _pct_str(value: float | None) -> str:
+    if value is None:
+        return "–"
+    return f"{value:.2f} %".replace(".", ",")
+
+
 def render_business_case_pdf(data) -> bytes:
     """PDF für Business-Case-Export (BusinessCaseExportData)."""
     from app.services.business_case_export import BusinessCaseExportData
@@ -592,10 +598,18 @@ def render_business_case_pdf(data) -> bytes:
     story = _header_block(data.company_name, "Business Case", meta)
     kpis = [
         ("Gesamtkosten", _fmt_optional_money(data.kpis.get("cost_total"))),
-        ("Bottom-Price-Umsatz", _fmt_optional_revenue(data.kpis.get("bottom_price_revenue_total"))),
-        ("Tatsächlicher Umsatz", _fmt_optional_revenue(data.kpis.get("actual_revenue_total"))),
-        ("Bottom-Price-Marge", _fmt_optional_money(data.kpis.get("margin_bottom_price_total"))),
-        ("Tatsächliche Marge", _fmt_optional_money(data.kpis.get("margin_actual_total"))),
+        ("Teileumsatz Bottom Price", _fmt_optional_revenue(data.kpis.get("parts_bottom_price_revenue_total"))),
+        ("Teileumsatz tatsächlich", _fmt_optional_revenue(data.kpis.get("parts_actual_revenue_total"))),
+        ("Investitionserlös Bottom Price", _fmt_optional_revenue(data.kpis.get("investition_bottom_price_total"))),
+        ("Investitionserlös tatsächlich", _fmt_optional_revenue(data.kpis.get("investition_revenue_total"))),
+        ("Gesamtumsatz Bottom Price", _fmt_optional_revenue(data.kpis.get("bottom_price_revenue_total"))),
+        ("Gesamtumsatz tatsächlich", _fmt_optional_revenue(data.kpis.get("actual_revenue_total"))),
+        ("EBIT Bottom Price", _fmt_optional_money(data.kpis.get("ebit_bottom_total"))),
+        ("EBIT Bottom Price %", _pct_str(data.kpis.get("ebit_bottom_total_pct"))),
+        ("EBIT tatsächlich", _fmt_optional_money(data.kpis.get("ebit_actual_total"))),
+        ("EBIT tatsächlich %", _pct_str(data.kpis.get("ebit_actual_total_pct"))),
+        ("ROI Bottom Price %", _pct_str(data.kpis.get("roi_bottom_pct"))),
+        ("ROI tatsächlich %", _pct_str(data.kpis.get("roi_actual_pct"))),
         ("Projektstückzahl", str(data.kpis.get("project_volume_total") or "–")),
         ("Einzelteile", str(data.kpis.get("anzahl_einzelteile") or 0)),
         ("Baugruppen", str(data.kpis.get("anzahl_baugruppen") or 0)),

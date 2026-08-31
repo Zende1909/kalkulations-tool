@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatCost,
+  formatEbitWithPercent,
   formatMarginPercent,
   formatMarginWithPercent,
   formatManualPrice,
+  formatPercentOrDash,
   formatRevenueEuro,
 } from "./businessCaseFormatting";
 
@@ -38,6 +40,15 @@ describe("businessCaseFormatting", () => {
 
   it("combines margin euro and percent", () => {
     expect(formatMarginWithPercent(1000, 9.56)).toBe("1.000,00 € (9,56 %)");
+  });
+
+  it("formats EBIT helper", () => {
+    expect(formatEbitWithPercent(-20000, -25)).toBe("-20.000,00 € (-25,00 %)");
+  });
+
+  it("formats percent or dash", () => {
+    expect(formatPercentOrDash(9.555)).toBe("9,56 %");
+    expect(formatPercentOrDash(null)).toBe("–");
   });
 
   it("manual price shows nicht hinterlegt without flag", () => {

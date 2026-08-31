@@ -18,20 +18,25 @@ import { EINMALZAHLUNG_HINWEIS } from "../types/investition";
 import type {
   BusinessCaseAssemblyRow,
   BusinessCaseInvestmentRow,
+  BusinessCaseKpiSummary,
   BusinessCasePartRow,
   BusinessCaseResponse,
+  BusinessCaseSegmentKpis,
   PriceEditTarget,
 } from "../types/businessCase";
 import { coerceFormDecimal, formatDecimalForInputDe } from "../utils/decimalInput";
 import {
   formatCost,
   formatEuro,
+  formatEbitWithPercent,
   formatInvestmentOptional,
   formatInteger,
   formatManualPrice,
   formatMarginWithPercent,
+  formatPercentOrDash,
   formatRevenueEuro,
   marginClass,
+  valueColorClass,
 } from "./businessCaseFormatting";
 
 const emptyHierarchy = (): HierarchySelection => ({
@@ -39,6 +44,164 @@ const emptyHierarchy = (): HierarchySelection => ({
   program_id: null,
   project_id: null,
 });
+
+function KpiCard({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "positive" | "negative" | "neutral";
+}) {
+  const toneClass =
+    tone === "positive"
+      ? "text-emerald-700"
+      : tone === "negative"
+        ? "text-red-700"
+        : "text-gray-900";
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</div>
+      <div className={`mt-2 text-xl font-semibold ${toneClass}`}>{value}</div>
+      {hint && <div className="mt-1 text-xs text-gray-500">{hint}</div>}
+    </div>
+  );
+}
+
+function toneFromValue(value: number | null | undefined): "positive" | "negative" | "neutral" {
+  if (value == null || Number.isNaN(value) || value === 0) return "neutral";
+  return value > 0 ? "positive" : "negative";
+}
+
+function ScenarioComparisonTable({ summary }: { summary: BusinessCaseKpiSummary }) {
+  const rows: Array<{
+    label: string;
+    segment: BusinessCaseSegmentKpis;
+  }> = [
+    { label: "Teilepreise", segment: summary.parts },
+    { label: "Investitionen", segment: summary.investments },
+    { label: "Gesamtgeschäft", segment: summary.total },
+  ];
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-gray-600">
+            <th className="py-2 pr-4">Bereich</th>
+            <th className="py-2 pr-4">Kosten</th>
+            <th className="py-2 pr-4">Umsatz Bottom</th>
+            <th className="py-2 pr-4">Umsatz tatsächlich</th>
+            <th className="py-2 pr-4">EBIT Bottom</th>
+            <th className="py-2 pr-4">EBIT Bottom %</th>
+            <th className="py-2 pr-4">EBIT tatsächlich</th>
+            <th className="py-2 pr-4">EBIT tatsächlich %</th>
+            <th className="py-2 pr-4">ROI Bottom %</th>
+            <th className="py-2">ROI tatsächlich %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label} className="border-b border-gray-100">
+              <td className="py-2 pr-4 font-medium">{row.label}</td>
+              <td className="py-2 pr-4">{formatCost(row.segment.cost_total, row.segment.cost_total != null)}</td>
+              <td className="py-2 pr-4">
+                {row.segment.bottom_price_revenue_total != null
+                  ? formatRevenueEuro(row.segment.bottom_price_revenue_total)
+                  : "–"}
+              </td>
+              <td className="py-2 pr-4">
+                {row.segment.actual_revenue_total != null
+                  ? formatRevenueEuro(row.segment.actual_revenue_total)
+                  : "–"}
+              </td>
+              <td className={`py-2 pr-4 ${valueColorClass(row.segment.ebit_bottom)}`}>
+                {formatEuro(row.segment.ebit_bottom)}
+              </td>
+              <td className={`py-2 pr-4 ${valueColorClass(row.segment.ebit_bottom_pct)}`}>
+                {formatPercentOrDash(row.segment.ebit_bottom_pct)}
+              </td>
+              <td className={`py-2 pr-4 ${valueColorClass(row.segment.ebit_actual)}`}>
+                {formatEuro(row.segment.ebit_actual)}
+              </td>
+              <td className={`py-2 pr-4 ${valueColorClass(row.segment.ebit_actual_pct)}`}>
+                {formatPercentOrDash(row.segment.ebit_actual_pct)}
+              </td>
+              <td className={`py-2 pr-4 ${valueColorClass(row.segment.roi_bottom_pct)}`}>
+                {formatPercentOrDash(row.segment.roi_bottom_pct)}
+              </td>
+              <td className={`py-2 ${valueColorClass(row.segment.roi_actual_pct)}`}>
+                {formatPercentOrDash(row.segment.roi_actual_pct)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function BreakdownList({
+  title,
+  items,
+}: {
+  title: string;
+  items: Array<{ label: string; value: string }>;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <h4 className="mb-3 font-semibold text-gray-800">{title}</h4>
+      <dl className="space-y-2 text-sm">
+        {items.map((item) => (
+          <div key={item.label} className="flex items-start justify-between gap-4">
+            <dt className="text-gray-600">{item.label}</dt>
+            <dd className="font-medium text-gray-900">{item.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function InvestmentDashboardHead({ summary }: { summary: BusinessCaseKpiSummary }) {
+  const inv = summary.investments;
+  return (
+    <div className="mb-4 grid gap-3 lg:grid-cols-3">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
+        <h4 className="font-semibold text-amber-900">Gesamtinvestitionen</h4>
+        <div className="mt-2 grid gap-1">
+          <div>Kosten: {formatEuro(summary.cost_breakdown.investments_total)}</div>
+          <div>
+            Bottom-Price-Erlös:{" "}
+            {summary.revenue_breakdown.investments_bottom_price_revenue != null
+              ? formatRevenueEuro(summary.revenue_breakdown.investments_bottom_price_revenue)
+              : "–"}
+          </div>
+          <div>
+            Tatsächlicher Erlös:{" "}
+            {summary.revenue_breakdown.investments_actual_revenue != null
+              ? formatRevenueEuro(summary.revenue_breakdown.investments_actual_revenue)
+              : "–"}
+          </div>
+          <div className={valueColorClass(inv.ebit_bottom)}>
+            EBIT Bottom: {formatEbitWithPercent(inv.ebit_bottom, inv.ebit_bottom_pct)}
+          </div>
+          <div className={valueColorClass(inv.ebit_actual)}>
+            EBIT tatsächlich: {formatEbitWithPercent(inv.ebit_actual, inv.ebit_actual_pct)}
+          </div>
+          <div className={valueColorClass(inv.roi_bottom_pct)}>
+            ROI Bottom: {formatPercentOrDash(inv.roi_bottom_pct)}
+          </div>
+          <div className={valueColorClass(inv.roi_actual_pct)}>
+            ROI tatsächlich: {formatPercentOrDash(inv.roi_actual_pct)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function InvestmentTable({
   rows,
@@ -528,79 +691,201 @@ export function BusinessCasePage() {
 
       {data && (
         <>
-          <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="text-lg font-semibold">Business-Case-Kopf</h3>
-            <p className="mt-1 text-sm text-gray-600">
-              {data.customer} / {data.program} / {data.project}
-            </p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                ["Gesamtkosten", formatCost(data.kpis.cost_total, data.kpis.cost_total != null)],
-                [
-                  "Bottom-Price-Umsatz",
-                  data.kpis.bottom_price_revenue_total != null
-                    ? formatRevenueEuro(data.kpis.bottom_price_revenue_total)
-                    : "–",
-                ],
-                [
-                  "Tatsächlicher Umsatz",
-                  data.kpis.actual_revenue_total != null
-                    ? formatRevenueEuro(data.kpis.actual_revenue_total)
-                    : "–",
-                ],
-                [
-                  "Bottom-Price-Marge",
-                  formatMarginWithPercent(
-                    data.kpis.margin_bottom_price_total,
-                    data.kpis.margin_bottom_price_total_pct,
-                  ),
-                ],
-                [
-                  "Tatsächliche Marge",
-                  formatMarginWithPercent(
-                    data.kpis.margin_actual_total,
-                    data.kpis.margin_actual_total_pct,
-                  ),
-                ],
-                ["Projektstückzahl", formatInteger(data.kpis.project_volume_total)],
-                ["Einzelteile (ohne BG-Anteil)", String(data.kpis.anzahl_einzelteile)],
-                ["Ausgeschlossen (in BG)", String(data.kpis.anzahl_einzelteile_in_baugruppen_ausgeschlossen)],
-                ["Baugruppen", String(data.kpis.anzahl_baugruppen)],
-                ["Investitionen", String(data.kpis.anzahl_investitionen)],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded border border-gray-100 bg-gray-50 p-3">
-                  <div className="text-xs text-gray-500">{label}</div>
-                  <div
-                    className={`mt-1 font-semibold ${String(label).includes("Marge") ? marginClass(typeof value === "string" ? null : (value as number)) : ""}`}
-                  >
-                    {value}
-                  </div>
+          <section className="space-y-4">
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold">Business-Case-Dashboard</h3>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {data.customer} / {data.program} / {data.project}
+                  </p>
                 </div>
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-gray-500">{data.revenue_summary.hinweis}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={exportBusy}
-                onClick={() => void exportExcel()}
-                className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
-              >
-                Business Case Excel
-              </button>
-              <button
-                type="button"
-                disabled={exportBusy}
-                onClick={() => void exportPdf()}
-                className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
-              >
-                Business Case PDF
-              </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={exportBusy}
+                    onClick={() => void exportExcel()}
+                    className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Excel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={exportBusy}
+                    onClick={() => void exportPdf()}
+                    className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    PDF
+                  </button>
+                </div>
+              </div>
+
+              {data.kpi_summary && (
+                <>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <KpiCard
+                      label="Kosten gesamt"
+                      value={formatCost(data.kpis.cost_total, data.kpis.cost_total != null)}
+                      hint="Teilekosten + alle Investitionen (inkl. CAPEX)"
+                    />
+                    <KpiCard
+                      label="Umsatz Bottom Price"
+                      value={
+                        data.kpis.bottom_price_revenue_total != null
+                          ? formatRevenueEuro(data.kpis.bottom_price_revenue_total)
+                          : "–"
+                      }
+                      hint="Teile + Investitionserlöse"
+                    />
+                    <KpiCard
+                      label="Tatsächlicher Umsatz"
+                      value={
+                        data.kpis.actual_revenue_total != null
+                          ? formatRevenueEuro(data.kpis.actual_revenue_total)
+                          : "–"
+                      }
+                      hint="Teile + Investitionserlöse"
+                    />
+                    <KpiCard
+                      label="EBIT Bottom %"
+                      value={formatPercentOrDash(data.kpis.ebit_bottom_total_pct)}
+                      tone={toneFromValue(data.kpis.ebit_bottom_total_pct)}
+                      hint={formatEbitWithPercent(data.kpis.ebit_bottom_total, data.kpis.ebit_bottom_total_pct)}
+                    />
+                    <KpiCard
+                      label="ROI Bottom %"
+                      value={formatPercentOrDash(data.kpis.roi_bottom_pct)}
+                      tone={toneFromValue(data.kpis.roi_bottom_pct)}
+                      hint="Projektlaufzeit-ROI"
+                    />
+                    <KpiCard
+                      label="EBIT tatsächlich %"
+                      value={formatPercentOrDash(data.kpis.ebit_actual_total_pct)}
+                      tone={toneFromValue(data.kpis.ebit_actual_total_pct)}
+                      hint={formatEbitWithPercent(data.kpis.ebit_actual_total, data.kpis.ebit_actual_total_pct)}
+                    />
+                    <KpiCard
+                      label="ROI tatsächlich %"
+                      value={formatPercentOrDash(data.kpis.roi_actual_pct)}
+                      tone={toneFromValue(data.kpis.roi_actual_pct)}
+                      hint="Projektlaufzeit-ROI"
+                    />
+                    <KpiCard
+                      label="Projektstückzahl"
+                      value={formatInteger(data.kpis.project_volume_total)}
+                      hint={`${data.kpis.anzahl_einzelteile} Einzelteile · ${data.kpis.anzahl_baugruppen} Baugruppen`}
+                    />
+                  </div>
+
+                  <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                    <BreakdownList
+                      title="Umsatzaufteilung"
+                      items={[
+                        {
+                          label: "Teile Bottom Price",
+                          value:
+                            data.kpi_summary.revenue_breakdown.parts_bottom_price_revenue != null
+                              ? formatRevenueEuro(
+                                  data.kpi_summary.revenue_breakdown.parts_bottom_price_revenue,
+                                )
+                              : "–",
+                        },
+                        {
+                          label: "Teile tatsächlich",
+                          value:
+                            data.kpi_summary.revenue_breakdown.parts_actual_revenue != null
+                              ? formatRevenueEuro(data.kpi_summary.revenue_breakdown.parts_actual_revenue)
+                              : "–",
+                        },
+                        {
+                          label: "Investitionen Bottom Price",
+                          value:
+                            data.kpi_summary.revenue_breakdown.investments_bottom_price_revenue != null
+                              ? formatRevenueEuro(
+                                  data.kpi_summary.revenue_breakdown.investments_bottom_price_revenue,
+                                )
+                              : "–",
+                        },
+                        {
+                          label: "Investitionen tatsächlich",
+                          value:
+                            data.kpi_summary.revenue_breakdown.investments_actual_revenue != null
+                              ? formatRevenueEuro(
+                                  data.kpi_summary.revenue_breakdown.investments_actual_revenue,
+                                )
+                              : "–",
+                        },
+                        {
+                          label: "Gesamtumsatz Bottom Price",
+                          value:
+                            data.kpi_summary.revenue_breakdown.total_bottom_price_revenue != null
+                              ? formatRevenueEuro(
+                                  data.kpi_summary.revenue_breakdown.total_bottom_price_revenue,
+                                )
+                              : "–",
+                        },
+                        {
+                          label: "Gesamtumsatz tatsächlich",
+                          value:
+                            data.kpi_summary.revenue_breakdown.total_actual_revenue != null
+                              ? formatRevenueEuro(data.kpi_summary.revenue_breakdown.total_actual_revenue)
+                              : "–",
+                        },
+                      ]}
+                    />
+                    <BreakdownList
+                      title="Kostenaufteilung"
+                      items={[
+                        {
+                          label: "Freistehende Einzelteile",
+                          value: formatCost(
+                            data.kpi_summary.cost_breakdown.parts_standalone,
+                            data.kpi_summary.cost_breakdown.parts_standalone != null,
+                          ),
+                        },
+                        {
+                          label: "Baugruppen",
+                          value: formatCost(
+                            data.kpi_summary.cost_breakdown.assemblies,
+                            data.kpi_summary.cost_breakdown.assemblies != null,
+                          ),
+                        },
+                        {
+                          label: "CAPEX",
+                          value: formatEuro(data.kpi_summary.cost_breakdown.capex),
+                        },
+                        {
+                          label: "Entwicklung",
+                          value: formatEuro(data.kpi_summary.cost_breakdown.entwicklung),
+                        },
+                        {
+                          label: "Amortisation / Einmalzahlung",
+                          value: formatEuro(data.kpi_summary.cost_breakdown.legacy),
+                        },
+                        {
+                          label: "Gesamtkosten",
+                          value: formatCost(
+                            data.kpi_summary.cost_breakdown.total,
+                            data.kpi_summary.cost_breakdown.total != null,
+                          ),
+                        },
+                      ]}
+                    />
+                  </div>
+
+                  <div className="mt-6">
+                    <h4 className="mb-3 font-semibold text-gray-800">Szenariovergleich</h4>
+                    <ScenarioComparisonTable summary={data.kpi_summary} />
+                    <p className="mt-2 text-xs text-gray-500">{data.kpi_summary.roi_note}</p>
+                  </div>
+                </>
+              )}
+              <p className="mt-4 text-xs text-gray-500">{data.revenue_summary.hinweis}</p>
             </div>
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold">Einzelteile (ohne Baugruppen-Bestandteile)</h3>
+            <h3 className="mb-3 font-semibold">Details – Einzelteile (ohne Baugruppen-Bestandteile)</h3>
             {data.parts.length === 0 ? (
               <p className="text-sm text-gray-600">Keine standalone Einzelteile für dieses Projekt.</p>
             ) : (
@@ -660,7 +945,8 @@ export function BusinessCasePage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold">Investitionen</h3>
+            <h3 className="mb-3 font-semibold">Details – Investitionen</h3>
+            {data.kpi_summary && <InvestmentDashboardHead summary={data.kpi_summary} />}
             {data.investment_financial_summary && (
               <div className="mb-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
                 <CategorySummary
