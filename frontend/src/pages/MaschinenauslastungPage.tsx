@@ -7,6 +7,7 @@ import type { Customer, Program, Project } from "../types/hierarchy";
 import { PROJECT_STATUSES } from "../types/hierarchy";
 import type {
   MaschineAuslastungResponse,
+  MaschineAuslastungRow,
   MaschineAuslastungYearRow,
 } from "../types/maschineAuslastung";
 import { UTILIZATION_YEARS } from "../types/maschineAuslastung";
@@ -78,6 +79,19 @@ function utilizationCell(row: MaschineAuslastungYearRow | undefined): string {
   return formatPercentOrDash(0);
 }
 
+function machineHasUtilization(machine: MaschineAuslastungRow): boolean {
+  return machine.has_demand || machine.yearly_breakdown.some((y) => y.has_demand || y.required_hours > 0);
+}
+
+function yearRowHasUtilization(row: MaschineAuslastungYearRow): boolean {
+  return row.has_demand || row.required_hours > 0;
+}
+
+function aggregateUtilizationPct(totalRequired: number, totalAvailable: number): number | null {
+  if (totalAvailable <= 0) return totalRequired > 0 ? null : 0;
+  return (totalRequired / totalAvailable) * 100;
+}
+
 function summaryForYear(data: MaschineAuslastungResponse, year: number) {
   const rows = data.yearly_rows.filter((r) => r.year === year);
   const utilPcts = rows
@@ -114,6 +128,7 @@ export function MaschinenauslastungPage() {
   const [projectStatusFilter, setProjectStatusFilter] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<YearSelection>("all");
   const [machineFilter, setMachineFilter] = useState("");
+  const [showEmptyMachines, setShowEmptyMachines] = useState(false);
 
   const [data, setData] = useState<MaschineAuslastungResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -240,6 +255,9 @@ export function MaschinenauslastungPage() {
     if (!data || !showAllYears) return [];
     const term = machineFilter.trim().toLowerCase();
     let rows = [...data.machines];
+    if (!showEmptyMachines) {
+      rows = rows.filter(machineHasUtilization);
+    }
     if (term) {
       rows = rows.filter(
         (m) =>
@@ -250,12 +268,37 @@ export function MaschinenauslastungPage() {
     }
     rows.sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung, "de"));
     return rows;
-  }, [data, showAllYears, machineFilter]);
+  }, [data, showAllYears, machineFilter, showEmptyMachines]);
+
+  const aggregateMatrixByYear = useMemo(() => {
+    if (!showAllYears || matrixRows.length === 0) return [];
+    return UTILIZATION_YEARS.map((year) => {
+      let totalRequired = 0;
+      let totalAvailable = 0;
+      for (const machine of matrixRows) {
+        const yearRow = machine.yearly_breakdown.find((y) => y.year === year);
+        if (yearRow == null) continue;
+        totalRequired += yearRow.required_hours;
+        totalAvailable += yearRow.available_hours ?? 0;
+      }
+      const pct = aggregateUtilizationPct(totalRequired, totalAvailable);
+      return {
+        year,
+        totalRequired,
+        totalAvailable,
+        pct,
+        isOverloaded: totalAvailable > 0 && totalRequired > totalAvailable,
+      };
+    });
+  }, [matrixRows, showAllYears]);
 
   const filteredYearRows = useMemo(() => {
     if (!data || showAllYears) return [];
     const term = machineFilter.trim().toLowerCase();
     let rows = data.yearly_rows.filter((r) => r.year === selectedYear);
+    if (!showEmptyMachines) {
+      rows = rows.filter(yearRowHasUtilization);
+    }
     if (term) {
       rows = rows.filter(
         (r) =>
@@ -277,7 +320,24 @@ export function MaschinenauslastungPage() {
       return sortAsc ? Number(av) - Number(bv) : Number(bv) - Number(av);
     });
     return rows;
-  }, [data, selectedYear, showAllYears, machineFilter, sortKey, sortAsc]);
+  }, [data, selectedYear, showAllYears, machineFilter, sortKey, sortAsc, showEmptyMachines]);
+
+  const aggregateSingleYear = useMemo(() => {
+    if (showAllYears || filteredYearRows.length === 0) return null;
+    const totalRequired = filteredYearRows.reduce((sum, row) => sum + row.required_hours, 0);
+    const totalRun = filteredYearRows.reduce((sum, row) => sum + row.run_hours, 0);
+    const totalSetup = filteredYearRows.reduce((sum, row) => sum + row.setup_hours, 0);
+    const totalAvailable = filteredYearRows.reduce((sum, row) => sum + (row.available_hours ?? 0), 0);
+    const pct = aggregateUtilizationPct(totalRequired, totalAvailable);
+    return {
+      totalRequired,
+      totalRun,
+      totalSetup,
+      totalAvailable,
+      pct,
+      isOverloaded: totalAvailable > 0 && totalRequired > totalAvailable,
+    };
+  }, [filteredYearRows, showAllYears]);
 
   const toggleSort = (key: YearSortKey) => {
     if (sortKey === key) setSortAsc((v) => !v);
@@ -445,6 +505,17 @@ export function MaschinenauslastungPage() {
             value={machineFilter}
             onChange={(e) => setMachineFilter(e.target.value)}
           />
+          <button
+            type="button"
+            className={`rounded border px-3 py-1.5 text-sm ${
+              showEmptyMachines
+                ? "border-slate-800 bg-slate-800 text-white"
+                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+            onClick={() => setShowEmptyMachines((value) => !value)}
+          >
+            Leere anzeigen
+          </button>
           {data?.uses_all_matching_projects && (
             <span className="text-sm text-blue-700">
               Alle passenden Projekte einbezogen ({data.resolved_project_ids.length})
@@ -536,6 +607,22 @@ export function MaschinenauslastungPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {aggregateMatrixByYear.length > 0 && (
+                    <tr className="border-b-2 border-slate-200 bg-slate-50 font-semibold">
+                      <td className="sticky left-0 z-10 bg-slate-50 px-3 py-2">Gesamtauslastung</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {formatHours(matrixRows.reduce((sum, machine) => sum + (machine.available_hours ?? 0), 0))}
+                      </td>
+                      {aggregateMatrixByYear.map((row) => (
+                        <td
+                          key={row.year}
+                          className={`px-3 py-2 text-right whitespace-nowrap ${row.isOverloaded ? "bg-red-100 text-red-700" : ""}`}
+                        >
+                          {formatPercentOrDash(row.pct)}
+                        </td>
+                      ))}
+                    </tr>
+                  )}
                   {matrixRows.map((machine) => (
                     <tr key={machine.maschine_id} className="border-t border-gray-100">
                       <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium">
@@ -601,6 +688,31 @@ export function MaschinenauslastungPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {aggregateSingleYear && (
+                    <tr className="border-b-2 border-slate-200 bg-slate-50 font-semibold">
+                      <td className="px-3 py-2">{selectedYear}</td>
+                      <td className="px-3 py-2">Gesamtauslastung</td>
+                      <td className="px-3 py-2 text-right">–</td>
+                      <td className="px-3 py-2 text-right">–</td>
+                      <td className="px-3 py-2 text-right">{formatHours(aggregateSingleYear.totalAvailable)}</td>
+                      <td className="px-3 py-2 text-right">{formatHours(aggregateSingleYear.totalRun)}</td>
+                      <td className="px-3 py-2 text-right">{formatHours(aggregateSingleYear.totalSetup)}</td>
+                      <td className="px-3 py-2 text-right">{formatHours(aggregateSingleYear.totalRequired)}</td>
+                      <td
+                        className={`px-3 py-2 text-right ${aggregateSingleYear.isOverloaded ? "text-red-700" : ""}`}
+                      >
+                        {formatPercentOrDash(aggregateSingleYear.pct)}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right ${aggregateSingleYear.isOverloaded ? "text-red-700" : ""}`}
+                      >
+                        {aggregateSingleYear.isOverloaded
+                          ? `Überlastung ${formatHours(aggregateSingleYear.totalRequired - aggregateSingleYear.totalAvailable)} h`
+                          : formatHours(aggregateSingleYear.totalAvailable - aggregateSingleYear.totalRequired)}
+                      </td>
+                      <td className="px-3 py-2">–</td>
+                    </tr>
+                  )}
                   {filteredYearRows.map((row) => (
                     <tr
                       key={`${row.machine_id}-${row.year}`}

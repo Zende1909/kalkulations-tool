@@ -46,6 +46,14 @@ describe("Maschinenauslastung Jahres-UI", () => {
     expect(pageSrc).toMatch(/Ausgewählte Projekte/);
   });
 
+  it("bietet Leere-anzeigen-Toggle und Gesamtauslastungszeile", () => {
+    expect(pageSrc).toMatch(/showEmptyMachines/);
+    expect(pageSrc).toMatch(/Leere anzeigen/);
+    expect(pageSrc).toMatch(/Gesamtauslastung/);
+    expect(pageSrc).toMatch(/aggregateMatrixByYear/);
+    expect(pageSrc).toMatch(/aggregateSingleYear/);
+  });
+
   it("Kennzeichnet OEE-Transparenz", () => {
     expect(pageSrc).toMatch(/oee_in_available_hours/);
     expect(pageSrc).toMatch(/formatOee/);
