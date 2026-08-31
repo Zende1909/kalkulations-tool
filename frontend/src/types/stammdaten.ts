@@ -5,15 +5,8 @@ export interface Material {
   preis_pro_kg: number;
   dichte: number;
   injection_pressure_kg_cm2: number;
-  /** Materialgruppe für die thermischen Richtwerte (Kühlzeitberechnung). */
+  /** Materialgruppe – liefert die Kennwerte für die Zykluszeit-Schätzung. */
   materialgruppe: string | null;
-  /** Dichte der Schmelze – getrennt von der Feststoffdichte `dichte`. */
-  schmelzdichte_kg_m3: number | null;
-  waermekapazitaet_j_kg_k: number | null;
-  waermeleitfaehigkeit_w_m_k: number | null;
-  werkzeugtemperatur_c: number | null;
-  schmelzetemperatur_c: number | null;
-  entformungstemperatur_c: number | null;
   waehrung: string;
   aktiv: boolean;
   created_at: string;

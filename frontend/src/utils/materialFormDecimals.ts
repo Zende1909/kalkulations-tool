@@ -6,16 +6,6 @@ import { coerceFormDecimal, formatDecimalForInputDe } from "./decimalInput";
 
 export const MATERIAL_NUMERIC_FIELDS = ["preis_pro_kg", "dichte", "injection_pressure_kg_cm2"] as const;
 
-/** Thermische Kennwerte für die Kühlzeit – optional, leer bleibt leer. */
-export const MATERIAL_THERMIK_FIELDS = [
-  "schmelzdichte_kg_m3",
-  "waermekapazitaet_j_kg_k",
-  "waermeleitfaehigkeit_w_m_k",
-  "werkzeugtemperatur_c",
-  "schmelzetemperatur_c",
-  "entformungstemperatur_c",
-] as const;
-
 export function loadMaterialFormValues(
   values: Record<string, string | number | boolean>,
 ): Record<string, string | number | boolean> {
@@ -23,7 +13,7 @@ export function loadMaterialFormValues(
   if (next.materialgruppe == null) {
     next.materialgruppe = "";
   }
-  for (const key of [...MATERIAL_NUMERIC_FIELDS, ...MATERIAL_THERMIK_FIELDS]) {
+  for (const key of MATERIAL_NUMERIC_FIELDS) {
     const raw = next[key];
     if (raw == null) {
       next[key] = "";
@@ -50,12 +40,7 @@ export function submitMaterialFormValues(
     }
     payload[key] = coerceFormDecimal(raw, "2,10 oder 2.10");
   }
-  for (const key of MATERIAL_THERMIK_FIELDS) {
-    const raw = values[key];
-    payload[key] =
-      raw === "" || raw == null ? null : coerceFormDecimal(raw, "0,27 oder 0.27");
-  }
-  if (values.materialgruppe === "") {
+  if (values.materialgruppe === "" || values.materialgruppe == null) {
     payload.materialgruppe = null;
   }
   if (typeof values.aktiv === "boolean") {

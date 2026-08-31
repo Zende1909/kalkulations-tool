@@ -1,27 +1,39 @@
-/** Payload-Aufbau für die Zykluszeit-Live-Vorschau (IKET). */
+/** Payload-Aufbau für die Live-Vorschau der Zykluszeit-Schätzung. */
 import { describe, expect, it } from "vitest";
 
 import {
   emptySpritzgussForm,
-  ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
-  ZYKLUSZEIT_DEFAULT_VARIANTE,
-  ZYKLUSZEIT_NEBENZEIT_DEFAULTS,
+  nebenzeitenRichtwert,
+  ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
+  ZYKLUSZEIT_GROESSENKLASSEN,
 } from "../types/spritzguss";
-import {
-  buildZykluszeitPreviewPayload,
-  summeNebenzeiten,
-} from "./zykluszeitPreview";
+import { buildZykluszeitPreviewPayload } from "./zykluszeitPreview";
 import { parseSpritzgussDecimalFields } from "./spritzgussFormDecimals";
 
+describe("Größenklassen", () => {
+  it("hat drei Klassen mit Nebenzeiten-Richtwerten", () => {
+    expect(ZYKLUSZEIT_GROESSENKLASSEN.map((k) => k.key)).toEqual([
+      "klein",
+      "mittel",
+      "gross",
+    ]);
+    expect(ZYKLUSZEIT_GROESSENKLASSEN.map((k) => k.nebenzeiten)).toEqual([6, 10, 16]);
+  });
+
+  it("liefert für unbekannte Klassen den Default-Richtwert", () => {
+    expect(nebenzeitenRichtwert("klein")).toBe(6);
+    expect(nebenzeitenRichtwert("gross")).toBe(16);
+    expect(nebenzeitenRichtwert(null)).toBe(10);
+    expect(nebenzeitenRichtwert("gibtsnicht")).toBe(10);
+  });
+});
+
 describe("buildZykluszeitPreviewPayload", () => {
-  it("nutzt IKET-Defaults für Variante, Kühlfaktor und Nebenzeiten", () => {
+  it("nutzt die Default-Größenklasse und keine eigenen Nebenzeiten", () => {
     const payload = buildZykluszeitPreviewPayload(emptySpritzgussForm(), {});
-    expect(payload.zykluszeit_variante).toBe(ZYKLUSZEIT_DEFAULT_VARIANTE);
-    expect(payload.zykluszeit_variante).toBe(2);
-    expect(payload.zykluszeit_kuehlfaktor).toBe(ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR);
-    expect(payload.zykluszeit_kuehlfaktor).toBe(1.5);
-    expect(payload.zykluszeit_komponenten).toBe(1);
-    expect(summeNebenzeiten(payload)).toBeCloseTo(12.5, 10);
+    expect(payload.zykluszeit_groessenklasse).toBe(ZYKLUSZEIT_DEFAULT_GROESSENKLASSE);
+    expect(payload.zykluszeit_groessenklasse).toBe("mittel");
+    expect(payload.zykluszeit_nebenzeiten_gesamt_s).toBeNull();
   });
 
   it("liest Wandstärke live aus decimalRaw", () => {
@@ -38,21 +50,23 @@ describe("buildZykluszeitPreviewPayload", () => {
     expect(payload.zykluszeit_wandstaerke_mm).toBeNull();
   });
 
-  it("übernimmt geänderte Nebenzeiten aus decimalRaw", () => {
-    const payload = buildZykluszeitPreviewPayload(emptySpritzgussForm(), {
-      zykluszeit_nz_einlegen_s: "4,5",
-      zykluszeit_nz_ausblasen_s: "1",
-    });
-    expect(payload.zykluszeit_nz_einlegen_s).toBeCloseTo(4.5, 10);
-    expect(payload.zykluszeit_nz_ausblasen_s).toBeCloseTo(1, 10);
-    expect(summeNebenzeiten(payload)).toBeCloseTo(12.5 - 2 + 4.5 + 1, 10);
+  it("übernimmt die gewählte Größenklasse", () => {
+    const form = { ...emptySpritzgussForm(), zykluszeit_groessenklasse: "gross" as const };
+    expect(buildZykluszeitPreviewPayload(form, {}).zykluszeit_groessenklasse).toBe("gross");
   });
 
-  it("fällt bei unvollständiger Eingabe auf den Default zurück", () => {
+  it("übergibt eigene Nebenzeiten live aus decimalRaw", () => {
     const payload = buildZykluszeitPreviewPayload(emptySpritzgussForm(), {
-      zykluszeit_kuehlfaktor: "1,",
+      zykluszeit_nebenzeiten_gesamt_s: "13,5",
     });
-    expect(payload.zykluszeit_kuehlfaktor).toBe(ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR);
+    expect(payload.zykluszeit_nebenzeiten_gesamt_s).toBeCloseTo(13.5, 10);
+  });
+
+  it("fällt bei unvollständiger Eingabe auf null zurück", () => {
+    const payload = buildZykluszeitPreviewPayload(emptySpritzgussForm(), {
+      zykluszeit_wandstaerke_mm: "4,",
+    });
+    expect(payload.zykluszeit_wandstaerke_mm).toBeNull();
   });
 
   it("gibt die Materialauswahl weiter", () => {
@@ -62,39 +76,29 @@ describe("buildZykluszeitPreviewPayload", () => {
 });
 
 describe("parseSpritzgussDecimalFields für Zykluszeitfelder", () => {
-  it("hält die Wandstärke bei leerem Feld auf null", () => {
+  it("hält Wandstärke und Nebenzeiten bei leerem Feld auf null", () => {
     const parsed = parseSpritzgussDecimalFields(
-      { zykluszeit_wandstaerke_mm: "" },
+      { zykluszeit_wandstaerke_mm: "", zykluszeit_nebenzeiten_gesamt_s: "" },
       emptySpritzgussForm(),
     );
     expect(parsed.zykluszeit_wandstaerke_mm).toBeNull();
+    expect(parsed.zykluszeit_nebenzeiten_gesamt_s).toBeNull();
   });
 
-  it("parst Wandstärke und Kühlfaktor in deutscher Schreibweise", () => {
+  it("parst deutsche Schreibweise", () => {
     const parsed = parseSpritzgussDecimalFields(
-      { zykluszeit_wandstaerke_mm: "4,5", zykluszeit_kuehlfaktor: "1,8" },
+      { zykluszeit_wandstaerke_mm: "4,5", zykluszeit_nebenzeiten_gesamt_s: "13,5" },
       emptySpritzgussForm(),
     );
     expect(parsed.zykluszeit_wandstaerke_mm).toBeCloseTo(4.5, 10);
-    expect(parsed.zykluszeit_kuehlfaktor).toBeCloseTo(1.8, 10);
-  });
-
-  it("setzt leere Nebenzeiten auf ihren IKET-Default zurück", () => {
-    const parsed = parseSpritzgussDecimalFields(
-      { zykluszeit_nz_auswerfen_s: "" },
-      emptySpritzgussForm(),
-    );
-    expect(parsed.zykluszeit_nz_auswerfen_s).toBe(
-      ZYKLUSZEIT_NEBENZEIT_DEFAULTS.zykluszeit_nz_auswerfen_s,
-    );
-    expect(parsed.zykluszeit_nz_auswerfen_s).toBe(2.5);
+    expect(parsed.zykluszeit_nebenzeiten_gesamt_s).toBeCloseTo(13.5, 10);
   });
 
   it("übernimmt eine explizite 0 als Nebenzeit", () => {
     const parsed = parseSpritzgussDecimalFields(
-      { zykluszeit_nz_auswerfen_s: "0" },
+      { zykluszeit_nebenzeiten_gesamt_s: "0" },
       emptySpritzgussForm(),
     );
-    expect(parsed.zykluszeit_nz_auswerfen_s).toBe(0);
+    expect(parsed.zykluszeit_nebenzeiten_gesamt_s).toBe(0);
   });
 });

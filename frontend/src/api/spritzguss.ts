@@ -49,18 +49,8 @@ export type CalcPayload = Pick<
   | "maschinen_groesse_proj_flaeche_mm2"
   | "zykluszeit_quelle"
   | "zykluszeit_wandstaerke_mm"
-  | "zykluszeit_variante"
-  | "zykluszeit_kuehlfaktor"
-  | "zykluszeit_komponenten"
-  | "zykluszeit_nz_werkzeug_schliessen_s"
-  | "zykluszeit_nz_duese_anlegen_s"
-  | "zykluszeit_nz_einspritzen_s"
-  | "zykluszeit_nz_werkzeug_oeffnen_s"
-  | "zykluszeit_nz_auswerfen_s"
-  | "zykluszeit_nz_kernzug_s"
-  | "zykluszeit_nz_ausschrauben_s"
-  | "zykluszeit_nz_einlegen_s"
-  | "zykluszeit_nz_ausblasen_s"
+  | "zykluszeit_groessenklasse"
+  | "zykluszeit_nebenzeiten_gesamt_s"
 > & {
   veredelung_zuordnungen?: VeredelungZuordnungInput[];
 };

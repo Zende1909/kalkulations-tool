@@ -7,8 +7,8 @@ from app.database import get_db
 from app.models.user import User
 from app.schemas.material import (
     MaterialCreate,
+    MaterialGruppeRead,
     MaterialRead,
-    MaterialThermikDefaultRead,
     MaterialUpdate,
 )
 from app.services.material_thermik import alle_defaults
@@ -26,9 +26,9 @@ def list_materialien(
     return material_crud.material.get_multi(db, skip=skip, limit=limit)
 
 
-@router.get("/thermik-defaults", response_model=list[MaterialThermikDefaultRead])
-def list_thermik_defaults(_: User = Depends(require_viewer)):
-    """Materialgruppen-Richtwerte für die thermischen Kennwerte (Kühlzeit)."""
+@router.get("/materialgruppen", response_model=list[MaterialGruppeRead])
+def list_materialgruppen(_: User = Depends(require_viewer)):
+    """Auswählbare Materialgruppen samt hinterlegter Kennwerte (Kühlzeit)."""
     return [d.as_dict() for d in alle_defaults()]
 
 

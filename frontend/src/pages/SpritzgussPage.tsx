@@ -28,18 +28,17 @@ import type { Lohnkosten, Land, Maschine, Material, Werk } from "../types/stammd
 import type { Veredelungsschritt } from "../types/veredelung";
 import {
   emptySpritzgussForm,
-  ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
-  ZYKLUSZEIT_DEFAULT_VARIANTE,
-  ZYKLUSZEIT_NEBENZEITEN,
-  ZYKLUSZEIT_NEBENZEIT_DEFAULTS,
+  nebenzeitenRichtwert,
+  ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
+  ZYKLUSZEIT_GROESSENKLASSEN,
   type SpritzgussBloecke,
   type SpritzgussFormData,
-  type SpritzgussKalkulation,
   type SpritzgussListItem,
   type MaschinenGroesseResult,
   type VeredelungZuordnung,
   type VeredelungZuordnungInput,
   type WerkzeugAbrechnungsart,
+  type ZykluszeitGroessenklasse,
   type ZykluszeitVorschlag,
 } from "../types/spritzguss";
 import { FormDecimalInput } from "../components/FormDecimalInput";
@@ -70,22 +69,10 @@ interface SelectedVeredelung extends VeredelungZuordnungInput {
   kosten_gesamt?: number;
 }
 
-type NebenzeitFeld = (typeof ZYKLUSZEIT_NEBENZEITEN)[number]["feld"];
-
-/** Gespeicherte Nebenzeiten übernehmen; fehlende fallen auf die IKET-Defaults. */
-function nebenzeitenAusGespeichert(
-  item: SpritzgussKalkulation,
-): Pick<SpritzgussFormData, NebenzeitFeld> {
-  const quelle = item as unknown as Record<string, unknown>;
-  const werte = {} as Record<NebenzeitFeld, number>;
-  for (const { feld } of ZYKLUSZEIT_NEBENZEITEN) {
-    const gespeichert = quelle[feld];
-    werte[feld] =
-      typeof gespeichert === "number" && Number.isFinite(gespeichert)
-        ? gespeichert
-        : ZYKLUSZEIT_NEBENZEIT_DEFAULTS[feld];
-  }
-  return werte;
+function gespeicherteGroessenklasse(wert: unknown): ZykluszeitGroessenklasse {
+  return ZYKLUSZEIT_GROESSENKLASSEN.some((k) => k.key === wert)
+    ? (wert as ZykluszeitGroessenklasse)
+    : ZYKLUSZEIT_DEFAULT_GROESSENKLASSE;
 }
 
 function formatSekunden(value: number | null | undefined, digits = 2): string {
@@ -600,18 +587,8 @@ export function SpritzgussPage() {
       maschinen_groesse_proj_flaeche_mm2: form.maschinen_groesse_proj_flaeche_mm2,
       zykluszeit_quelle: form.zykluszeit_quelle,
       zykluszeit_wandstaerke_mm: form.zykluszeit_wandstaerke_mm,
-      zykluszeit_variante: form.zykluszeit_variante,
-      zykluszeit_kuehlfaktor: form.zykluszeit_kuehlfaktor,
-      zykluszeit_komponenten: form.zykluszeit_komponenten,
-      zykluszeit_nz_werkzeug_schliessen_s: form.zykluszeit_nz_werkzeug_schliessen_s,
-      zykluszeit_nz_duese_anlegen_s: form.zykluszeit_nz_duese_anlegen_s,
-      zykluszeit_nz_einspritzen_s: form.zykluszeit_nz_einspritzen_s,
-      zykluszeit_nz_werkzeug_oeffnen_s: form.zykluszeit_nz_werkzeug_oeffnen_s,
-      zykluszeit_nz_auswerfen_s: form.zykluszeit_nz_auswerfen_s,
-      zykluszeit_nz_kernzug_s: form.zykluszeit_nz_kernzug_s,
-      zykluszeit_nz_ausschrauben_s: form.zykluszeit_nz_ausschrauben_s,
-      zykluszeit_nz_einlegen_s: form.zykluszeit_nz_einlegen_s,
-      zykluszeit_nz_ausblasen_s: form.zykluszeit_nz_ausblasen_s,
+      zykluszeit_groessenklasse: form.zykluszeit_groessenklasse,
+      zykluszeit_nebenzeiten_gesamt_s: form.zykluszeit_nebenzeiten_gesamt_s,
     }),
     [form, veredelungZuordnungen, hierarchy.project_id],
   );
@@ -982,10 +959,8 @@ export function SpritzgussPage() {
         maschinenstundensatz: item.maschinenstundensatz,
         zykluszeit_quelle: item.zykluszeit_quelle ?? "manuell",
         zykluszeit_wandstaerke_mm: item.zykluszeit_wandstaerke_mm ?? null,
-        zykluszeit_variante: item.zykluszeit_variante ?? ZYKLUSZEIT_DEFAULT_VARIANTE,
-        zykluszeit_kuehlfaktor: item.zykluszeit_kuehlfaktor ?? ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
-        zykluszeit_komponenten: item.zykluszeit_komponenten ?? 1,
-        ...nebenzeitenAusGespeichert(item),
+        zykluszeit_groessenklasse: gespeicherteGroessenklasse(item.zykluszeit_groessenklasse),
+        zykluszeit_nebenzeiten_gesamt_s: item.zykluszeit_nebenzeiten_gesamt_s ?? null,
         lohnkosten_id: item.lohnkosten_id,
         lohnstundensatz: item.lohnstundensatz,
         werkzeugkosten_eur: item.werkzeugkosten_eur,
@@ -1036,8 +1011,7 @@ export function SpritzgussPage() {
           maschinen_groesse_oeffnungen_pct: item.maschinen_groesse_oeffnungen_pct ?? null,
           maschinen_groesse_proj_flaeche_mm2: item.maschinen_groesse_proj_flaeche_mm2 ?? null,
           zykluszeit_wandstaerke_mm: item.zykluszeit_wandstaerke_mm ?? null,
-          zykluszeit_kuehlfaktor: item.zykluszeit_kuehlfaktor ?? ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
-          ...nebenzeitenAusGespeichert(item),
+          zykluszeit_nebenzeiten_gesamt_s: item.zykluszeit_nebenzeiten_gesamt_s ?? null,
         }),
       );
       setMaschinenGroesse(
@@ -1424,114 +1398,80 @@ export function SpritzgussPage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-1 font-semibold text-gray-900">Zykluszeitvorschlag (IKET)</h3>
+            <h3 className="mb-1 font-semibold text-gray-900">Zykluszeit-Schätzung</h3>
             <p className="mb-3 text-xs text-gray-600">
-              Kühlzeitkalkulation nach IKET für 1-Komponenten-Thermoplast-Spritzguss. Der Wert
-              ist ein Vorschlag und wird erst nach „Übernehmen“ in das Zykluszeitfeld
-              geschrieben.
+              Grobe Abschätzung für 1-Komponenten-Thermoplaste aus Materialgruppe und
+              Wandstärke. Der Wert ist ein Vorschlag und wird erst nach „Übernehmen“ in das
+              Zykluszeitfeld geschrieben.
             </p>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
               <NumberInput
                 fieldKey="zykluszeit_wandstaerke_mm"
-                label="Äquivalente Wandstärke (mm)"
+                label="Wandstärke (mm)"
                 value={form.zykluszeit_wandstaerke_mm ?? 0}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <label className="block text-sm">
-                <span className="font-medium text-gray-700">Berechnungsvariante</span>
+                <span className="font-medium text-gray-700">Teilegröße</span>
                 <select
-                  value={form.zykluszeit_variante}
-                  onChange={(e) => setField("zykluszeit_variante", Number(e.target.value))}
+                  value={form.zykluszeit_groessenklasse}
+                  onChange={(e) =>
+                    setField(
+                      "zykluszeit_groessenklasse",
+                      e.target.value as ZykluszeitGroessenklasse,
+                    )
+                  }
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
-                  <option value={2}>Variante 2 – Temperatur in Formteilmitte</option>
-                  <option value={1}>Variante 1 – mittlere Wandtemperatur</option>
+                  {ZYKLUSZEIT_GROESSENKLASSEN.map(({ key, label, nebenzeiten }) => (
+                    <option key={key} value={key}>
+                      {label} ({nebenzeiten} s)
+                    </option>
+                  ))}
                 </select>
               </label>
               <NumberInput
-                fieldKey="zykluszeit_kuehlfaktor"
-                label="Zuschlagfaktor Werkzeugkühlung"
-                value={form.zykluszeit_kuehlfaktor}
+                fieldKey="zykluszeit_nebenzeiten_gesamt_s"
+                label="Nebenzeiten gesamt (s)"
+                value={
+                  form.zykluszeit_nebenzeiten_gesamt_s ??
+                  nebenzeitenRichtwert(form.zykluszeit_groessenklasse)
+                }
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
-              <label className="block text-sm">
-                <span className="font-medium text-gray-700">Verfahren</span>
-                <select
-                  value={form.zykluszeit_komponenten}
-                  onChange={(e) => setField("zykluszeit_komponenten", Number(e.target.value))}
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
-                >
-                  <option value={1}>1-Komponenten-Spritzguss</option>
-                  <option value={2}>2-Komponenten-Spritzguss</option>
-                  <option value={3}>3-Komponenten-Spritzguss</option>
-                </select>
-              </label>
             </div>
-
-            <div className="mt-4">
-              <div className="mb-2 text-sm font-medium text-gray-800">Nebenzeiten (s)</div>
-              <div className="grid gap-3 md:grid-cols-3">
-                {ZYKLUSZEIT_NEBENZEITEN.map(({ feld, label }) => (
-                  <NumberInput
-                    key={feld}
-                    fieldKey={feld}
-                    label={label}
-                    value={
-                      (form as unknown as Record<string, number>)[feld] ??
-                      ZYKLUSZEIT_NEBENZEIT_DEFAULTS[feld]
-                    }
-                    decimalRaw={decimalRaw}
-                    onDecimalChange={handleDecimalChange}
-                  />
-                ))}
-              </div>
-            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Nebenzeiten = Schließen, Einspritzen, Öffnen und Entnahme. Leer lassen, um den
+              Richtwert der Teilegröße zu verwenden.
+            </p>
 
             <div className="mt-4 rounded-md border border-gray-100 bg-gray-50 p-3 text-sm">
-              <div className="font-medium text-gray-800">Rechenschritte</div>
               {zykluszeitVorschlag?.berechenbar ? (
                 <>
-                  <div className="mt-1 text-gray-600">
-                    Temperaturleitfähigkeit α = λ / (ρ · c<sub>p</sub>) ={" "}
-                    {zykluszeitVorschlag.temperaturleitfaehigkeit_m2_s?.toExponential(6)} m²/s
+                  <div className="font-medium text-gray-900">
+                    Vorschlag {formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s)} s
                   </div>
-                  <div className="text-gray-600">
-                    Vorfaktor s² / (α · π²) = {formatSekunden(zykluszeitVorschlag.vorfaktor_s, 4)} s
-                  </div>
-                  <div className="text-gray-600">
-                    Variantenfaktor = {formatSekunden(zykluszeitVorschlag.variantenfaktor, 6)}
-                  </div>
-                  <div className="text-gray-600">
-                    Temperaturquotient (T<sub>M</sub> − T<sub>W</sub>) / (T<sub>E</sub> − T
-                    <sub>W</sub>) = {formatSekunden(zykluszeitVorschlag.temperaturquotient, 4)}
-                  </div>
-                  <div className="text-gray-600">
-                    ln({formatSekunden(zykluszeitVorschlag.ln_argument, 6)}) ={" "}
-                    {formatSekunden(zykluszeitVorschlag.ln_wert, 6)}
-                  </div>
-                  <div className="mt-2 text-gray-700">
-                    Optimale Kühlzeit ={" "}
-                    {formatSekunden(zykluszeitVorschlag.optimale_kuehlzeit_s)} s
-                  </div>
-                  <div className="text-gray-700">
-                    Kühlzeit × Zuschlagfaktor {formatSekunden(zykluszeitVorschlag.kuehlfaktor, 2)}{" "}
-                    = {formatSekunden(zykluszeitVorschlag.kuehlzeit_s)} s
-                  </div>
-                  <div className="text-gray-700">
-                    Nebenzeiten gesamt ={" "}
+                  <div className="mt-1 text-gray-700">
+                    Kühlzeit {formatSekunden(zykluszeitVorschlag.kuehlzeit_s)} s + Nebenzeiten{" "}
                     {formatSekunden(zykluszeitVorschlag.nebenzeiten_gesamt_s)} s
                   </div>
-                  <div className="mt-1 font-medium text-gray-900">
-                    Gesamtzykluszeit ={" "}
-                    {formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s)} s
+                  <div className="mt-2 text-xs text-gray-500">
+                    {zykluszeitVorschlag.materialgruppe} (
+                    {zykluszeitVorschlag.material_bezeichnung}), Werkzeug{" "}
+                    {formatSekunden(zykluszeitVorschlag.werkzeugtemperatur_c, 0)} °C, Schmelze{" "}
+                    {formatSekunden(zykluszeitVorschlag.schmelzetemperatur_c, 0)} °C, Entformung{" "}
+                    {formatSekunden(zykluszeitVorschlag.entformungstemperatur_c, 0)} °C ·
+                    theoretische Kühlzeit{" "}
+                    {formatSekunden(zykluszeitVorschlag.optimale_kuehlzeit_s)} s × Zuschlag{" "}
+                    {formatSekunden(zykluszeitVorschlag.kuehlfaktor, 1)}
                   </div>
                 </>
               ) : (
-                <p className="mt-1 text-amber-800">
+                <p className="text-amber-800">
                   {zykluszeitVorschlag?.hinweis ??
-                    "Zykluszeitvorschlag wird berechnet, sobald Material und Wandstärke vollständig sind."}
+                    "Die Schätzung erscheint, sobald Materialgruppe und Wandstärke gepflegt sind."}
                 </p>
               )}
             </div>

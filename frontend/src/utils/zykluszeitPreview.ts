@@ -1,26 +1,19 @@
 /**
- * Payload für die Live-Vorschau des Zykluszeitvorschlags (IKET).
+ * Payload für die Live-Vorschau der Zykluszeit-Schätzung.
  *
  * Gelesen wird bevorzugt aus `decimalRaw`, damit der Vorschlag schon während
  * der Eingabe aktuell ist; das geparste Formular dient als Rückfallebene.
  */
 
 import type { SpritzgussFormData } from "../types/spritzguss";
-import {
-  ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
-  ZYKLUSZEIT_DEFAULT_VARIANTE,
-  ZYKLUSZEIT_NEBENZEITEN,
-  ZYKLUSZEIT_NEBENZEIT_DEFAULTS,
-} from "../types/spritzguss";
+import { ZYKLUSZEIT_DEFAULT_GROESSENKLASSE } from "../types/spritzguss";
 import { coerceFormDecimal } from "./decimalInput";
 
 export interface ZykluszeitPreviewPayload {
   material_id: number | null;
   zykluszeit_wandstaerke_mm: number | null;
-  zykluszeit_variante: number;
-  zykluszeit_kuehlfaktor: number;
-  zykluszeit_komponenten: number;
-  [nebenzeit: string]: number | null;
+  zykluszeit_groessenklasse: string;
+  zykluszeit_nebenzeiten_gesamt_s: number | null;
 }
 
 export function readZykluszeitDecimal(
@@ -46,7 +39,7 @@ export function buildZykluszeitPreviewPayload(
   form: SpritzgussFormData,
   decimalRaw: Record<string, string>,
 ): ZykluszeitPreviewPayload {
-  const payload: ZykluszeitPreviewPayload = {
+  return {
     material_id: form.material_id,
     zykluszeit_wandstaerke_mm: readZykluszeitDecimal(
       decimalRaw,
@@ -54,29 +47,13 @@ export function buildZykluszeitPreviewPayload(
       "zykluszeit_wandstaerke_mm",
       null,
     ),
-    zykluszeit_variante: form.zykluszeit_variante || ZYKLUSZEIT_DEFAULT_VARIANTE,
-    zykluszeit_kuehlfaktor:
-      readZykluszeitDecimal(
-        decimalRaw,
-        form,
-        "zykluszeit_kuehlfaktor",
-        ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
-      ) ?? ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
-    zykluszeit_komponenten: form.zykluszeit_komponenten || 1,
+    zykluszeit_groessenklasse:
+      form.zykluszeit_groessenklasse || ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
+    zykluszeit_nebenzeiten_gesamt_s: readZykluszeitDecimal(
+      decimalRaw,
+      form,
+      "zykluszeit_nebenzeiten_gesamt_s",
+      null,
+    ),
   };
-
-  for (const { feld } of ZYKLUSZEIT_NEBENZEITEN) {
-    payload[feld] =
-      readZykluszeitDecimal(decimalRaw, form, feld, ZYKLUSZEIT_NEBENZEIT_DEFAULTS[feld]) ??
-      ZYKLUSZEIT_NEBENZEIT_DEFAULTS[feld];
-  }
-
-  return payload;
-}
-
-export function summeNebenzeiten(payload: ZykluszeitPreviewPayload): number {
-  return ZYKLUSZEIT_NEBENZEITEN.reduce(
-    (summe, { feld }) => summe + (payload[feld] ?? 0),
-    0,
-  );
 }

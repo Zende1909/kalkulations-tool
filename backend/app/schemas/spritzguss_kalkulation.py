@@ -360,10 +360,7 @@ class SpritzgussKalkulationUpdate(MaschinenGroesseFields, ZykluszeitFields):
     maschinen_groesse_empfohlene_maschine_id: int | None = None
     maschinen_groesse_warnung: str | None = None
 
-    zykluszeit_temperaturleitfaehigkeit_m2_s: float | None = None
-    zykluszeit_optimale_kuehlzeit_s: float | None = None
     zykluszeit_kuehlzeit_s: float | None = None
-    zykluszeit_nebenzeiten_gesamt_s: float | None = None
     zykluszeit_vorschlag_s: float | None = None
     zykluszeit_hinweis: str | None = None
 
@@ -402,10 +399,7 @@ class SpritzgussKalkulationRead(SpritzgussKalkulationBase):
     setup_lohnstundensatz: float = 0
     setup_mitarbeiter: float = 0
     setup_aktiv: bool = False
-    zykluszeit_temperaturleitfaehigkeit_m2_s: float | None = None
-    zykluszeit_optimale_kuehlzeit_s: float | None = None
     zykluszeit_kuehlzeit_s: float | None = None
-    zykluszeit_nebenzeiten_gesamt_s: float | None = None
     zykluszeit_vorschlag_s: float | None = None
     zykluszeit_hinweis: str | None = None
     ergebnis: dict[str, Any] | None = None

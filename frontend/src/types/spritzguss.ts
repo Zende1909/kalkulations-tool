@@ -101,59 +101,44 @@ export interface MaschinenGroesseResult {
   warnung?: string | null;
 }
 
-/** Nebenzeit-Schlüssel des Backends (Service `zykluszeit`). */
-export const ZYKLUSZEIT_NEBENZEITEN = [
-  { key: "werkzeug_schliessen_s", feld: "zykluszeit_nz_werkzeug_schliessen_s", label: "Werkzeug schließen" },
-  { key: "duese_anlegen_s", feld: "zykluszeit_nz_duese_anlegen_s", label: "Düsen anlegen" },
-  { key: "einspritzen_s", feld: "zykluszeit_nz_einspritzen_s", label: "Einspritzen" },
-  { key: "werkzeug_oeffnen_s", feld: "zykluszeit_nz_werkzeug_oeffnen_s", label: "Werkzeug öffnen" },
-  { key: "auswerfen_s", feld: "zykluszeit_nz_auswerfen_s", label: "Auswerfen/Entnahme" },
-  { key: "kernzug_s", feld: "zykluszeit_nz_kernzug_s", label: "Kernzug/Schieber" },
-  { key: "ausschrauben_s", feld: "zykluszeit_nz_ausschrauben_s", label: "Ausschrauben" },
-  { key: "einlegen_s", feld: "zykluszeit_nz_einlegen_s", label: "Einlegen" },
-  { key: "ausblasen_s", feld: "zykluszeit_nz_ausblasen_s", label: "Ausblasen" },
+/**
+ * Teilegrößen-Klassen mit Richtwert für die Summe der Nebenzeiten.
+ * Muss zu `GROESSENKLASSEN` im Backend-Service `zykluszeit` passen.
+ */
+export const ZYKLUSZEIT_GROESSENKLASSEN = [
+  { key: "klein", label: "Klein – Handteil, einfache Entformung", nebenzeiten: 6 },
+  { key: "mittel", label: "Mittel – Standardteil, Roboterentnahme", nebenzeiten: 10 },
+  { key: "gross", label: "Groß – Großteil, Kernzug oder Einlegeteil", nebenzeiten: 16 },
 ] as const;
 
-/** Defaults exakt aus dem IKET-Blatt "Zykluszeitbestimmung". */
-export const ZYKLUSZEIT_NEBENZEIT_DEFAULTS: Record<string, number> = {
-  zykluszeit_nz_werkzeug_schliessen_s: 2,
-  zykluszeit_nz_duese_anlegen_s: 1,
-  zykluszeit_nz_einspritzen_s: 2,
-  zykluszeit_nz_werkzeug_oeffnen_s: 2,
-  zykluszeit_nz_auswerfen_s: 2.5,
-  zykluszeit_nz_kernzug_s: 1,
-  zykluszeit_nz_ausschrauben_s: 0,
-  zykluszeit_nz_einlegen_s: 2,
-  zykluszeit_nz_ausblasen_s: 0,
-};
+export type ZykluszeitGroessenklasse = (typeof ZYKLUSZEIT_GROESSENKLASSEN)[number]["key"];
 
-export const ZYKLUSZEIT_DEFAULT_VARIANTE = 2;
-export const ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR = 1.5;
+export const ZYKLUSZEIT_DEFAULT_GROESSENKLASSE: ZykluszeitGroessenklasse = "mittel";
+export const ZYKLUSZEIT_KUEHLFAKTOR = 1.5;
+
+export function nebenzeitenRichtwert(klasse: string | null | undefined): number {
+  return (
+    ZYKLUSZEIT_GROESSENKLASSEN.find((k) => k.key === klasse)?.nebenzeiten ??
+    ZYKLUSZEIT_GROESSENKLASSEN.find((k) => k.key === ZYKLUSZEIT_DEFAULT_GROESSENKLASSE)!.nebenzeiten
+  );
+}
 
 export type ZykluszeitQuelle = "manuell" | "vorschlag";
 
 export interface ZykluszeitVorschlag {
   berechenbar: boolean;
   hinweis?: string | null;
-  variante?: number | null;
-  kuehlfaktor?: number | null;
-  komponenten?: number | null;
   wandstaerke_mm?: number | null;
-  schmelzdichte_kg_m3?: number | null;
-  waermekapazitaet_j_kg_k?: number | null;
-  waermeleitfaehigkeit_w_m_k?: number | null;
+  materialgruppe?: string | null;
+  material_bezeichnung?: string | null;
+  groessenklasse?: string | null;
+  kuehlfaktor?: number | null;
+  temperaturleitfaehigkeit_m2_s?: number | null;
   werkzeugtemperatur_c?: number | null;
   schmelzetemperatur_c?: number | null;
   entformungstemperatur_c?: number | null;
-  temperaturleitfaehigkeit_m2_s?: number | null;
-  vorfaktor_s?: number | null;
-  variantenfaktor?: number | null;
-  temperaturquotient?: number | null;
-  ln_argument?: number | null;
-  ln_wert?: number | null;
   optimale_kuehlzeit_s?: number | null;
   kuehlzeit_s?: number | null;
-  nebenzeiten?: Record<string, number>;
   nebenzeiten_gesamt_s?: number | null;
   gesamtzykluszeit_s?: number | null;
 }
@@ -210,21 +195,12 @@ export interface SpritzgussFormData {
   kavitaeten: number;
   maschinenstundensatz: number;
 
-  /** Zykluszeitvorschlag nach IKET */
+  /** Zykluszeit-Schätzung */
   zykluszeit_quelle: ZykluszeitQuelle;
   zykluszeit_wandstaerke_mm: number | null;
-  zykluszeit_variante: number;
-  zykluszeit_kuehlfaktor: number;
-  zykluszeit_komponenten: number;
-  zykluszeit_nz_werkzeug_schliessen_s: number;
-  zykluszeit_nz_duese_anlegen_s: number;
-  zykluszeit_nz_einspritzen_s: number;
-  zykluszeit_nz_werkzeug_oeffnen_s: number;
-  zykluszeit_nz_auswerfen_s: number;
-  zykluszeit_nz_kernzug_s: number;
-  zykluszeit_nz_ausschrauben_s: number;
-  zykluszeit_nz_einlegen_s: number;
-  zykluszeit_nz_ausblasen_s: number;
+  zykluszeit_groessenklasse: ZykluszeitGroessenklasse;
+  /** Übersteuert den Richtwert der Größenklasse, wenn gesetzt. */
+  zykluszeit_nebenzeiten_gesamt_s: number | null;
 
   lohnkosten_id: number | null;
   lohnstundensatz: number;
@@ -252,10 +228,7 @@ export interface SpritzgussKalkulation extends SpritzgussFormData {
   maschinen_groesse_zuhaltekraft_erforderlich_t?: number | null;
   maschinen_groesse_empfohlene_maschine_id?: number | null;
   maschinen_groesse_warnung?: string | null;
-  zykluszeit_temperaturleitfaehigkeit_m2_s?: number | null;
-  zykluszeit_optimale_kuehlzeit_s?: number | null;
   zykluszeit_kuehlzeit_s?: number | null;
-  zykluszeit_nebenzeiten_gesamt_s?: number | null;
   zykluszeit_vorschlag_s?: number | null;
   zykluszeit_hinweis?: string | null;
   ergebnis: SpritzgussErgebnis | null;
@@ -316,20 +289,8 @@ export const emptySpritzgussForm = (): SpritzgussFormData => ({
   maschinenstundensatz: 0,
   zykluszeit_quelle: "manuell",
   zykluszeit_wandstaerke_mm: null,
-  zykluszeit_variante: ZYKLUSZEIT_DEFAULT_VARIANTE,
-  zykluszeit_kuehlfaktor: ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
-  zykluszeit_komponenten: 1,
-  ...(ZYKLUSZEIT_NEBENZEIT_DEFAULTS as {
-    zykluszeit_nz_werkzeug_schliessen_s: number;
-    zykluszeit_nz_duese_anlegen_s: number;
-    zykluszeit_nz_einspritzen_s: number;
-    zykluszeit_nz_werkzeug_oeffnen_s: number;
-    zykluszeit_nz_auswerfen_s: number;
-    zykluszeit_nz_kernzug_s: number;
-    zykluszeit_nz_ausschrauben_s: number;
-    zykluszeit_nz_einlegen_s: number;
-    zykluszeit_nz_ausblasen_s: number;
-  }),
+  zykluszeit_groessenklasse: ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
+  zykluszeit_nebenzeiten_gesamt_s: null,
   lohnkosten_id: null,
   lohnstundensatz: 0,
   werkzeug_abrechnungsart: "amortisation",

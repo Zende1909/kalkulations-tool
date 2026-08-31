@@ -41,7 +41,6 @@ from app.schemas.spritzguss_veredelung import (
     VeredelungZuordnungUpdate,
 )
 from app.schemas.zykluszeit import (
-    NEBENZEIT_MODEL_FIELDS,
     ZykluszeitCalcRequest,
     ZykluszeitFields,
     ZykluszeitResultSchema,
@@ -75,10 +74,6 @@ from app.services.spritzguss_kalkulation import (
 )
 from app.services.spritzguss_hierarchy import resolve_hierarchy_for_spritzguss
 from app.services.zykluszeit import (
-    DEFAULT_KOMPONENTEN,
-    DEFAULT_KUEHLFAKTOR,
-    DEFAULT_NEBENZEITEN,
-    DEFAULT_VARIANTE,
     ZykluszeitInput,
     ZykluszeitResult,
     berechne_zykluszeit,
@@ -225,69 +220,24 @@ def _maschinen_groesse_schema(result: MaschinenGroesseResult | None) -> Maschine
     return MaschinenGroesseResultSchema(**result.as_dict())
 
 
-_THERMIK_ATTRS = (
-    "schmelzdichte_kg_m3",
-    "waermekapazitaet_j_kg_k",
-    "waermeleitfaehigkeit_w_m_k",
-    "werkzeugtemperatur_c",
-    "schmelzetemperatur_c",
-    "entformungstemperatur_c",
-)
-
+# Rein berechnete Spalten. `zykluszeit_nebenzeiten_gesamt_s` gehört bewusst
+# nicht dazu: dort steht die optionale Übersteuerung des Klassen-Richtwerts.
 _ZYKLUSZEIT_RESULT_ATTRS = (
-    "zykluszeit_temperaturleitfaehigkeit_m2_s",
-    "zykluszeit_optimale_kuehlzeit_s",
     "zykluszeit_kuehlzeit_s",
-    "zykluszeit_nebenzeiten_gesamt_s",
     "zykluszeit_vorschlag_s",
     "zykluszeit_hinweis",
 )
 
 
-def _material_thermik(db: Session, material_id: int | None) -> dict[str, float | None]:
-    """Thermische Kennwerte des Materials; fehlende Werte bleiben ``None``."""
+def _materialgruppe(db: Session, material_id: int | None) -> str | None:
     if material_id is None:
-        return {attr: None for attr in _THERMIK_ATTRS}
+        return None
     material = db.get(Material, material_id)
-    if material is None:
-        return {attr: None for attr in _THERMIK_ATTRS}
-    return {attr: getattr(material, attr, None) for attr in _THERMIK_ATTRS}
-
-
-def _zykluszeit_input_from_fields(
-    db: Session,
-    *,
-    material_id: int | None,
-    wandstaerke_mm: float | None,
-    variante: int | None,
-    kuehlfaktor: float | None,
-    komponenten: int | None,
-    nebenzeiten: dict[str, float],
-) -> ZykluszeitInput:
-    thermik = _material_thermik(db, material_id)
-    return ZykluszeitInput(
-        wandstaerke_mm=wandstaerke_mm,
-        variante=variante if variante is not None else DEFAULT_VARIANTE,
-        kuehlfaktor=kuehlfaktor if kuehlfaktor is not None else DEFAULT_KUEHLFAKTOR,
-        komponenten=komponenten if komponenten is not None else DEFAULT_KOMPONENTEN,
-        nebenzeiten=nebenzeiten,
-        **thermik,  # type: ignore[arg-type]
-    )
-
-
-def _nebenzeiten_from_obj(obj: SpritzgussKalkulation) -> dict[str, float]:
-    werte: dict[str, float] = {}
-    for key, model_field in NEBENZEIT_MODEL_FIELDS.items():
-        wert = getattr(obj, model_field, None)
-        werte[key] = float(wert) if wert is not None else DEFAULT_NEBENZEITEN[key]
-    return werte
+    return getattr(material, "materialgruppe", None) if material is not None else None
 
 
 def _apply_zykluszeit_result(obj: SpritzgussKalkulation, result: ZykluszeitResult) -> None:
-    obj.zykluszeit_temperaturleitfaehigkeit_m2_s = result.temperaturleitfaehigkeit_m2_s
-    obj.zykluszeit_optimale_kuehlzeit_s = result.optimale_kuehlzeit_s
     obj.zykluszeit_kuehlzeit_s = result.kuehlzeit_s
-    obj.zykluszeit_nebenzeiten_gesamt_s = result.nebenzeiten_gesamt_s
     obj.zykluszeit_vorschlag_s = result.gesamtzykluszeit_s
     obj.zykluszeit_hinweis = result.hinweis
 
@@ -295,7 +245,7 @@ def _apply_zykluszeit_result(obj: SpritzgussKalkulation, result: ZykluszeitResul
 def _run_zykluszeit_for_model(
     db: Session, obj: SpritzgussKalkulation
 ) -> ZykluszeitResult | None:
-    """Zykluszeitvorschlag am Datensatz aktualisieren.
+    """Zykluszeit-Schätzung am Datensatz aktualisieren.
 
     Der Vorschlag ist rein informativ: er blockiert das Speichern nie und
     überschreibt ``zykluszeit_s`` nicht. Ohne gepflegte Wandstärke gilt der
@@ -306,14 +256,11 @@ def _run_zykluszeit_for_model(
             setattr(obj, attr, None)
         return None
     result = berechne_zykluszeit(
-        _zykluszeit_input_from_fields(
-            db,
-            material_id=obj.material_id,
+        ZykluszeitInput(
             wandstaerke_mm=obj.zykluszeit_wandstaerke_mm,
-            variante=obj.zykluszeit_variante,
-            kuehlfaktor=obj.zykluszeit_kuehlfaktor,
-            komponenten=obj.zykluszeit_komponenten,
-            nebenzeiten=_nebenzeiten_from_obj(obj),
+            materialgruppe=_materialgruppe(db, obj.material_id),
+            groessenklasse=obj.zykluszeit_groessenklasse,
+            nebenzeiten_gesamt_s=obj.zykluszeit_nebenzeiten_gesamt_s,
         )
     )
     _apply_zykluszeit_result(obj, result)
@@ -324,14 +271,11 @@ def _run_zykluszeit_for_request(
     db: Session, body: ZykluszeitCalcRequest | SpritzgussCalcRequest
 ) -> ZykluszeitResult:
     return berechne_zykluszeit(
-        _zykluszeit_input_from_fields(
-            db,
-            material_id=body.material_id,
+        ZykluszeitInput(
             wandstaerke_mm=body.zykluszeit_wandstaerke_mm,
-            variante=body.zykluszeit_variante,
-            kuehlfaktor=body.zykluszeit_kuehlfaktor,
-            komponenten=body.zykluszeit_komponenten,
-            nebenzeiten=body.nebenzeiten_dict(),
+            materialgruppe=_materialgruppe(db, body.material_id),
+            groessenklasse=body.zykluszeit_groessenklasse,
+            nebenzeiten_gesamt_s=body.zykluszeit_nebenzeiten_gesamt_s,
         )
     )
 

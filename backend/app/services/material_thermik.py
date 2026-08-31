@@ -1,19 +1,14 @@
-"""Thermische Materialgruppen-Richtwerte für die Kühlzeitberechnung (IKET).
+"""Thermische Kennwerte je Materialgruppe für die Zykluszeit-Schätzung.
 
-Herkunft der Werte:
+Diese Werte werden bewusst *nicht* je Material gepflegt: für eine Abschätzung
+der Zykluszeit genügt die Materialgruppe. Am Material wird deshalb nur noch die
+Gruppe hinterlegt, alles Weitere kommt aus dieser Tabelle.
 
-``POM``
-    Vollständig aus der Referenz ``IKET-Kostenkalkulation - Dosing Guide.xlsx``,
-    Blatt ``Zykluszeitbestimmung`` (Delrin 500P NC010, DuPont).
-
-Übrige Gruppen
-    Übliche Verarbeitungs-Richtwerte für Thermoplaste. Sie dienen ausschließlich
-    als Vorbelegung und müssen gegen das Materialdatenblatt geprüft werden;
-    deshalb ist jede Gruppe mit ``quelle`` gekennzeichnet.
-
-Die Schmelzdichte ist bewusst getrennt von der Feststoffdichte des Materials
-(``Material.dichte``) geführt, weil die IKET-Kühlzeitformel mit der Dichte der
-Schmelze rechnet.
+Der POM-Satz stammt direkt aus ``IKET-Kostenkalkulation - Dosing Guide.xlsx``
+(Blatt ``Zykluszeitbestimmung``), die übrigen Sätze sind gängige Richtwerte aus
+der Verarbeitungsliteratur (Menges/Mohren) und als solche gekennzeichnet. Alle
+Sätze ergeben eine Temperaturleitfähigkeit im üblichen Band von rund
+0,07 bis 0,12 mm²/s.
 """
 
 from __future__ import annotations
@@ -39,16 +34,6 @@ class ThermikDefaults:
     def as_dict(self) -> dict:
         return asdict(self)
 
-    def thermik_felder(self) -> dict[str, float]:
-        return {
-            "schmelzdichte_kg_m3": self.schmelzdichte_kg_m3,
-            "waermekapazitaet_j_kg_k": self.waermekapazitaet_j_kg_k,
-            "waermeleitfaehigkeit_w_m_k": self.waermeleitfaehigkeit_w_m_k,
-            "werkzeugtemperatur_c": self.werkzeugtemperatur_c,
-            "schmelzetemperatur_c": self.schmelzetemperatur_c,
-            "entformungstemperatur_c": self.entformungstemperatur_c,
-        }
-
 
 MATERIALGRUPPEN_DEFAULTS: dict[str, ThermikDefaults] = {
     d.gruppe: d
@@ -61,6 +46,9 @@ MATERIALGRUPPEN_DEFAULTS: dict[str, ThermikDefaults] = {
         ),
         ThermikDefaults(
             "PE-HD", "Polyethylen hart", 760.0, 2900.0, 0.25, 30.0, 220.0, 80.0, QUELLE_RICHTWERT
+        ),
+        ThermikDefaults(
+            "PE-LD", "Polyethylen weich", 740.0, 3000.0, 0.24, 30.0, 200.0, 70.0, QUELLE_RICHTWERT
         ),
         ThermikDefaults(
             "PA6", "Polyamid 6", 980.0, 2600.0, 0.25, 80.0, 250.0, 130.0, QUELLE_RICHTWERT
@@ -89,24 +77,39 @@ MATERIALGRUPPEN_DEFAULTS: dict[str, ThermikDefaults] = {
             "PC", "Polycarbonat", 1050.0, 2000.0, 0.21, 90.0, 300.0, 130.0, QUELLE_RICHTWERT
         ),
         ThermikDefaults(
-            "PMMA", "Polymethylmethacrylat", 1080.0, 2100.0, 0.19, 70.0, 250.0, 100.0,
+            "PMMA",
+            "Polymethylmethacrylat",
+            1080.0,
+            2100.0,
+            0.19,
+            70.0,
+            250.0,
+            100.0,
             QUELLE_RICHTWERT,
         ),
         ThermikDefaults(
-            "PBT", "Polybutylenterephthalat", 1120.0, 2300.0, 0.22, 80.0, 250.0, 130.0,
+            "PBT",
+            "Polybutylenterephthalat",
+            1120.0,
+            2300.0,
+            0.22,
+            80.0,
+            250.0,
+            130.0,
             QUELLE_RICHTWERT,
         ),
     )
 }
 
-THERMIK_FELDER = (
-    "schmelzdichte_kg_m3",
-    "waermekapazitaet_j_kg_k",
-    "waermeleitfaehigkeit_w_m_k",
-    "werkzeugtemperatur_c",
-    "schmelzetemperatur_c",
-    "entformungstemperatur_c",
-)
+_ALIASE = {
+    "PEHD": "PE-HD",
+    "HDPE": "PE-HD",
+    "PELD": "PE-LD",
+    "LDPE": "PE-LD",
+    "PA-6": "PA6",
+    "PA-66": "PA66",
+    "POMC": "POM",
+}
 
 
 def normalisiere_gruppe(wert: str | None) -> str | None:
@@ -118,8 +121,7 @@ def normalisiere_gruppe(wert: str | None) -> str | None:
         return None
     if key in MATERIALGRUPPEN_DEFAULTS:
         return key
-    aliase = {"PEHD": "PE-HD", "HDPE": "PE-HD", "PA-6": "PA6", "PA-66": "PA66", "POMC": "POM"}
-    return aliase.get(key)
+    return _ALIASE.get(key)
 
 
 def defaults_fuer_gruppe(gruppe: str | None) -> ThermikDefaults | None:

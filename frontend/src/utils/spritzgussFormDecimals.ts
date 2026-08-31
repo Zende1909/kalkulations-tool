@@ -1,9 +1,5 @@
 import type { SpritzgussFormData } from "../types/spritzguss";
 import {
-  ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
-  ZYKLUSZEIT_NEBENZEIT_DEFAULTS,
-} from "../types/spritzguss";
-import {
   coerceFormDecimal,
   formatDecimalForInputDe,
   parsePercentPointsInput,
@@ -26,16 +22,7 @@ export const SPRITZGuss_DECIMAL_FIELDS = [
   "maschinen_groesse_laenge_mm",
   "maschinen_groesse_proj_flaeche_mm2",
   "zykluszeit_wandstaerke_mm",
-  "zykluszeit_kuehlfaktor",
-  "zykluszeit_nz_werkzeug_schliessen_s",
-  "zykluszeit_nz_duese_anlegen_s",
-  "zykluszeit_nz_einspritzen_s",
-  "zykluszeit_nz_werkzeug_oeffnen_s",
-  "zykluszeit_nz_auswerfen_s",
-  "zykluszeit_nz_kernzug_s",
-  "zykluszeit_nz_ausschrauben_s",
-  "zykluszeit_nz_einlegen_s",
-  "zykluszeit_nz_ausblasen_s",
+  "zykluszeit_nebenzeiten_gesamt_s",
 ] as const;
 
 /** Prozentpunkte (nicht Bruchanteil). */
@@ -79,13 +66,9 @@ const NULLABLE_WHEN_EMPTY = new Set<string>([
   "maschinen_groesse_proj_flaeche_mm2",
   "maschinen_groesse_oeffnungen_pct",
   "zykluszeit_wandstaerke_mm",
+  // Leer bedeutet: Richtwert der Größenklasse verwenden.
+  "zykluszeit_nebenzeiten_gesamt_s",
 ]);
-
-/** Felder, die bei leerer Eingabe auf ihren IKET-Default zurückfallen. */
-const DEFAULT_WHEN_EMPTY: Record<string, number> = {
-  zykluszeit_kuehlfaktor: ZYKLUSZEIT_DEFAULT_KUEHLFAKTOR,
-  ...ZYKLUSZEIT_NEBENZEIT_DEFAULTS,
-};
 
 export function parseSpritzgussDecimalFields(
   decimalRaw: Record<string, string>,
@@ -98,10 +81,6 @@ export function parseSpritzgussDecimalFields(
     if (text.trim() === "") {
       if (NULLABLE_WHEN_EMPTY.has(key)) {
         (next as unknown as Record<string, number | null>)[key] = null;
-        continue;
-      }
-      if (key in DEFAULT_WHEN_EMPTY) {
-        (next as unknown as Record<string, number | null>)[key] = DEFAULT_WHEN_EMPTY[key];
         continue;
       }
     }
