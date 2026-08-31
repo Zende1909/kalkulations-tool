@@ -1,19 +1,24 @@
-"""Maschinenauslastung: Bedarf aus Spritzguss-Prozessen vs. verfügbare Jahresstunden.
+"""Maschinenauslastung: Laufzeit + Rüstzeit vs. verfügbare Jahresstunden.
 
-Formel (nicht Mittelung von Projektprozenten):
-    benötigte Stunden = Σ (Jahresstückzahl × Prozessfaktoren / Nettokapazität)
-    Nettokapazität aus Kalkulationsergebnis oder Zykluszeit/Kavitäten/Ausschuss.
-    verfügbare Stunden = Maschine.jahresstunden (Werk-Betriebsparameter, Planungsperiode Jahr)
-    Auslastung % = benötigte Stunden / verfügbare Stunden × 100
+OEE: `Maschine.jahresstunden` wird aus Werk-Parametern als
+    arbeitstage × schichten × stunden × OEE berechnet (siehe machine_hourly_rate).
+    OEE ist damit in den verfügbaren Stunden enthalten und wird nicht auf den Bedarf angewendet.
+
+Bedarf je Jahr (keine Mittelung von Projektprozenten):
+    Laufzeit = Jahresstückzahl × Mengenfaktor / Nettokapazität
+    Anzahl Lose = ceil(Jahresstückzahl × Mengenfaktor / Losgröße)
+    Rüstzeit = Anzahl Lose × (setup_zeit_min / 60)   [nur Maschinen-Rüstzeit, nicht in Nettokapazität]
+    Gesamtbedarf = Laufzeit + Rüstzeit
 """
 
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -30,27 +35,49 @@ from app.services.machine_hourly_rate import (
     berechne_maschinenstundensatz,
     build_rate_input_from_maschine_and_werk,
 )
-from app.services.project_volume_service import average_jahresstueckzahl_for_project
 from app.services.spritzguss_kalkulation import excel_round_0
+
+UTILIZATION_YEARS = list(range(2026, 2041))
+
+
+@dataclass(frozen=True)
+class _MachineCapacity:
+    gross_hours: float | None
+    oee: float | None
+    available_hours: float | None
+    oee_in_available_hours: bool
+
+
+@dataclass
+class _YearBucket:
+    run_hours: float = 0.0
+    setup_hours: float = 0.0
+    project_ids: set[int] = field(default_factory=set)
 
 
 @dataclass
 class _DemandLine:
-    maschine_id: int
     project_id: int
     project_name: str
     source_type: str
     source_label: str
+    calendar_year: int
     jahresstueckzahl: float
-    required_hours: float
-    calendar_year: int | None = None
+    run_hours: float
+    setup_hours: float
+
+    @property
+    def required_hours(self) -> float:
+        return self.run_hours + self.setup_hours
 
 
 @dataclass
 class _MachineAgg:
-    required_hours: float = 0.0
+    yearly: dict[int, _YearBucket] = field(default_factory=dict)
     lines: list[_DemandLine] = field(default_factory=list)
-    yearly_hours: dict[int, float] = field(default_factory=dict)
+
+    def year_bucket(self, year: int) -> _YearBucket:
+        return self.yearly.setdefault(year, _YearBucket())
 
 
 def _parse_json_dict(value: object) -> dict:
@@ -65,6 +92,49 @@ def _parse_json_dict(value: object) -> dict:
         except json.JSONDecodeError:
             return {}
     return {}
+
+
+def _pick_werk_or_machine(werk: Werk | None, maschine: Maschine, attr: str) -> float | None:
+    if werk is not None:
+        val = getattr(werk, attr, None)
+        if val is not None:
+            return float(val)
+    val = getattr(maschine, attr, None)
+    return float(val) if val is not None else None
+
+
+def _resolve_machine_capacity(maschine: Maschine, werk: Werk | None) -> _MachineCapacity:
+    """Verfügbare Stunden = Brutto × OEE; jahresstunden enthält OEE bereits."""
+    oee = _pick_werk_or_machine(werk, maschine, "oee")
+    available: float | None = None
+    gross: float | None = None
+
+    if maschine.jahresstunden is not None:
+        available = float(maschine.jahresstunden)
+        if oee is not None and oee > 0:
+            gross = available / oee
+    elif werk is not None:
+        try:
+            rate_input = build_rate_input_from_maschine_and_werk(maschine, werk)
+            result = berechne_maschinenstundensatz(rate_input)
+            available = float(result.jahresstunden)
+            oee = float(rate_input.oee)
+            tage = float(rate_input.arbeitstage_pro_jahr)
+            schichten = float(rate_input.schichten_pro_tag)
+            stunden = float(rate_input.stunden_pro_schicht)
+            gross = tage * schichten * stunden
+        except MachineRateValidationError:
+            pass
+
+    if gross is None and available is not None and oee is not None and oee > 0:
+        gross = available / oee
+
+    return _MachineCapacity(
+        gross_hours=gross,
+        oee=oee,
+        available_hours=available,
+        oee_in_available_hours=True,
+    )
 
 
 def _resolve_nettokapazitaet(calc: SpritzgussKalkulation) -> float | None:
@@ -92,32 +162,31 @@ def _resolve_nettokapazitaet(calc: SpritzgussKalkulation) -> float | None:
     return netto if netto > 0 else None
 
 
-def _hours_from_volume(stueckzahl: float, nettokapazitaet: float | None) -> float | None:
-    if nettokapazitaet is None or nettokapazitaet <= 0 or stueckzahl <= 0:
-        return None
-    return float(stueckzahl) / float(nettokapazitaet)
+def _setup_aktiv(calc: SpritzgussKalkulation, maschine: Maschine) -> bool:
+    ergebnis = _parse_json_dict(calc.ergebnis)
+    bloecke = _parse_json_dict(calc.ergebnis_bloecke)
+    fertigung = bloecke.get("fertigung") if isinstance(bloecke.get("fertigung"), dict) else {}
+    if fertigung.get("setup_aktiv") is False or ergebnis.get("setup_aktiv") is False:
+        return False
+    setup_min = float(getattr(maschine, "setup_zeit_min", None) or 0)
+    los = calc.losgroesse
+    return setup_min > 0 and los is not None and int(los) >= 1
 
 
-def _resolve_jahresstueckzahl(db: Session, project_id: int, stored: int | None) -> float:
-    if stored is not None and int(stored) > 0:
-        return float(stored)
-    avg = average_jahresstueckzahl_for_project(db, project_id)
-    if avg.jahresstueckzahl is not None and avg.jahresstueckzahl > 0:
-        return float(avg.jahresstueckzahl)
-    return 0.0
+def _run_hours(volume: float, nettokapazitaet: float | None) -> float:
+    if nettokapazitaet is None or nettokapazitaet <= 0 or volume <= 0:
+        return 0.0
+    return float(volume) / float(nettokapazitaet)
 
 
-def _resolve_available_hours(maschine: Maschine, werk: Werk | None) -> float | None:
-    if maschine.jahresstunden is not None:
-        return float(maschine.jahresstunden)
-    if werk is None:
-        return None
-    try:
-        rate_input = build_rate_input_from_maschine_and_werk(maschine, werk)
-        result = berechne_maschinenstundensatz(rate_input)
-        return float(result.jahresstunden)
-    except MachineRateValidationError:
-        return None
+def _setup_hours(volume: float, losgroesse: int | None, setup_zeit_min: float | None) -> float:
+    if volume <= 0 or losgroesse is None or int(losgroesse) < 1:
+        return 0.0
+    setup_min = float(setup_zeit_min or 0)
+    if setup_min <= 0:
+        return 0.0
+    lots = math.ceil(float(volume) / float(losgroesse))
+    return lots * (setup_min / 60.0)
 
 
 def _validate_hierarchy(
@@ -186,75 +255,115 @@ def _baugruppen_for_project(db: Session, project_id: int) -> list[Baugruppe]:
     )
 
 
-def _project_year_volumes(db: Session, project: Project) -> list[tuple[int, float]]:
+def _project_year_volume_map(db: Session, project: Project) -> dict[int, float]:
+    from app.services.hierarchy import calculate_project_volume
+
     rows = db.scalars(
         select(ProgramVolume)
         .where(ProgramVolume.program_id == project.program_id)
         .order_by(ProgramVolume.calendar_year.asc())
     ).all()
-    from app.services.hierarchy import calculate_project_volume
-
-    out: list[tuple[int, float]] = []
+    out: dict[int, float] = {}
     for vol in rows:
+        year = int(vol.calendar_year)
+        if year not in UTILIZATION_YEARS:
+            continue
         pv = calculate_project_volume(vol.vehicle_volume, project.quantity_per_vehicle)
         if pv > 0:
-            out.append((int(vol.calendar_year), float(pv)))
+            out[year] = float(pv)
     return out
 
 
-def _add_demand(
+def _add_yearly_demand(
     agg: dict[int, _MachineAgg],
     *,
-    maschine_id: int,
+    maschine: Maschine,
+    calc: SpritzgussKalkulation,
     project_id: int,
     project_name: str,
     source_type: str,
     source_label: str,
-    stueckzahl: float,
+    year_volumes: dict[int, float],
+    quantity_factor: float,
     nettokapazitaet: float | None,
-    year_volumes: list[tuple[int, float]] | None = None,
-    quantity_factor: float = 1.0,
 ) -> None:
-    effective_qty = float(stueckzahl) * float(quantity_factor)
-    hours = _hours_from_volume(effective_qty, nettokapazitaet)
-    if hours is None:
+    setup_min = float(maschine.setup_zeit_min or 0) if _setup_aktiv(calc, maschine) else 0.0
+    los = int(calc.losgroesse) if calc.losgroesse is not None else None
+    bucket_root = agg.setdefault(maschine.id, _MachineAgg())
+
+    for year in UTILIZATION_YEARS:
+        raw_vol = year_volumes.get(year, 0.0)
+        volume = raw_vol * float(quantity_factor)
+        run = _run_hours(volume, nettokapazitaet)
+        setup = _setup_hours(volume, los, setup_min) if setup_min > 0 else 0.0
+        if run <= 0 and setup <= 0:
+            continue
+        yb = bucket_root.year_bucket(year)
+        yb.run_hours += run
+        yb.setup_hours += setup
+        yb.project_ids.add(project_id)
+        bucket_root.lines.append(
+            _DemandLine(
+                project_id=project_id,
+                project_name=project_name,
+                source_type=source_type,
+                source_label=source_label,
+                calendar_year=year,
+                jahresstueckzahl=volume,
+                run_hours=run,
+                setup_hours=setup,
+            )
+        )
+
+
+def _process_calc_link(
+    db: Session,
+    agg: dict[int, _MachineAgg],
+    *,
+    calc: SpritzgussKalkulation,
+    maschine: Maschine,
+    project: Project,
+    source_type: str,
+    source_label: str,
+    year_volumes: dict[int, float],
+    quantity_factor: float,
+    plant_machine_ids: set[int],
+) -> None:
+    if calc.maschine_id is None or int(calc.maschine_id) not in plant_machine_ids:
         return
-    bucket = agg.setdefault(maschine_id, _MachineAgg())
-    line = _DemandLine(
-        maschine_id=maschine_id,
-        project_id=project_id,
-        project_name=project_name,
+    if not calc.aktiv:
+        return
+    netto = _resolve_nettokapazitaet(calc)
+    _add_yearly_demand(
+        agg,
+        maschine=maschine,
+        calc=calc,
+        project_id=project.id,
+        project_name=project.name,
         source_type=source_type,
         source_label=source_label,
-        jahresstueckzahl=effective_qty,
-        required_hours=hours,
+        year_volumes=year_volumes,
+        quantity_factor=quantity_factor,
+        nettokapazitaet=netto,
     )
-    bucket.required_hours += hours
-    bucket.lines.append(line)
-    if year_volumes and nettokapazitaet:
-        for year, vol in year_volumes:
-            y_hours = _hours_from_volume(vol * quantity_factor, nettokapazitaet)
-            if y_hours is not None:
-                bucket.yearly_hours[year] = bucket.yearly_hours.get(year, 0.0) + y_hours
 
 
 def _collect_project_demand(
     db: Session,
     *,
     project: Project,
-    plant_machine_ids: set[int],
+    plant_machines: dict[int, Maschine],
     agg: dict[int, _MachineAgg],
 ) -> None:
-    project_id = project.id
-    project_name = project.name
-    baugruppen = _baugruppen_for_project(db, project_id)
+    plant_machine_ids = set(plant_machines.keys())
+    baugruppen = _baugruppen_for_project(db, project.id)
     linked_sg_ids = _spritzguss_ids_in_baugruppen(db, [b.id for b in baugruppen])
-    year_volumes = _project_year_volumes(db, project)
+    year_volumes = _project_year_volume_map(db, project)
 
     standalone_rows = list(
         db.scalars(
             select(SpritzgussKalkulation).where(
-                SpritzgussKalkulation.project_id == project_id,
+                SpritzgussKalkulation.project_id == project.id,
                 SpritzgussKalkulation.aktiv.is_(True),
                 SpritzgussKalkulation.maschine_id.is_not(None),
             )
@@ -263,24 +372,24 @@ def _collect_project_demand(
     for calc in standalone_rows:
         if calc.id in linked_sg_ids:
             continue
-        if calc.maschine_id not in plant_machine_ids:
+        maschine = plant_machines.get(int(calc.maschine_id or 0))
+        if maschine is None:
             continue
-        netto = _resolve_nettokapazitaet(calc)
-        qty = _resolve_jahresstueckzahl(db, project_id, calc.jahresstueckzahl)
-        _add_demand(
+        _process_calc_link(
+            db,
             agg,
-            maschine_id=int(calc.maschine_id),
-            project_id=project_id,
-            project_name=project_name,
+            calc=calc,
+            maschine=maschine,
+            project=project,
             source_type="einzelteil",
             source_label=calc.teilebezeichnung or calc.teilenummer,
-            stueckzahl=qty,
-            nettokapazitaet=netto,
             year_volumes=year_volumes,
+            quantity_factor=1.0,
+            plant_machine_ids=plant_machine_ids,
         )
 
     for bg in baugruppen:
-        bg_qty = _resolve_jahresstueckzahl(db, project_id, bg.jahresstueckzahl)
+        bg_year_volumes = year_volumes
         legacy_links = list(
             db.scalars(
                 select(BaugruppeSpritzgussZuordnung).where(
@@ -290,23 +399,22 @@ def _collect_project_demand(
         )
         for link in legacy_links:
             calc = db.get(SpritzgussKalkulation, link.spritzguss_kalkulation_id)
-            if calc is None or not calc.aktiv or calc.maschine_id is None:
+            if calc is None:
                 continue
-            if int(calc.maschine_id) not in plant_machine_ids:
+            maschine = plant_machines.get(int(calc.maschine_id or 0))
+            if maschine is None:
                 continue
-            netto = _resolve_nettokapazitaet(calc)
-            factor = float(link.menge or 1.0)
-            _add_demand(
+            _process_calc_link(
+                db,
                 agg,
-                maschine_id=int(calc.maschine_id),
-                project_id=project_id,
-                project_name=project_name,
+                calc=calc,
+                maschine=maschine,
+                project=project,
                 source_type="baugruppe",
                 source_label=f"{bg.name} → {calc.teilebezeichnung or calc.teilenummer}",
-                stueckzahl=bg_qty,
-                nettokapazitaet=netto,
-                year_volumes=year_volumes,
-                quantity_factor=factor,
+                year_volumes=bg_year_volumes,
+                quantity_factor=float(link.menge or 1.0),
+                plant_machine_ids=plant_machine_ids,
             )
 
         positions = list(
@@ -321,23 +429,23 @@ def _collect_project_demand(
         )
         for pos in positions:
             calc = db.get(SpritzgussKalkulation, pos.part_calculation_id)
-            if calc is None or not calc.aktiv or calc.maschine_id is None:
+            if calc is None:
                 continue
-            if int(calc.maschine_id) not in plant_machine_ids:
+            maschine = plant_machines.get(int(calc.maschine_id or 0))
+            if maschine is None:
                 continue
-            netto = _resolve_nettokapazitaet(calc)
             factor = float(pos.quantity or 1.0) * float(pos.quantity_factor or 1.0)
-            _add_demand(
+            _process_calc_link(
+                db,
                 agg,
-                maschine_id=int(calc.maschine_id),
-                project_id=project_id,
-                project_name=project_name,
+                calc=calc,
+                maschine=maschine,
+                project=project,
                 source_type="baugruppe",
                 source_label=f"{bg.name} → {calc.teilebezeichnung or calc.teilenummer}",
-                stueckzahl=bg_qty,
-                nettokapazitaet=netto,
-                year_volumes=year_volumes,
+                year_volumes=bg_year_volumes,
                 quantity_factor=factor,
+                plant_machine_ids=plant_machine_ids,
             )
 
 
@@ -345,6 +453,61 @@ def _ratio_pct(numerator: float, denominator: float | None) -> float | None:
     if denominator is None or denominator <= 0:
         return None
     return numerator / denominator * 100.0
+
+
+def _year_row_dict(
+    *,
+    year: int,
+    maschine: Maschine,
+    capacity: _MachineCapacity,
+    bucket: _YearBucket,
+    lines: list[_DemandLine],
+) -> dict:
+    required = bucket.run_hours + bucket.setup_hours
+    available = capacity.available_hours
+    util = _ratio_pct(required, available) if available is not None and available > 0 else None
+    remaining = (available - required) if available is not None and available > 0 else None
+    overloaded = bool(available is not None and available > 0 and required > available)
+    year_lines = [ln for ln in lines if ln.calendar_year == year]
+    return {
+        "year": year,
+        "calendar_year": year,
+        "machine_id": maschine.id,
+        "maschine_id": maschine.id,
+        "machine_name": maschine.bezeichnung,
+        "maschinen_nr": maschine.maschinen_nr,
+        "gross_hours": round(capacity.gross_hours, 6) if capacity.gross_hours is not None else None,
+        "oee": round(capacity.oee, 6) if capacity.oee is not None else None,
+        "oee_in_available_hours": capacity.oee_in_available_hours,
+        "available_hours": round(available, 6) if available is not None else None,
+        "run_hours": round(bucket.run_hours, 6),
+        "setup_hours": round(bucket.setup_hours, 6),
+        "required_hours": round(required, 6),
+        "utilization_pct": round(util, 6) if util is not None else None,
+        "utilization_percent": round(util, 6) if util is not None else None,
+        "remaining_hours": round(remaining, 6) if remaining is not None else None,
+        "rest_capacity_hours": round(remaining, 6) if remaining is not None else None,
+        "overload_hours": round(max(0.0, required - available), 6)
+        if available is not None and available > 0 and required > available
+        else None,
+        "is_overloaded": overloaded,
+        "overloaded": overloaded,
+        "has_demand": required > 0,
+        "project_ids": sorted(bucket.project_ids),
+        "projects": [
+            {
+                "project_id": ln.project_id,
+                "project_name": ln.project_name,
+                "source_type": ln.source_type,
+                "source_label": ln.source_label,
+                "jahresstueckzahl": round(ln.jahresstueckzahl, 4),
+                "run_hours": round(ln.run_hours, 6),
+                "setup_hours": round(ln.setup_hours, 6),
+                "required_hours": round(ln.required_hours, 6),
+            }
+            for ln in year_lines
+        ],
+    }
 
 
 def build_maschinen_auslastung(
@@ -369,7 +532,7 @@ def build_maschinen_auslastung(
     if nur_aktiv:
         stmt = stmt.where(Maschine.aktiv.is_(True))
     machines = list(db.scalars(stmt).all())
-    plant_machine_ids = {m.id for m in machines}
+    plant_machines = {m.id: m for m in machines}
 
     agg: dict[int, _MachineAgg] = {}
     if pids:
@@ -380,86 +543,63 @@ def build_maschinen_auslastung(
             _collect_project_demand(
                 db,
                 project=project,
-                plant_machine_ids=plant_machine_ids,
+                plant_machines=plant_machines,
                 agg=agg,
             )
 
-    rows: list[dict] = []
-    util_pcts: list[float] = []
-    total_required = 0.0
-    total_available = 0.0
-    overloaded_count = 0
-    max_pct: float | None = None
-    max_mid: int | None = None
-    max_name: str | None = None
-    machines_with_demand = 0
+    yearly_rows: list[dict] = []
+    machine_rows: list[dict] = []
+    capacities: dict[int, _MachineCapacity] = {
+        m.id: _resolve_machine_capacity(m, werk) for m in machines
+    }
 
     for maschine in machines:
-        bucket = agg.get(maschine.id, _MachineAgg())
-        required = float(bucket.required_hours)
-        available = _resolve_available_hours(maschine, werk)
-        util = _ratio_pct(required, available) if available is not None and available > 0 else None
-        rest = (available - required) if available is not None and available > 0 else None
-        overload = max(0.0, required - available) if available is not None and available > 0 else None
-        is_overloaded = bool(available is not None and available > 0 and required > available)
-        if required > 0:
-            machines_with_demand += 1
-        if is_overloaded:
-            overloaded_count += 1
-        if util is not None:
-            util_pcts.append(util)
-            if max_pct is None or util > max_pct:
-                max_pct = util
-                max_mid = maschine.id
-                max_name = maschine.bezeichnung
-        if available is not None:
-            total_available += available
-            total_required += required
+        capacity = capacities[maschine.id]
+        bucket_agg = agg.get(maschine.id, _MachineAgg())
+        machine_yearly: list[dict] = []
 
-        yearly_breakdown: list[dict] = []
-        if bucket.yearly_hours:
-            for year in sorted(bucket.yearly_hours):
-                y_req = bucket.yearly_hours[year]
-                yearly_breakdown.append(
-                    {
-                        "calendar_year": year,
-                        "required_hours": round(y_req, 6),
-                        "available_hours": available,
-                        "utilization_pct": _ratio_pct(y_req, available),
-                    }
-                )
+        for year in UTILIZATION_YEARS:
+            yb = bucket_agg.yearly.get(year, _YearBucket())
+            row = _year_row_dict(
+                year=year,
+                maschine=maschine,
+                capacity=capacity,
+                bucket=yb,
+                lines=bucket_agg.lines,
+            )
+            machine_yearly.append(row)
+            yearly_rows.append(row)
 
-        rows.append(
+        total_required = sum(r["required_hours"] for r in machine_yearly)
+        total_run = sum(r["run_hours"] for r in machine_yearly)
+        total_setup = sum(r["setup_hours"] for r in machine_yearly)
+        available = capacity.available_hours
+        years_with_demand = sum(1 for r in machine_yearly if r["has_demand"])
+
+        machine_rows.append(
             {
                 "maschine_id": maschine.id,
                 "maschinen_nr": maschine.maschinen_nr,
                 "bezeichnung": maschine.bezeichnung,
                 "werk_id": maschine.werk_id,
                 "werk_name": werk.name,
+                "gross_hours": capacity.gross_hours,
+                "oee": capacity.oee,
+                "oee_in_available_hours": capacity.oee_in_available_hours,
                 "available_hours": available,
-                "required_hours": round(required, 6),
-                "utilization_pct": round(util, 6) if util is not None else None,
-                "rest_capacity_hours": round(rest, 6) if rest is not None else None,
-                "overload_hours": round(overload, 6) if overload is not None else None,
-                "is_overloaded": is_overloaded,
-                "has_demand": required > 0,
-                "projects": [
-                    {
-                        "project_id": line.project_id,
-                        "project_name": line.project_name,
-                        "source_type": line.source_type,
-                        "source_label": line.source_label,
-                        "jahresstueckzahl": round(line.jahresstueckzahl, 4),
-                        "required_hours": round(line.required_hours, 6),
-                    }
-                    for line in bucket.lines
-                ],
-                "yearly_breakdown": yearly_breakdown,
+                "run_hours": round(total_run, 6),
+                "setup_hours": round(total_setup, 6),
+                "required_hours": round(total_required, 6),
+                "utilization_pct": None,
+                "rest_capacity_hours": None,
+                "overload_hours": None,
+                "is_overloaded": False,
+                "has_demand": total_required > 0,
+                "years_with_demand": years_with_demand,
+                "yearly_breakdown": machine_yearly,
+                "projects": [],
             }
         )
-
-    avg_util = sum(util_pcts) / len(util_pcts) if util_pcts else None
-    plant_util = _ratio_pct(total_required, total_available if total_available > 0 else None)
 
     return {
         "plant_id": plant_id,
@@ -468,22 +608,72 @@ def build_maschinen_auslastung(
         "program_id": program_id,
         "project_ids": pids,
         "no_projects_selected": len(pids) == 0,
+        "years": UTILIZATION_YEARS,
         "planning_period": {
-            "label": "Jahresplanung",
-            "basis": "Jahresstückzahl (Durchschnitt Projektmengenprofil) vs. Maschine.jahresstunden (Werk-Betriebsparameter)",
-            "available_hours_per_machine_year": _resolve_available_hours(machines[0], werk)
+            "label": "Jahresauslastung 2026–2040",
+            "basis": (
+                "Pro Jahresstückzahl aus Projektmengenprofil; verfügbare Stunden = Brutto × OEE "
+                "(OEE bereits in Maschine.jahresstunden); Bedarf = Laufzeit + Rüstzeit"
+            ),
+            "available_hours_per_machine_year": capacities[machines[0].id].available_hours
             if len(machines) == 1
             else None,
+            "oee_in_available_hours": True,
         },
-        "summary": {
-            "machine_count": len(machines),
-            "machines_with_demand": machines_with_demand,
-            "overloaded_count": overloaded_count,
-            "average_utilization_pct": round(avg_util, 6) if avg_util is not None else None,
-            "plant_utilization_pct": round(plant_util, 6) if plant_util is not None else None,
-            "max_utilization_pct": round(max_pct, 6) if max_pct is not None else None,
-            "max_utilization_maschine_id": max_mid,
-            "max_utilization_maschine_name": max_name,
-        },
-        "machines": rows,
+        "summary": _build_summary(yearly_rows, len(machines)),
+        "yearly_rows": yearly_rows,
+        "machines": machine_rows,
     }
+
+
+def _build_summary(yearly_rows: list[dict], machine_count: int) -> dict:
+    util_pcts = [
+        float(r["utilization_pct"])
+        for r in yearly_rows
+        if r.get("utilization_pct") is not None and r.get("has_demand")
+    ]
+    overloaded = sum(1 for r in yearly_rows if r.get("is_overloaded"))
+    machines_with_demand = len({r["machine_id"] for r in yearly_rows if r.get("has_demand")})
+    max_pct: float | None = None
+    max_mid: int | None = None
+    max_name: str | None = None
+    max_year: int | None = None
+    for r in yearly_rows:
+        u = r.get("utilization_pct")
+        if u is None:
+            continue
+        if max_pct is None or float(u) > max_pct:
+            max_pct = float(u)
+            max_mid = int(r["machine_id"])
+            max_name = str(r["machine_name"])
+            max_year = int(r["year"])
+
+    total_req = sum(float(r["required_hours"]) for r in yearly_rows)
+    total_avail = sum(
+        float(r["available_hours"])
+        for r in yearly_rows
+        if r.get("available_hours") is not None and float(r["available_hours"]) > 0
+    )
+    plant_util = _ratio_pct(total_req, total_avail if total_avail > 0 else None)
+
+    return {
+        "machine_count": machine_count,
+        "machines_with_demand": machines_with_demand,
+        "overloaded_count": overloaded,
+        "average_utilization_pct": round(sum(util_pcts) / len(util_pcts), 6) if util_pcts else None,
+        "plant_utilization_pct": round(plant_util, 6) if plant_util is not None else None,
+        "max_utilization_pct": round(max_pct, 6) if max_pct is not None else None,
+        "max_utilization_maschine_id": max_mid,
+        "max_utilization_maschine_name": max_name,
+        "max_utilization_year": max_year,
+    }
+
+
+def build_maschinen_auslastung_summary_for_year(
+    result: dict,
+    *,
+    calendar_year: int,
+) -> dict:
+    """Hilfsfunktion für KPI-Aggregation zu einem Kalenderjahr (Frontend/Tests)."""
+    rows = [r for r in result.get("yearly_rows", []) if int(r["year"]) == calendar_year]
+    return _build_summary(rows, int(result.get("summary", {}).get("machine_count", 0)))
