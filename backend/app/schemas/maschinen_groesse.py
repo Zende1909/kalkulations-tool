@@ -43,6 +43,12 @@ class MaschinenGroesseFields(BaseModel):
         return self
 
 
+class MaschinenGroesseCalcRequest(MaschinenGroesseFields):
+    material_id: int | None = None
+    kavitaeten: int = Field(ge=1, default=1)
+    werk_id: int | None = None
+
+
 class MaschinenGroesseResultSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

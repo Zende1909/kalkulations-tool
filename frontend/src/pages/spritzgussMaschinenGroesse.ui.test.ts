@@ -23,4 +23,10 @@ describe("Maschinengröße UI", () => {
     expect(materialPageSrc).toMatch(/injection_pressure_kg_cm2/);
     expect(materialPageSrc).toMatch(/kg\/cm²/);
   });
+
+  it("nutzt Live-Vorschau und Kavitäten aus Maschine & Lohn", () => {
+    expect(pageSrc).toMatch(/berechneMaschinenGroesse/);
+    expect(pageSrc).toMatch(/effectiveKavitaeten/);
+    expect(pageSrc).not.toMatch(/handleMaschineChange\(String\(maschine\.id\)\)/);
+  });
 });

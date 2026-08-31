@@ -7,10 +7,12 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.api.v1.spritzguss import _run_maschinen_groesse_for_request
 from app.models.land import Land
 from app.models.maschine import Maschine
 from app.models.material import Material
 from app.models.werk import Werk
+from app.schemas.maschinen_groesse import MaschinenGroesseCalcRequest
 from app.services.maschinen_groesse import (
     DEFAULT_INJECTION_PRESSURE_KG_CM2,
     MaschinenGroesseInput,
@@ -63,6 +65,23 @@ def _machine_schema(engine) -> None:
                     strompreis FLOAT,
                     druckluftpreis FLOAT,
                     kuehlwasserpreis FLOAT,
+                    created_at TIMESTAMP, updated_at TIMESTAMP
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE materialien (
+                    id INTEGER PRIMARY KEY,
+                    bezeichnung VARCHAR(255) NOT NULL,
+                    material_nr VARCHAR(100) NOT NULL UNIQUE,
+                    preis_pro_kg FLOAT NOT NULL DEFAULT 0,
+                    dichte FLOAT NOT NULL DEFAULT 0,
+                    waehrung VARCHAR(8) NOT NULL DEFAULT 'EUR',
+                    injection_pressure_kg_cm2 FLOAT NOT NULL DEFAULT 500,
+                    aktiv BOOLEAN NOT NULL DEFAULT 1,
                     created_at TIMESTAMP, updated_at TIMESTAMP
                 )
                 """
@@ -256,7 +275,30 @@ def test_waehle_kleinste_passende_maschine(db: Session):
     assert maschine.maschinen_nr == "M-100"
 
 
-def test_keine_passende_maschine(db: Session):
+def test_kavitaeten_1_vs_4_unterschiedliche_zuhaltekraft():
+    base = berechne_maschinen_groesse(
+        MaschinenGroesseInput(
+            modus="flaeche",
+            proj_flaeche_mm2=100000,
+            schwindung_pct=0,
+            injection_pressure_kg_cm2=500,
+            kavitaeten=1,
+        )
+    )
+    vier = berechne_maschinen_groesse(
+        MaschinenGroesseInput(
+            modus="flaeche",
+            proj_flaeche_mm2=100000,
+            schwindung_pct=0,
+            injection_pressure_kg_cm2=500,
+            kavitaeten=4,
+        )
+    )
+    assert vier.zuhaltekraft_ohne_sicherheit_t == base.zuhaltekraft_ohne_sicherheit_t * 4
+    assert vier.kavitaeten == 4
+
+
+def test_keine_passende_maschine_warnung_text(db: Session):
     land = Land(code="DE", name="Deutschland", aktiv=True)
     db.add(land)
     db.flush()
@@ -290,7 +332,53 @@ def test_keine_passende_maschine(db: Session):
         werk_id=werk.id,
     )
     assert result.empfohlene_maschine_id is None
-    assert result.warnung is not None
+    assert result.warnung == "Keine passende Maschine"
+
+
+def test_api_preview_uses_kavitaeten_and_recommends_machine(db: Session):
+    land = Land(code="DE", name="Deutschland", aktiv=True)
+    db.add(land)
+    db.flush()
+    werk = Werk(land_id=land.id, code="W1", name="Werk 1", currency="EUR", fx_to_eur=1.0, aktiv=True)
+    db.add(werk)
+    db.flush()
+    material = Material(
+        bezeichnung="PP",
+        material_nr="PP-1",
+        preis_pro_kg=2.0,
+        dichte=1.0,
+        injection_pressure_kg_cm2=500,
+        aktiv=True,
+    )
+    db.add(material)
+    db.add(
+        Maschine(
+            bezeichnung="Klein",
+            maschinen_nr="M-100",
+            stundensatz=50,
+            schliesskraft_t=100,
+            werk_id=werk.id,
+            maschinentyp="Spritzguss",
+            aktiv=True,
+        )
+    )
+    db.commit()
+
+    result = _run_maschinen_groesse_for_request(
+        db,
+        MaschinenGroesseCalcRequest(
+            maschinen_groesse_modus="flaeche",
+            maschinen_groesse_proj_flaeche_mm2=1000,
+            maschinen_groesse_schwindung_pct=0,
+            material_id=material.id,
+            kavitaeten=4,
+            werk_id=werk.id,
+        ),
+        werk_id=werk.id,
+    )
+    assert result is not None
+    assert result.kavitaeten == 4
+    assert result.empfohlene_maschine_id is not None
 
 
 def test_invalid_masse_input():

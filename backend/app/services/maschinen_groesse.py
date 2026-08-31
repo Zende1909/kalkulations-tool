@@ -247,9 +247,7 @@ def waehle_kleinste_maschine(
     )
     candidates = [m for m in db.scalars(stmt).all() if is_spritzguss_maschine(m)]
     if not candidates:
-        return None, (
-            "Keine Spritzgussmaschine am Werk mit ausreichender Zuhaltekraft gefunden."
-        )
+        return None, "Keine passende Maschine"
     return candidates[0], None
 
 

@@ -1,17 +1,22 @@
 import { api } from "./client";
 import type {
+  MaschinenGroesseResult,
   SpritzgussCalcResponse,
   SpritzgussFormData,
   SpritzgussKalkulation,
   SpritzgussListItem,
   VeredelungZuordnungInput,
 } from "../types/spritzguss";
+import type { MaschinenGroessePreviewPayload } from "../utils/maschinenGroessePreview";
+
+export type { MaschinenGroessePreviewPayload };
 
 export type CalcPayload = Pick<
   SpritzgussFormData,
   | "teilegewicht_netto_g"
   | "schussgewicht_g"
   | "materialpreis_pro_kg"
+  | "material_id"
   | "ausschussquote_pct"
   | "mgk_pct"
   | "material_nominierung"
@@ -35,6 +40,12 @@ export type CalcPayload = Pick<
   | "setup_lohnstundensatz"
   | "setup_mitarbeiter"
   | "setup_aktiv"
+  | "maschinen_groesse_modus"
+  | "maschinen_groesse_breite_mm"
+  | "maschinen_groesse_laenge_mm"
+  | "maschinen_groesse_oeffnungen_pct"
+  | "maschinen_groesse_proj_flaeche_mm2"
+  | "maschinen_groesse_schwindung_pct"
 > & {
   veredelung_zuordnungen?: VeredelungZuordnungInput[];
 };
@@ -45,6 +56,10 @@ export type SavePayload = SpritzgussFormData & {
 
 export function berechnen(payload: CalcPayload) {
   return api.post<SpritzgussCalcResponse>("/spritzguss/berechnen", payload);
+}
+
+export function berechneMaschinenGroesse(payload: MaschinenGroessePreviewPayload) {
+  return api.post<MaschinenGroesseResult>("/spritzguss/maschinen-groesse/berechnen", payload);
 }
 
 export function listKalkulationen(

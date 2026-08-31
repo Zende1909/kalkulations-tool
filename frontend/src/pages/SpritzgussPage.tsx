@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import {
   berechnen,
+  berechneMaschinenGroesse,
   createKalkulation,
   deleteKalkulation,
   getKalkulation,
@@ -44,6 +45,10 @@ import {
   loadSpritzgussDecimalRaw,
   parseSpritzgussDecimalFields,
 } from "../utils/spritzgussFormDecimals";
+import {
+  buildMaschinenGroessePreviewPayload,
+  readKavitaeten,
+} from "../utils/maschinenGroessePreview";
 import {
   berechneAutomatischeLosgroesse,
   inferLegacyLosgroesseModus,
@@ -323,6 +328,12 @@ export function SpritzgussPage() {
 
   const handleDecimalChange = (fieldKey: string, raw: string) => {
     setDecimalRaw((current) => ({ ...current, [fieldKey]: raw }));
+    if (fieldKey === "kavitaeten") {
+      const parsed = readKavitaeten({ kavitaeten: raw }, form.kavitaeten);
+      if (raw.trim() === "" || parsed >= 1) {
+        setForm((current) => ({ ...current, kavitaeten: parsed }));
+      }
+    }
   };
 
   const resolveParsedForm = (): SpritzgussFormData =>
@@ -442,6 +453,37 @@ export function SpritzgussPage() {
       arbeitstage,
     };
   }, [selectedWerk, jahresbedarf, form.losgroesse_modus, form.losgroesse_manuell]);
+
+  const effectiveKavitaeten = useMemo(
+    () => readKavitaeten(decimalRaw, form.kavitaeten),
+    [decimalRaw, form.kavitaeten],
+  );
+
+  const maschinenGroessePreviewPayload = useMemo(
+    () => buildMaschinenGroessePreviewPayload(form, decimalRaw),
+    [form, decimalRaw],
+  );
+
+  useEffect(() => {
+    if (maschinenGroessePreviewPayload == null) {
+      setMaschinenGroesse(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      berechneMaschinenGroesse(maschinenGroessePreviewPayload)
+        .then((result) => {
+          if (!cancelled) setMaschinenGroesse(result);
+        })
+        .catch(() => {
+          if (!cancelled) setMaschinenGroesse(null);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [maschinenGroessePreviewPayload]);
 
   const selectedMaterial = useMemo(
     () => materials.find((m) => m.id === form.material_id) ?? null,
@@ -679,12 +721,6 @@ export function SpritzgussPage() {
 
   const applyMaschinenGroesseResponse = (result: MaschinenGroesseResult | null | undefined) => {
     setMaschinenGroesse(result ?? null);
-    if (result?.empfohlene_maschine_id != null) {
-      const maschine = machines.find((m) => m.id === result.empfohlene_maschine_id);
-      if (maschine) {
-        handleMaschineChange(String(maschine.id));
-      }
-    }
   };
 
   const handleBerechnen = async () => {
@@ -1255,35 +1291,40 @@ export function SpritzgussPage() {
                       ? `${formatSizingNumber(selectedMaterial.injection_pressure_kg_cm2, 2)} kg/cm²`
                       : "–"}
                   </div>
-                  <div className="text-gray-600">Kavitäten: {form.kavitaeten}</div>
+                  <div className="text-gray-600">Kavitäten: {effectiveKavitaeten}</div>
+                  {maschinenGroesse && (
+                    <>
+                      <div className="text-gray-600">
+                        Projizierte Fläche netto:{" "}
+                        {formatSizingNumber(maschinenGroesse.proj_flaeche_netto_mm2, 2)} mm²
+                      </div>
+                      <div className="text-gray-600">
+                        Zuhaltekraft ohne Sicherheit:{" "}
+                        {formatSizingNumber(maschinenGroesse.zuhaltekraft_ohne_sicherheit_t)} t
+                      </div>
+                      <div className="text-gray-600">
+                        Erforderliche Zuhaltekraft (+20&nbsp;%):{" "}
+                        {formatSizingNumber(maschinenGroesse.zuhaltekraft_erforderlich_t)} t
+                      </div>
+                      <div className="text-gray-600">
+                        Empfohlene Maschine:{" "}
+                        {maschinenGroesse.empfohlene_maschine_name ?? "Keine passende Maschine"}
+                      </div>
+                      <div className="text-gray-600">
+                        Maschinen-Zuhaltekraft:{" "}
+                        {formatSizingNumber(
+                          maschinenGroesse.empfohlene_maschine_schliesskraft_t,
+                          2,
+                        )}{" "}
+                        t
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
-            {maschinenGroesse && (
-              <div className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
-                <div className="font-medium text-gray-900">Ergebnis Maschinengröße</div>
-                <div className="mt-2 grid gap-1 md:grid-cols-2">
-                  <div>
-                    Zuhaltekraft ohne Sicherheit:{" "}
-                    {formatSizingNumber(maschinenGroesse.zuhaltekraft_ohne_sicherheit_t)} t
-                  </div>
-                  <div>
-                    Erforderliche Zuhaltekraft (+20&nbsp;%):{" "}
-                    {formatSizingNumber(maschinenGroesse.zuhaltekraft_erforderlich_t)} t
-                  </div>
-                  <div>
-                    Empfohlene Maschine:{" "}
-                    {maschinenGroesse.empfohlene_maschine_name ?? "–"}
-                  </div>
-                  <div>
-                    Verfügbare Zuhaltekraft:{" "}
-                    {formatSizingNumber(maschinenGroesse.empfohlene_maschine_schliesskraft_t, 2)} t
-                  </div>
-                </div>
-                {maschinenGroesse.warnung && (
-                  <p className="mt-2 text-amber-800">{maschinenGroesse.warnung}</p>
-                )}
-              </div>
+            {maschinenGroesse?.warnung && (
+              <p className="mt-3 text-sm text-amber-800">{maschinenGroesse.warnung}</p>
             )}
           </section>
 

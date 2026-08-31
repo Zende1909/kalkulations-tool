@@ -20,7 +20,11 @@ from app.models.spritzguss_veredelung_zuordnung import SpritzgussVeredelungZuord
 from app.models.user import User
 from app.models.veredelungsschritt import Veredelungsschritt
 from app.models.werk import Werk
-from app.schemas.maschinen_groesse import MaschinenGroesseFields, MaschinenGroesseResultSchema
+from app.schemas.maschinen_groesse import (
+    MaschinenGroesseCalcRequest,
+    MaschinenGroesseFields,
+    MaschinenGroesseResultSchema,
+)
 from app.schemas.spritzguss_kalkulation import (
     SpritzgussCalcRequest,
     SpritzgussCalcResponse,
@@ -167,17 +171,12 @@ def _run_maschinen_groesse_for_model(
             detail=str(exc),
         ) from exc
     _apply_maschinen_groesse_result(obj, result)
-    if result.empfohlene_maschine_id is not None:
-        maschine = db.get(Maschine, result.empfohlene_maschine_id)
-        if maschine is not None:
-            obj.maschine_id = maschine.id
-            obj.maschinenstundensatz = maschine.stundensatz
     return result
 
 
 def _run_maschinen_groesse_for_request(
     db: Session,
-    body: SpritzgussCalcRequest,
+    body: MaschinenGroesseCalcRequest | SpritzgussCalcRequest,
     *,
     werk_id: int | None,
 ) -> MaschinenGroesseResult | None:
@@ -1036,6 +1035,24 @@ def _sync_werkzeug_investition(db: Session, obj: SpritzgussKalkulation) -> None:
         )
 
 
+@router.post("/maschinen-groesse/berechnen", response_model=MaschinenGroesseResultSchema)
+def berechne_maschinen_groesse_endpoint(
+    body: MaschinenGroesseCalcRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_viewer),
+):
+    """Berechnet Maschinengröße / Zuhaltekraft ohne vollständige Kalkulation."""
+    sizing = _run_maschinen_groesse_for_request(db, body, werk_id=body.werk_id)
+    if sizing is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Maschinengrößen-Modus ist erforderlich.",
+        )
+    schema = _maschinen_groesse_schema(sizing)
+    assert schema is not None
+    return schema
+
+
 @router.post("/berechnen", response_model=SpritzgussCalcResponse)
 def berechnen(
     body: SpritzgussCalcRequest,
@@ -1045,10 +1062,6 @@ def berechnen(
     """Berechnet eine Kalkulation ohne Speichern."""
     sizing = _run_maschinen_groesse_for_request(db, body, werk_id=body.werk_id)
     calc_input = _to_calc_input_from_request(body)
-    if sizing is not None and sizing.empfohlene_maschine_id is not None:
-        maschine = db.get(Maschine, sizing.empfohlene_maschine_id)
-        if maschine is not None:
-            calc_input = replace(calc_input, maschinenstundensatz=maschine.stundensatz)
     return _run_calculation(
         db,
         calc_input,
