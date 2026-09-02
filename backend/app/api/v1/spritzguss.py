@@ -263,7 +263,8 @@ def _run_zykluszeit_for_model(
             nebenzeiten_gesamt_s=obj.zykluszeit_nebenzeiten_gesamt_s,
             # Von `_run_maschinen_groesse_for_model` unmittelbar zuvor gesetzt.
             zuhaltekraft_t=obj.maschinen_groesse_zuhaltekraft_erforderlich_t,
-        )
+        ),
+        db=db,
     )
     _apply_zykluszeit_result(obj, result)
     return result
@@ -282,7 +283,8 @@ def _run_zykluszeit_for_request(
             groessenklasse=body.zykluszeit_groessenklasse,
             nebenzeiten_gesamt_s=body.zykluszeit_nebenzeiten_gesamt_s,
             zuhaltekraft_t=zuhaltekraft_t,
-        )
+        ),
+        db=db,
     )
 
 
@@ -1200,6 +1202,8 @@ def list_kalkulationen(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     nur_aktiv: bool = Query(False),
+    customer_id: int | None = Query(None),
+    program_id: int | None = Query(None),
     project_id: int | None = Query(None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
@@ -1207,6 +1211,10 @@ def list_kalkulationen(
     stmt = select(SpritzgussKalkulation).order_by(SpritzgussKalkulation.updated_at.desc())
     if nur_aktiv:
         stmt = stmt.where(SpritzgussKalkulation.aktiv.is_(True))
+    if customer_id is not None:
+        stmt = stmt.where(SpritzgussKalkulation.customer_id == customer_id)
+    if program_id is not None:
+        stmt = stmt.where(SpritzgussKalkulation.program_id == program_id)
     if project_id is not None:
         stmt = stmt.where(SpritzgussKalkulation.project_id == project_id)
     rows = db.scalars(stmt.offset(skip).limit(limit)).all()
@@ -1225,12 +1233,16 @@ def list_kalkulationen(
                 teilenummer=row.teilenummer,
                 kunde=row.kunde,
                 projekt=row.projekt,
+                customer_id=getattr(row, "customer_id", None),
+                program_id=getattr(row, "program_id", None),
                 project_id=getattr(row, "project_id", None),
                 jahresstueckzahl=row.jahresstueckzahl,
                 verkaufspreis=verkaufspreis_aus_ergebnis(ergebnis),
                 selbstkosten=selbstkosten_aus_ergebnis(ergebnis),
                 updated_at=row.updated_at,
                 aktiv=row.aktiv,
+                teilbild_mime=getattr(row, "teilbild_mime", None),
+                teilbild_data=getattr(row, "teilbild_data", None),
             )
         )
     return result

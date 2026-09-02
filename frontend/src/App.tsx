@@ -18,6 +18,7 @@ import { LaenderPage } from "./pages/stammdaten/LaenderPage";
 import { LohnkostenPage } from "./pages/stammdaten/LohnkostenPage";
 import { KaufteilePage } from "./pages/stammdaten/KaufteilePage";
 import { MaschinenPage } from "./pages/stammdaten/MaschinenPage";
+import { MaterialgruppenPage } from "./pages/stammdaten/MaterialgruppenPage";
 import { MaterialienPage } from "./pages/stammdaten/MaterialienPage";
 import { WerkePage } from "./pages/stammdaten/WerkePage";
 import { WerkZuschlaegePage } from "./pages/stammdaten/WerkZuschlaegePage";
@@ -32,6 +33,7 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route index element={<DashboardPage />} />
+              <Route path="stammdaten/materialgruppen" element={<MaterialgruppenPage />} />
               <Route path="stammdaten/materialien" element={<MaterialienPage />} />
               <Route path="stammdaten/laender" element={<LaenderPage />} />
               <Route path="stammdaten/werke" element={<WerkePage />} />

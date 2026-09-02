@@ -106,7 +106,7 @@ def _create_schema(engine) -> None:
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """,
-        "CREATE TABLE IF NOT EXISTS spritzguss_kalkulationen (id INTEGER PRIMARY KEY)",
+        "CREATE TABLE IF NOT EXISTS spritzguss_kalkulationen (id INTEGER PRIMARY KEY, teilbild_mime VARCHAR(64), teilbild_data TEXT)",
         "CREATE TABLE IF NOT EXISTS kaufteile (id INTEGER PRIMARY KEY)",
         "CREATE TABLE IF NOT EXISTS veredelungsschritte (id INTEGER PRIMARY KEY)",
         """

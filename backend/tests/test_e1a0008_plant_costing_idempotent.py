@@ -249,7 +249,10 @@ def _create_pre_plant_skeleton(engine: Engine) -> None:
                     zykluszeit_hinweis VARCHAR(512),
             created_at TIMESTAMP NOT NULL,
             updated_at TIMESTAMP NOT NULL
-        )
+        ,
+                    teilbild_mime VARCHAR(64),
+                    teilbild_data TEXT
+                )
         """,
         """
         CREATE TABLE baugruppen (
@@ -328,7 +331,7 @@ def test_alembic_head_is_e1a0009_after_werk_params():
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     heads = ScriptDirectory.from_config(cfg).get_heads()
-    assert heads == ["e1a0017_simplify_cycle_time"]
+    assert heads == ["e1a0020_spritzguss_teilbild"]
     rev = ScriptDirectory.from_config(cfg).get_revision(REVISION)
     assert rev is not None
     assert rev.down_revision == PREV

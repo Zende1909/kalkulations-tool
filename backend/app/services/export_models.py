@@ -57,6 +57,8 @@ class SpritzgussExportData:
     investitionen: list[ExportInvestment]
     werkzeug_hinweis: str | None = None
     endpreis: float | None = None
+    teilbild_mime: str | None = None
+    teilbild_data: str | None = None
     has_data: bool = True
 
 

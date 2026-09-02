@@ -77,6 +77,7 @@ describe("Hauptnavigation Einzelteilkalkulation / Kaufteile", () => {
 
   it("markiert Stammdaten aktiv nur für echte Stammdaten-Unterseiten", () => {
     expect(isStammdatenSectionPath("/stammdaten/maschinen")).toBe(true);
+    expect(isStammdatenSectionPath("/stammdaten/materialgruppen")).toBe(true);
     expect(isStammdatenSectionPath("/stammdaten/materialien")).toBe(true);
     expect(isStammdatenSectionPath("/stammdaten/kaufteile")).toBe(false);
     expect(isStammdatenSectionPath("/spritzguss")).toBe(false);

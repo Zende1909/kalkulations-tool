@@ -156,6 +156,9 @@ def _create_schema(engine, *, with_sga_columns: bool = True) -> None:
                     zykluszeit_hinweis VARCHAR(512),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ,
+                    teilbild_mime VARCHAR(64),
+                    teilbild_data TEXT
                 )
                 """
             )

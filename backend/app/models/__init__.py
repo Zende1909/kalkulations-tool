@@ -14,6 +14,7 @@ from app.models.kaufteil import Kaufteil
 from app.models.land import Land
 from app.models.lohnkosten import Lohnkosten
 from app.models.material import Material
+from app.models.materialgruppe import Materialgruppe
 from app.models.maschine import Maschine
 from app.models.program import Program, ProgramVolume
 from app.models.project import Project
@@ -28,6 +29,7 @@ from app.models.zuschlagssatz import Zuschlagssatz
 __all__ = [
     "User",
     "Material",
+    "Materialgruppe",
     "Maschine",
     "Lohnkosten",
     "Zuschlagssatz",

@@ -3,7 +3,7 @@
 Aufruf (aus backend/):
 
     set LOCAL_ADMIN_SEED_ENABLED=true
-    set LOCAL_ADMIN_EMAIL=admin@example.com
+    set LOCAL_ADMIN_EMAIL=j.zende@zende-consultant.de
     set LOCAL_ADMIN_PASSWORD=...
     python -m app.scripts.seed_admin
 

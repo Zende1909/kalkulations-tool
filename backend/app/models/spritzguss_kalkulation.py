@@ -114,3 +114,6 @@ class SpritzgussKalkulation(Base, TimestampMixin):
 
     notizen: Mapped[str] = mapped_column(Text, nullable=False, default="")
     aktiv: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    teilbild_mime: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    teilbild_data: Mapped[str | None] = mapped_column(Text, nullable=True)

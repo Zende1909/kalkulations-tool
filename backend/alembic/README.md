@@ -84,7 +84,7 @@ Der lokale Admin wird **nicht** beim App-Start angelegt. Explizit aus `backend/`
 ```bash
 # Windows (PowerShell): $env:LOCAL_ADMIN_SEED_ENABLED="true"; …
 set LOCAL_ADMIN_SEED_ENABLED=true
-set LOCAL_ADMIN_EMAIL=admin@example.com
+set LOCAL_ADMIN_EMAIL=j.zende@zende-consultant.de
 set LOCAL_ADMIN_PASSWORD=...
 python -m app.scripts.seed_admin
 ```

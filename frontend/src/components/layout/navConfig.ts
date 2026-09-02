@@ -6,6 +6,7 @@ export type NavGroup = { label: string; children: NavChild[] };
 export type NavItem = NavLeaf | NavGroup;
 
 export const stammdatenChildren: NavChild[] = [
+  { to: "/stammdaten/materialgruppen", label: "Materialgruppen" },
   { to: "/stammdaten/materialien", label: "Materialien" },
   { to: "/stammdaten/laender", label: "Länder" },
   { to: "/stammdaten/werke", label: "Werke" },

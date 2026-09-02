@@ -481,6 +481,8 @@ def build_spritzguss_export(db: Session, calculation_id: int) -> SpritzgussExpor
         investitionen=investitionen,
         werkzeug_hinweis=werkzeug_hinweis,
         endpreis=endpreis_aus_spritzguss(ergebnis),
+        teilbild_mime=getattr(obj, "teilbild_mime", None),
+        teilbild_data=getattr(obj, "teilbild_data", None),
     )
 
 

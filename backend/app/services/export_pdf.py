@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import io
 from datetime import datetime
 
@@ -10,6 +11,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
+    Image,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -229,6 +231,23 @@ def render_spritzguss_pdf(data: SpritzgussExportData) -> bytes:
         ],
     )
     story.extend(_kv_table("Eingabedaten", [(r.label, r.value) for r in data.inputs]))
+    if data.teilbild_mime and data.teilbild_data:
+        try:
+            img_bytes = base64.b64decode(data.teilbild_data, validate=True)
+            story.append(Spacer(1, 8))
+            story.append(Paragraph("<b>Teilbild</b>", getSampleStyleSheet()["Normal"]))
+            story.append(Spacer(1, 4))
+            story.append(
+                Image(
+                    io.BytesIO(img_bytes),
+                    width=8 * cm,
+                    height=6 * cm,
+                    kind="proportional",
+                )
+            )
+            story.append(Spacer(1, 8))
+        except (ValueError, TypeError):
+            pass
     story.extend(_money_table("Kostenübersicht", data.kosten))
     if data.veredelung_steps:
         story.extend(_money_table("Veredelungsschritte", data.veredelung_steps))

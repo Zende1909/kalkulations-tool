@@ -274,6 +274,9 @@ def _session_with_schema() -> Session:
                     zykluszeit_hinweis VARCHAR(512),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                ,
+                    teilbild_mime VARCHAR(64),
+                    teilbild_data TEXT
                 )
                 """
             )

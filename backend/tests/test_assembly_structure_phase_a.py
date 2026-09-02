@@ -60,7 +60,10 @@ def _create_sqlite_phase_a_schema(engine) -> None:
             werkzeugkosten_eur FLOAT NOT NULL DEFAULT 0,
             werk_id INTEGER,
             losgroesse INTEGER, losgroesse_modus VARCHAR(16), losgroesse_manuell INTEGER
-        )
+        ,
+                    teilbild_mime VARCHAR(64),
+                    teilbild_data TEXT
+                )
         """,
         """
         CREATE TABLE IF NOT EXISTS kaufteile (

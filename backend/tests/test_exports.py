@@ -136,6 +136,28 @@ def test_spritzguss_pdf():
     assert len(pdf) > 500
 
 
+def test_spritzguss_pdf_mit_teilbild():
+    data = _sample_spritzguss()
+    data.teilbild_mime = "image/png"
+    data.teilbild_data = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
+    pdf = render_spritzguss_pdf(data)
+    assert pdf[:4] == b"%PDF"
+    assert len(pdf) > 500
+
+
+def test_spritzguss_excel_mit_teilbild():
+    data = _sample_spritzguss()
+    data.teilbild_mime = "image/png"
+    data.teilbild_data = (
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    )
+    xlsx = render_spritzguss_excel(data)
+    assert xlsx[:2] == b"PK"
+    assert len(xlsx) > 5000
+
+
 def test_baugruppe_pdf():
     pdf = render_baugruppe_pdf(_sample_baugruppe())
     assert pdf[:4] == b"%PDF"

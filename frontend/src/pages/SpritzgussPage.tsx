@@ -8,7 +8,6 @@ import {
   createKalkulation,
   deleteKalkulation,
   getKalkulation,
-  listKalkulationen,
   updateKalkulation,
 } from "../api/spritzguss";
 import {
@@ -19,6 +18,8 @@ import {
 import { listVeredelungsschritte } from "../api/veredelung";
 import { getAverageJahresstueckzahl } from "../api/hierarchy";
 import { ExportButtons } from "../components/ExportButtons";
+import { SpritzgussSavedList } from "../components/spritzguss/SpritzgussSavedList";
+import { TeilbildField } from "../components/spritzguss/TeilbildField";
 import {
   HierarchySelector,
   type HierarchySelection,
@@ -35,7 +36,6 @@ import {
   ZYKLUSZEIT_GROESSENKLASSEN,
   type SpritzgussBloecke,
   type SpritzgussFormData,
-  type SpritzgussListItem,
   type MaschinenGroesseResult,
   type VeredelungZuordnung,
   type VeredelungZuordnungInput,
@@ -63,6 +63,7 @@ import {
   inferLegacyLosgroesseModus,
   werkProduktionsintervall,
 } from "../utils/losgroesseBerechnung";
+import { teilbildSrc } from "../utils/teilbild";
 
 interface SelectedVeredelung extends VeredelungZuordnungInput {
   bezeichnung: string;
@@ -328,7 +329,7 @@ export function SpritzgussPage() {
   } | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
   const [bloecke, setBloecke] = useState<SpritzgussBloecke | null>(null);
-  const [list, setList] = useState<SpritzgussListItem[]>([]);
+  const [savedListRefreshKey, setSavedListRefreshKey] = useState(0);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [machines, setMachines] = useState<Maschine[]>([]);
   const [lohns, setLohns] = useState<Lohnkosten[]>([]);
@@ -386,16 +387,11 @@ export function SpritzgussPage() {
     setWerke(plants.filter((w) => w.aktiv));
   }, []);
 
-  const loadList = useCallback(async () => {
-    const items = await listKalkulationen();
-    setList(items);
-  }, []);
-
   useEffect(() => {
-    Promise.all([loadStammdaten(), loadList()]).catch((err) => {
+    loadStammdaten().catch((err) => {
       setError(err instanceof Error ? err.message : "Stammdaten konnten nicht geladen werden");
     });
-  }, [loadList, loadStammdaten]);
+  }, [loadStammdaten]);
 
   const veredelungZuordnungen = useMemo<VeredelungZuordnungInput[]>(
     () =>
@@ -890,7 +886,7 @@ export function SpritzgussPage() {
           ? `Kalkulation #${saved.id} gespeichert.`
           : `Kalkulation #${saved.id} aktualisiert.`,
       );
-      await loadList();
+      setSavedListRefreshKey((value) => value + 1);
     } catch (err) {
       setError(
         err instanceof PercentPointsParseError
@@ -992,6 +988,8 @@ export function SpritzgussPage() {
         skonto_pct: item.skonto_pct,
         notizen: item.notizen,
         aktiv: item.aktiv,
+        teilbild_mime: item.teilbild_mime ?? null,
+        teilbild_data: item.teilbild_data ?? null,
       });
       if (item.werk_id != null) {
         const plant = werke.find((w) => w.id === item.werk_id);
@@ -1114,7 +1112,7 @@ export function SpritzgussPage() {
     try {
       await deleteKalkulation(id);
       if (editId === id) handleNew();
-      await loadList();
+      setSavedListRefreshKey((value) => value + 1);
       setSuccess("Kalkulation gelöscht.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
@@ -1122,6 +1120,11 @@ export function SpritzgussPage() {
       setBusy(false);
     }
   };
+
+  const teilbildPreview = useMemo(
+    () => teilbildSrc(form.teilbild_mime, form.teilbild_data),
+    [form.teilbild_mime, form.teilbild_data],
+  );
 
   return (
     <div className="space-y-6">
@@ -1182,6 +1185,14 @@ export function SpritzgussPage() {
         </p>
       )}
 
+      <SpritzgussSavedList
+        activeId={editId}
+        canWrite={canWrite}
+        refreshKey={savedListRefreshKey}
+        onOpen={(id) => void handleLoad(id)}
+        onDelete={(id) => void handleDelete(id)}
+      />
+
       <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
         <form id="spritzguss-form" className="space-y-6" onSubmit={(e) => e.preventDefault()}>
           <section className="rounded-lg border border-gray-200 bg-white p-4">
@@ -1209,6 +1220,20 @@ export function SpritzgussPage() {
                     customer_id: next.customer_id,
                     program_id: next.program_id,
                     project_id: next.project_id,
+                  }));
+                }}
+              />
+            </div>
+            <div className="mt-4">
+              <TeilbildField
+                mime={form.teilbild_mime}
+                data={form.teilbild_data}
+                disabled={!canWrite}
+                onChange={({ mime, data }) => {
+                  setForm((current) => ({
+                    ...current,
+                    teilbild_mime: mime,
+                    teilbild_data: data,
                   }));
                 }}
               />
@@ -1884,6 +1909,18 @@ export function SpritzgussPage() {
         </form>
 
         <aside className="space-y-4">
+          {teilbildPreview ? (
+            <section className="rounded-lg border border-gray-200 bg-white p-4">
+              <h3 className="mb-3 font-semibold text-gray-900">Teilbild</h3>
+              <div className="flex justify-center overflow-hidden rounded-md border border-gray-200 bg-slate-50 p-2">
+                <img
+                  src={teilbildPreview}
+                  alt={`Teilbild ${form.teilenummer || form.teilebezeichnung || ""}`.trim()}
+                  className="max-h-48 max-w-full object-contain"
+                />
+              </div>
+            </section>
+          ) : null}
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-3 font-semibold text-gray-900">Ergebnis</h3>
             {!bloecke ? (
@@ -1963,47 +2000,6 @@ export function SpritzgussPage() {
                   })}
                 </div>
               </div>
-            )}
-          </section>
-
-          <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Gespeicherte Kalkulationen</h3>
-            {list.length === 0 ? (
-              <p className="text-sm text-gray-500">Noch keine gespeicherten Kalkulationen.</p>
-            ) : (
-              <ul className="max-h-80 space-y-2 overflow-y-auto text-sm">
-                {list.map((item) => (
-                  <li
-                    key={item.id}
-                    className="rounded border border-gray-100 p-2 hover:bg-gray-50"
-                  >
-                    <div className="font-medium text-gray-900">
-                      {item.teilenummer} – {item.teilebezeichnung}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {item.kunde || "–"} · VP {euro(item.verkaufspreis)} €
-                    </div>
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleLoad(item.id)}
-                        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-white"
-                      >
-                        Öffnen
-                      </button>
-                      {canWrite && (
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(item.id)}
-                          className="rounded border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
-                        >
-                          Löschen
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
             )}
           </section>
         </aside>

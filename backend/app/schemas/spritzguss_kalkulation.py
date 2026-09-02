@@ -4,6 +4,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.numbers import parse_percent_points
+from app.services.spritzguss_teilbild import normalize_teilbild
 
 from app.schemas.maschinen_groesse import MaschinenGroesseFields, MaschinenGroesseResultSchema
 from app.schemas.spritzguss_veredelung import VeredelungZuordnungInput, VeredelungZuordnungRead
@@ -240,6 +241,22 @@ class SpritzgussKalkulationBase(MaschinenGroesseFields, ZykluszeitFields):
 
     notizen: str = ""
     aktiv: bool = True
+    teilbild_mime: str | None = None
+    teilbild_data: str | None = None
+
+    @field_validator("teilbild_mime", "teilbild_data", mode="before")
+    @classmethod
+    def coerce_teilbild_empty(cls, value: Any) -> Any:
+        if value == "":
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def validate_teilbild(self) -> "SpritzgussKalkulationBase":
+        mime, data = normalize_teilbild(self.teilbild_mime, self.teilbild_data)
+        self.teilbild_mime = mime
+        self.teilbild_data = data
+        return self
 
     @field_validator("ausschussquote_pct", mode="before")
     @classmethod
@@ -366,7 +383,25 @@ class SpritzgussKalkulationUpdate(MaschinenGroesseFields, ZykluszeitFields):
 
     notizen: str | None = None
     aktiv: bool | None = None
+    teilbild_mime: str | None = None
+    teilbild_data: str | None = None
     veredelung_zuordnungen: list[VeredelungZuordnungInput] | None = None
+
+    @field_validator("teilbild_mime", "teilbild_data", mode="before")
+    @classmethod
+    def coerce_teilbild_empty_update(cls, value: Any) -> Any:
+        if value == "":
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def validate_teilbild_update(self) -> "SpritzgussKalkulationUpdate":
+        fields_set = self.model_fields_set
+        if "teilbild_mime" in fields_set or "teilbild_data" in fields_set:
+            mime, data = normalize_teilbild(self.teilbild_mime, self.teilbild_data)
+            self.teilbild_mime = mime
+            self.teilbild_data = data
+        return self
 
     @field_validator("ausschussquote_pct", mode="before")
     @classmethod
@@ -417,9 +452,13 @@ class SpritzgussKalkulationListItem(BaseModel):
     teilenummer: str
     kunde: str
     projekt: str
+    customer_id: int | None = None
+    program_id: int | None = None
     project_id: int | None = None
     jahresstueckzahl: int
     verkaufspreis: float | None = None
     selbstkosten: float | None = None
     updated_at: datetime
     aktiv: bool
+    teilbild_mime: str | None = None
+    teilbild_data: str | None = None

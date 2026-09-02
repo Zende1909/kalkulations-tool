@@ -111,10 +111,9 @@ describe("Zykluszeit-Schätzung UI", () => {
 });
 
 describe("Material-Stammdaten", () => {
-  it("fragt nur noch die Materialgruppe ab", () => {
+  it("fragt die Materialgruppe aus den Stammdaten ab", () => {
     expect(materialPageSrc).toMatch(/materialgruppe/);
-    expect(materialPageSrc).toMatch(/"POM"/);
-    expect(materialPageSrc).toMatch(/"PE-LD"/);
+    expect(materialPageSrc).toMatch(/\/materialgruppen\?nur_aktiv=true/);
   });
 
   it("verlangt keine thermischen Einzelwerte mehr", () => {

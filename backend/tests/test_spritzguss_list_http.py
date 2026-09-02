@@ -86,7 +86,9 @@ def _create_schema(engine) -> None:
                     zykluszeit_vorschlag_s FLOAT,
                     zykluszeit_hinweis VARCHAR(512),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    teilbild_mime VARCHAR(64),
+                    teilbild_data TEXT
                 )
                 """
             )
@@ -157,17 +159,34 @@ def _insert_kalkulation(
     kid: int,
     name: str,
     endpreis: float | None = None,
+    customer_id: int | None = None,
+    program_id: int | None = None,
+    project_id: int | None = None,
+    teilbild_mime: str | None = None,
+    teilbild_data: str | None = None,
 ) -> None:
     ergebnis = json.dumps({"endpreis_je_stueck": endpreis}) if endpreis is not None else None
     db.execute(
         text(
             """
             INSERT INTO spritzguss_kalkulationen
-            (id, teilebezeichnung, teilenummer, material_nominierung, ergebnis, aktiv)
-            VALUES (:id, :name, :nr, 'selbstnominiert', :ergebnis, 1)
+            (id, teilebezeichnung, teilenummer, material_nominierung, ergebnis, aktiv,
+             customer_id, program_id, project_id, teilbild_mime, teilbild_data)
+            VALUES (:id, :name, :nr, 'selbstnominiert', :ergebnis, 1,
+                    :customer_id, :program_id, :project_id, :teilbild_mime, :teilbild_data)
             """
         ),
-        {"id": kid, "name": name, "nr": f"T-{kid}", "ergebnis": ergebnis},
+        {
+            "id": kid,
+            "name": name,
+            "nr": f"T-{kid}",
+            "ergebnis": ergebnis,
+            "customer_id": customer_id,
+            "program_id": program_id,
+            "project_id": project_id,
+            "teilbild_mime": teilbild_mime,
+            "teilbild_data": teilbild_data,
+        },
     )
     db.commit()
 
@@ -247,3 +266,43 @@ def test_list_and_detail_ohne_veredelung(client, db):
     resp = client.get(DETAIL_URL.format(item_id=9))
     assert resp.status_code == 200
     assert resp.json()["veredelung_zuordnungen"] == []
+
+
+TINY_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
+
+def test_list_returns_teilbild_fields(client, db):
+    _insert_kalkulation(
+        db,
+        kid=10,
+        name="Mit Bild",
+        endpreis=1.0,
+        teilbild_mime="image/png",
+        teilbild_data=TINY_PNG_B64,
+    )
+    row = client.get(LIST_URL).json()[0]
+    assert row["teilbild_mime"] == "image/png"
+    assert row["teilbild_data"] == TINY_PNG_B64
+
+
+def test_list_filter_by_hierarchy(client, db):
+    _insert_kalkulation(
+        db, kid=11, name="K1-P1-Pr1", endpreis=1.0, customer_id=1, program_id=10, project_id=100
+    )
+    _insert_kalkulation(
+        db, kid=12, name="K2-P2-Pr2", endpreis=2.0, customer_id=2, program_id=20, project_id=200
+    )
+
+    all_items = client.get(LIST_URL).json()
+    assert len(all_items) == 2
+
+    by_customer = client.get(LIST_URL, params={"customer_id": 1}).json()
+    assert [row["id"] for row in by_customer] == [11]
+
+    by_program = client.get(LIST_URL, params={"program_id": 20}).json()
+    assert [row["id"] for row in by_program] == [12]
+
+    by_project = client.get(LIST_URL, params={"project_id": 100}).json()
+    assert [row["id"] for row in by_project] == [11]

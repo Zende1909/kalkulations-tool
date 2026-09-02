@@ -107,7 +107,9 @@ def _create_phase_c_schema(engine) -> None:
             zykluszeit_vorschlag_s FLOAT,
             zykluszeit_hinweis VARCHAR(512),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            teilbild_mime VARCHAR(64),
+            teilbild_data TEXT
         )
         """,
         """

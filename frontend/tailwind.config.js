@@ -44,6 +44,19 @@ export default {
           foreground: "#991b1b",
         },
       },
+      fontFamily: {
+        sans: [
+          "Inter Variable",
+          "Inter",
+          "system-ui",
+          "-apple-system",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif",
+        ],
+      },
       fontSize: {
         "page-title": ["1.625rem", { lineHeight: "2rem", fontWeight: "700" }],
         "section-title": ["1.0625rem", { lineHeight: "1.5rem", fontWeight: "600" }],

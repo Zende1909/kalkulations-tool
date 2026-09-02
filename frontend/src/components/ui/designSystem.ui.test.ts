@@ -15,6 +15,7 @@ describe("Frontend Design System", () => {
       "utf-8",
     );
 
+    expect(css).toMatch(/Inter Variable/);
     expect(css).toMatch(/ag-theme-kalkulation/);
     expect(css).toMatch(/app-card/);
     expect(sidebar).toMatch(/bg-sidebar-active/);

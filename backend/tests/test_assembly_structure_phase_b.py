@@ -134,7 +134,10 @@ def _create_phase_b_schema(engine) -> None:
             zykluszeit_hinweis VARCHAR(512),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
+        ,
+                    teilbild_mime VARCHAR(64),
+                    teilbild_data TEXT
+                )
         """,
         """
         CREATE TABLE IF NOT EXISTS kaufteile (

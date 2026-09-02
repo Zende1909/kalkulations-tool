@@ -20,11 +20,11 @@ from app.dependencies import get_current_user
 from app.models.material import Material
 from app.models.spritzguss_kalkulation import SpritzgussKalkulation
 from app.schemas.material import MaterialCreate
+from tests.materialgruppen_test_helpers import create_material_tables, seed_materialgruppen
 from app.schemas.zykluszeit import ZykluszeitFields
 from app.services.export_builders import _zykluszeit_export_rows
 from app.services.material_thermik import (
     MATERIALGRUPPEN_DEFAULTS,
-    QUELLE_IKET,
     defaults_fuer_gruppe,
     normalisiere_gruppe,
 )
@@ -331,7 +331,6 @@ def test_defekte_gruppentabelle_wird_abgefangen(monkeypatch):
         werkzeugtemperatur_c=40.0,
         schmelzetemperatur_c=220.0,
         entformungstemperatur_c=80.0,
-        quelle="test",
     )
     monkeypatch.setitem(MATERIALGRUPPEN_DEFAULTS, "TEST", kaputt)
     result = berechne_zykluszeit(_pom_input(materialgruppe="TEST"))
@@ -347,7 +346,6 @@ def test_defekte_gruppentabelle_wird_abgefangen(monkeypatch):
 def test_pom_defaults_stammen_aus_iket():
     pom = defaults_fuer_gruppe("POM")
     assert pom is not None
-    assert pom.quelle == QUELLE_IKET
     for feld, wert in POM.items():
         assert getattr(pom, feld) == pytest.approx(wert)
 
@@ -357,7 +355,7 @@ def test_gruppenschreibweisen_werden_normalisiert():
     assert normalisiere_gruppe("hdpe") == "PE-HD"
     assert normalisiere_gruppe("pe_ld") == "PE-LD"
     assert normalisiere_gruppe("") is None
-    assert normalisiere_gruppe("XYZ") is None
+    assert normalisiere_gruppe("XYZ") == "XYZ"
 
 
 def test_material_schema_normalisiert_gruppe():
@@ -371,15 +369,19 @@ def test_material_schema_normalisiert_gruppe():
     assert mat.materialgruppe == "POM"
 
 
-def test_material_lehnt_unbekannte_gruppe_ab():
-    with pytest.raises(Exception, match="Unbekannte Materialgruppe"):
-        MaterialCreate(
-            bezeichnung="X",
-            material_nr="X-1",
-            preis_pro_kg=1,
-            dichte=1,
-            materialgruppe="XYZ",
-        )
+def test_material_lehnt_unbekannte_gruppe_ab(client: TestClient):
+    res = client.post(
+        f"{API}/materialien",
+        json={
+            "bezeichnung": "X",
+            "material_nr": "X-1",
+            "preis_pro_kg": 1,
+            "dichte": 1,
+            "materialgruppe": "XYZ",
+        },
+    )
+    assert res.status_code == 422, res.text
+    assert "Unbekannte Materialgruppe" in res.text
 
 
 # --------------------------------------------------------------------------------------
@@ -388,26 +390,7 @@ def test_material_lehnt_unbekannte_gruppe_ab():
 
 
 def _material_schema(engine) -> None:
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                CREATE TABLE materialien (
-                    id INTEGER PRIMARY KEY,
-                    bezeichnung VARCHAR(255) NOT NULL,
-                    material_nr VARCHAR(50) NOT NULL UNIQUE,
-                    preis_pro_kg FLOAT NOT NULL,
-                    dichte FLOAT NOT NULL,
-                    waehrung VARCHAR(8) NOT NULL DEFAULT 'EUR',
-                    injection_pressure_kg_cm2 FLOAT NOT NULL DEFAULT 500,
-                    materialgruppe VARCHAR(32),
-                    aktiv BOOLEAN NOT NULL DEFAULT 1,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
-                )
-                """
-            )
-        )
+    create_material_tables(engine)
 
 
 @pytest.fixture()
@@ -420,6 +403,7 @@ def db() -> Session:
     _material_schema(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     session = factory()
+    seed_materialgruppen(session)
     try:
         yield session
     finally:
@@ -453,7 +437,6 @@ def test_materialgruppen_endpoint(client: TestClient):
     assert res.status_code == 200, res.text
     gruppen = {row["gruppe"]: row for row in res.json()}
     assert gruppen["POM"]["schmelzdichte_kg_m3"] == pytest.approx(783.17)
-    assert gruppen["POM"]["quelle"] == QUELLE_IKET
     assert set(gruppen) == set(MATERIALGRUPPEN_DEFAULTS)
 
 
@@ -681,7 +664,9 @@ def _kalkulation_schema(engine) -> None:
                     zykluszeit_kuehlzeit_s FLOAT,
                     zykluszeit_nebenzeiten_gesamt_s FLOAT,
                     zykluszeit_vorschlag_s FLOAT,
-                    zykluszeit_hinweis VARCHAR(512)
+                    zykluszeit_hinweis VARCHAR(512),
+                    teilbild_mime VARCHAR(64),
+                    teilbild_data TEXT
                 )
                 """
             )
@@ -699,6 +684,7 @@ def kalk_db() -> Session:
     _kalkulation_schema(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
     session = factory()
+    seed_materialgruppen(session)
     try:
         yield session
     finally:

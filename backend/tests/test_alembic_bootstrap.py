@@ -46,6 +46,7 @@ EXPECTED_POST_BASELINE_TABLES = {
 
 EXPECTED_CURRENT_ORM_TABLES = EXPECTED_BASELINE_TABLES | EXPECTED_POST_BASELINE_TABLES | {
     "business_case_manual_prices",
+    "materialgruppen",
 }
 
 
@@ -114,10 +115,19 @@ def test_baseline_revision_is_discoverable():
 def test_alembic_head_is_plant_costing_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0017_simplify_cycle_time"]
-    rev = scripts.get_revision("e1a0017_simplify_cycle_time")
+    assert scripts.get_heads() == ["e1a0020_spritzguss_teilbild"]
+    rev = scripts.get_revision("e1a0020_spritzguss_teilbild")
     assert rev is not None
-    assert rev.down_revision == "e1a0016_cycle_time_suggestion"
+    assert rev.down_revision == "e1a0019_drop_materialgruppe_quelle"
+    rev19 = scripts.get_revision("e1a0019_drop_materialgruppe_quelle")
+    assert rev19 is not None
+    assert rev19.down_revision == "e1a0018_materialgruppen_stammdaten"
+    rev18 = scripts.get_revision("e1a0018_materialgruppen_stammdaten")
+    assert rev18 is not None
+    assert rev18.down_revision == "e1a0017_simplify_cycle_time"
+    rev17 = scripts.get_revision("e1a0017_simplify_cycle_time")
+    assert rev17 is not None
+    assert rev17.down_revision == "e1a0016_cycle_time_suggestion"
     rev16 = scripts.get_revision("e1a0016_cycle_time_suggestion")
     assert rev16 is not None
     assert rev16.down_revision == "e1a0015_injection_machine_sizing"

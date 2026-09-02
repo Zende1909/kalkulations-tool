@@ -1,11 +1,11 @@
-@import "@fontsource-variable/roboto-slab";
+@import "@fontsource-variable/inter";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   html {
-    @apply font-serif antialiased;
+    @apply font-sans antialiased;
   }
 
   body {
@@ -27,7 +27,7 @@
   }
 
   .ag-theme-kalkulation {
-    --ag-font-family: "Roboto Slab Variable", serif;
+    --ag-font-family: "Inter Variable", "Inter", system-ui, sans-serif;
     --ag-font-size: 14px;
     --ag-header-height: 44px;
     --ag-row-height: 44px;
@@ -55,6 +55,7 @@
 
   .ag-theme-kalkulation .ag-cell.text-right {
     justify-content: flex-end;
+    font-variant-numeric: tabular-nums;
   }
 
   .ag-theme-kalkulation .ag-right-aligned-header .ag-header-cell-label {

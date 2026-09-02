@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import io
 from datetime import datetime
 
 from openpyxl import Workbook
+from openpyxl.drawing.image import Image as XLImage
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -144,6 +146,17 @@ def render_spritzguss_excel(data: SpritzgussExportData) -> bytes:
             cell.number_format = EUR_FORMAT
             cell.font = BOLD
         r += 1
+    if data.teilbild_mime and data.teilbild_data:
+        try:
+            img_bytes = base64.b64decode(data.teilbild_data, validate=True)
+            ws_over.cell(row=r, column=1, value="Teilbild").font = BOLD
+            img = XLImage(io.BytesIO(img_bytes))
+            img.width = 180
+            img.height = 135
+            ws_over.add_image(img, f"D{r}")
+            r += 9
+        except (ValueError, TypeError):
+            pass
     if data.werkzeug_hinweis:
         ws_over.cell(row=r, column=1, value=data.werkzeug_hinweis).font = Font(color="FF0000", bold=True)
     _autosize(ws_over)

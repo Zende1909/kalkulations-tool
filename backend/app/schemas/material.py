@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
 
 from app.schemas.numbers import parse_de_float
-from app.services.material_thermik import MATERIALGRUPPEN_DEFAULTS, normalisiere_gruppe
+from app.services.material_thermik import normalisiere_gruppenschluessel
 
 _REQUIRED_FLOAT_LABELS = {
     "preis_pro_kg": "Preis pro kg",
@@ -15,12 +15,7 @@ _REQUIRED_FLOAT_FIELDS = tuple(_REQUIRED_FLOAT_LABELS.keys())
 
 
 class MaterialGruppeField(BaseModel):
-    """Materialgruppe als einziges thermisches Merkmal am Material.
-
-    Die zugehörigen Kennwerte (Dichte, Wärmekapazität, Wärmeleitfähigkeit,
-    Temperaturen) liegen in ``app.services.material_thermik`` und werden nicht
-    je Material gepflegt.
-    """
+    """Materialgruppe als Verweis auf einen Eintrag in ``materialgruppen``."""
 
     materialgruppe: str | None = None
 
@@ -29,11 +24,7 @@ class MaterialGruppeField(BaseModel):
     def coerce_materialgruppe(cls, value: Any) -> str | None:
         if value is None or value == "":
             return None
-        normalisiert = normalisiere_gruppe(str(value))
-        if normalisiert is None:
-            bekannt = ", ".join(sorted(MATERIALGRUPPEN_DEFAULTS))
-            raise ValueError(f"Unbekannte Materialgruppe '{value}'. Bekannt sind: {bekannt}.")
-        return normalisiert
+        return normalisiere_gruppenschluessel(str(value))
 
 
 class MaterialBase(MaterialGruppeField):
@@ -83,7 +74,7 @@ class MaterialRead(MaterialBase):
 
 
 class MaterialGruppeRead(BaseModel):
-    """Nur-Lese-Sicht auf die hinterlegten Kennwerte einer Materialgruppe."""
+    """Nur-Lese-Sicht auf die Kennwerte einer Materialgruppe."""
 
     gruppe: str
     bezeichnung: str
@@ -93,7 +84,6 @@ class MaterialGruppeRead(BaseModel):
     werkzeugtemperatur_c: float
     schmelzetemperatur_c: float
     entformungstemperatur_c: float
-    quelle: str
 
 
 __all__ = [

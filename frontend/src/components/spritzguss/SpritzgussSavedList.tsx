@@ -1,0 +1,220 @@
+import { useEffect, useMemo, useState } from "react";
+
+import { listCustomers, listPrograms, listProjects } from "../../api/hierarchy";
+import { listKalkulationen } from "../../api/spritzguss";
+import { Button } from "../ui/Button";
+import { SectionHeader } from "../ui/SectionHeader";
+import type { Customer, Program, Project } from "../../types/hierarchy";
+import type { SpritzgussListItem } from "../../types/spritzguss";
+import { teilbildSrc } from "../../utils/teilbild";
+
+function euro(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return "–";
+  return value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export function SpritzgussSavedList({
+  activeId,
+  canWrite,
+  refreshKey = 0,
+  onOpen,
+  onDelete,
+}: {
+  activeId: number | null;
+  canWrite: boolean;
+  refreshKey?: number;
+  onOpen: (id: number) => void;
+  onDelete: (id: number) => void;
+}) {
+  const [list, setList] = useState<SpritzgussListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [customerId, setCustomerId] = useState<number | "">("");
+  const [programId, setProgramId] = useState<number | "">("");
+  const [projectId, setProjectId] = useState<number | "">("");
+
+  useEffect(() => {
+    listCustomers(undefined, true).then(setCustomers).catch(() => setCustomers([]));
+  }, []);
+
+  useEffect(() => {
+    if (customerId === "") {
+      setPrograms([]);
+      return;
+    }
+    listPrograms(Number(customerId)).then(setPrograms).catch(() => setPrograms([]));
+  }, [customerId]);
+
+  useEffect(() => {
+    if (programId === "") {
+      setProjects([]);
+      return;
+    }
+    listProjects(Number(programId)).then(setProjects).catch(() => setProjects([]));
+  }, [programId]);
+
+  const filterKey = useMemo(
+    () => `${customerId}|${programId}|${projectId}`,
+    [customerId, programId, projectId],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    listKalkulationen({
+      customerId: customerId === "" ? undefined : Number(customerId),
+      programId: programId === "" ? undefined : Number(programId),
+      projectId: projectId === "" ? undefined : Number(projectId),
+    })
+      .then((items) => {
+        if (!cancelled) setList(items);
+      })
+      .catch(() => {
+        if (!cancelled) setList([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [filterKey, refreshKey]);
+
+  function resetFilter() {
+    setCustomerId("");
+    setProgramId("");
+    setProjectId("");
+  }
+
+  return (
+    <section className="app-card p-5">
+      <SectionHeader
+        title="Gespeicherte Kalkulationen"
+        description="Schnellzugriff auf gespeicherte Einzelteile – mit Teilbild zur leichteren Erkennung."
+        actions={
+          <Button variant="secondary" size="sm" onClick={resetFilter}>
+            Filter zurücksetzen
+          </Button>
+        }
+      />
+
+      <div className="mb-4 grid gap-3 md:grid-cols-3">
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-app-heading">Kunde</span>
+          <select
+            value={customerId}
+            onChange={(e) => {
+              const next = e.target.value === "" ? "" : Number(e.target.value);
+              setCustomerId(next);
+              setProgramId("");
+              setProjectId("");
+            }}
+            className="app-input mt-0"
+          >
+            <option value="">Alle Kunden</option>
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-app-heading">Programm</span>
+          <select
+            value={programId}
+            disabled={customerId === ""}
+            onChange={(e) => {
+              const next = e.target.value === "" ? "" : Number(e.target.value);
+              setProgramId(next);
+              setProjectId("");
+            }}
+            className="app-input mt-0"
+          >
+            <option value="">Alle Programme</option>
+            {programs.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium text-app-heading">Projekt</span>
+          <select
+            value={projectId}
+            disabled={programId === ""}
+            onChange={(e) => setProjectId(e.target.value === "" ? "" : Number(e.target.value))}
+            className="app-input mt-0"
+          >
+            <option value="">Alle Projekte</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {loading ? (
+        <p className="text-body-lg text-app-muted">Lade gespeicherte Kalkulationen…</p>
+      ) : list.length === 0 ? (
+        <p className="rounded-app border border-dashed border-app-border px-4 py-8 text-center text-app-muted">
+          Keine gespeicherten Kalkulationen für den gewählten Filter.
+        </p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {list.map((item) => {
+            const thumb = teilbildSrc(item.teilbild_mime, item.teilbild_data);
+            const isActive = activeId === item.id;
+            return (
+              <article
+                key={item.id}
+                className={`rounded-app border p-3 transition-colors ${
+                  isActive
+                    ? "border-brand bg-brand-light/40 shadow-sm"
+                    : "border-app-border bg-white hover:border-brand/40 hover:bg-slate-50"
+                }`}
+              >
+                <div className="flex gap-3">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-app border border-app-border bg-slate-50">
+                    {thumb ? (
+                      <img src={thumb} alt="" className="h-full w-full object-contain" />
+                    ) : (
+                      <span className="text-[10px] uppercase tracking-wide text-app-muted">Kein Bild</span>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-app-heading">
+                      {item.teilenummer}
+                    </p>
+                    <p className="truncate text-sm text-app-body">{item.teilebezeichnung}</p>
+                    <p className="mt-1 truncate text-xs text-app-muted">
+                      {item.kunde || "–"} · {item.projekt || "–"}
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-brand">
+                      VP {euro(item.verkaufspreis)} €
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <Button variant={isActive ? "primary" : "secondary"} size="sm" onClick={() => onOpen(item.id)}>
+                    {isActive ? "Geöffnet" : "Öffnen"}
+                  </Button>
+                  {canWrite ? (
+                    <Button variant="danger" size="sm" onClick={() => onDelete(item.id)}>
+                      Löschen
+                    </Button>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}

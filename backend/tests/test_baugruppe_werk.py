@@ -119,7 +119,7 @@ def _create_schema(engine) -> None:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """,
-            "CREATE TABLE spritzguss_kalkulationen (id INTEGER PRIMARY KEY)",
+            "CREATE TABLE spritzguss_kalkulationen (id INTEGER PRIMARY KEY, teilbild_mime VARCHAR(64), teilbild_data TEXT)",
             "CREATE TABLE kaufteile (id INTEGER PRIMARY KEY)",
             "CREATE TABLE veredelungsschritte (id INTEGER PRIMARY KEY)",
             """

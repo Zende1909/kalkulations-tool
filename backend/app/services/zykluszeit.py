@@ -31,7 +31,13 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from app.services.material_thermik import ThermikDefaults, defaults_fuer_gruppe
+from sqlalchemy.orm import Session
+
+from app.services.material_thermik import (
+    ThermikDefaults,
+    defaults_fuer_gruppe,
+    defaults_fuer_gruppe_db,
+)
 
 # Zuschlag auf die theoretische Kühlzeit. Fester Erfahrungswert aus dem
 # IKET-Blatt; bewusst nicht mehr pro Kalkulation einstellbar.
@@ -178,7 +184,7 @@ def _teilergebnis(hinweis: str, inp: ZykluszeitInput, nebenzeiten: float) -> Zyk
     )
 
 
-def berechne_zykluszeit(inp: ZykluszeitInput) -> ZykluszeitResult:
+def berechne_zykluszeit(inp: ZykluszeitInput, db: Session | None = None) -> ZykluszeitResult:
     """Liefert den Zykluszeitvorschlag oder einen verständlichen Hinweis."""
     auswahl = normalisiere_groessenklasse(inp.groessenklasse)
     klasse = effektive_groessenklasse(auswahl, inp.zuhaltekraft_t)
@@ -190,7 +196,11 @@ def berechne_zykluszeit(inp: ZykluszeitInput) -> ZykluszeitResult:
     if nebenzeiten < 0:
         return _teilergebnis("Die Nebenzeiten dürfen nicht negativ sein.", inp, nebenzeiten)
 
-    thermik = defaults_fuer_gruppe(inp.materialgruppe)
+    thermik = (
+        defaults_fuer_gruppe_db(db, inp.materialgruppe)
+        if db is not None
+        else defaults_fuer_gruppe(inp.materialgruppe)
+    )
     if thermik is None:
         return _teilergebnis(
             "Für den Zykluszeitvorschlag fehlt die Materialgruppe. Bitte sie in den "

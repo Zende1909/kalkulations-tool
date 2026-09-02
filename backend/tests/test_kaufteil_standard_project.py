@@ -127,7 +127,9 @@ def _create_schema(engine) -> None:
                     zykluszeit_kuehlzeit_s FLOAT,
                     zykluszeit_nebenzeiten_gesamt_s FLOAT,
                     zykluszeit_vorschlag_s FLOAT,
-                    zykluszeit_hinweis VARCHAR(512)
+                    zykluszeit_hinweis VARCHAR(512),
+                    teilbild_mime VARCHAR(64),
+                    teilbild_data TEXT
                 )
                 """
             )

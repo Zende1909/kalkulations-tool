@@ -255,6 +255,8 @@ export interface SpritzgussFormData {
 
   notizen: string;
   aktiv: boolean;
+  teilbild_mime: string | null;
+  teilbild_data: string | null;
 }
 
 export interface SpritzgussKalkulation extends SpritzgussFormData {
@@ -283,11 +285,15 @@ export interface SpritzgussListItem {
   kunde: string;
   projekt: string;
   project_id: number | null;
+  customer_id: number | null;
+  program_id: number | null;
   jahresstueckzahl: number;
   verkaufspreis: number | null;
   selbstkosten: number | null;
   updated_at: string;
   aktiv: boolean;
+  teilbild_mime: string | null;
+  teilbild_data: string | null;
 }
 
 export const emptySpritzgussForm = (): SpritzgussFormData => ({
@@ -341,4 +347,6 @@ export const emptySpritzgussForm = (): SpritzgussFormData => ({
   skonto_pct: 0,
   notizen: "",
   aktiv: true,
+  teilbild_mime: null,
+  teilbild_data: null,
 });

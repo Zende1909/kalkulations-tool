@@ -72,10 +72,17 @@ export function berechneZykluszeit(payload: ZykluszeitPreviewPayload) {
 }
 
 export function listKalkulationen(
-  options: { nurAktiv?: boolean; projectId?: number } = {},
+  options: {
+    nurAktiv?: boolean;
+    customerId?: number;
+    programId?: number;
+    projectId?: number;
+  } = {},
 ) {
   const params = new URLSearchParams();
   if (options.nurAktiv) params.set("nur_aktiv", "true");
+  if (options.customerId != null) params.set("customer_id", String(options.customerId));
+  if (options.programId != null) params.set("program_id", String(options.programId));
   if (options.projectId != null) params.set("project_id", String(options.projectId));
   const q = params.toString();
   return api.get<SpritzgussListItem[]>(`/spritzguss${q ? `?${q}` : ""}`);
