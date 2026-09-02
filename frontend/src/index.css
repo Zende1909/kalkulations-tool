@@ -1,7 +1,63 @@
+@import "@fontsource-variable/roboto-slab";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+@layer base {
+  html {
+    @apply font-serif antialiased;
+  }
+
+  body {
+    @apply bg-app-surface text-app-body;
+  }
+
+  *:focus-visible {
+    @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-white;
+  }
+}
+
+@layer components {
+  .app-input {
+    @apply mt-1.5 w-full rounded-app border border-app-border-strong bg-white px-3 py-2.5 text-body-lg text-app-heading shadow-sm transition-colors placeholder:text-app-muted focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-app-muted;
+  }
+
+  .app-card {
+    @apply rounded-app border border-app-border bg-app-card shadow-card;
+  }
+
+  .ag-theme-kalkulation {
+    --ag-font-family: "Roboto Slab Variable", serif;
+    --ag-font-size: 14px;
+    --ag-header-height: 44px;
+    --ag-row-height: 44px;
+    --ag-header-background-color: #f8fafc;
+    --ag-header-foreground-color: #0f172a;
+    --ag-header-cell-hover-background-color: #f1f5f9;
+    --ag-background-color: #ffffff;
+    --ag-foreground-color: #334155;
+    --ag-border-color: #e2e8f0;
+    --ag-row-hover-color: #eff6ff;
+    --ag-selected-row-background-color: #dbeafe;
+    --ag-checkbox-checked-color: #2563eb;
+    --ag-range-selection-border-color: #2563eb;
+    --ag-input-focus-border-color: #2563eb;
+  }
+
+  .ag-theme-kalkulation .ag-header-cell-label {
+    font-weight: 600;
+  }
+
+  .ag-theme-kalkulation .ag-cell {
+    display: flex;
+    align-items: center;
+  }
+
+  .ag-theme-kalkulation .ag-cell.text-right {
+    justify-content: flex-end;
+  }
+
+  .ag-theme-kalkulation .ag-right-aligned-header .ag-header-cell-label {
+    justify-content: flex-end;
+  }
 }

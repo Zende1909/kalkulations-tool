@@ -8,8 +8,8 @@ export function ProtectedRoute() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <p className="text-gray-600">Lade...</p>
+      <div className="flex min-h-screen items-center justify-center bg-app-surface">
+        <div className="app-card px-8 py-6 text-body-lg text-app-muted">Anmeldung wird geprüft…</div>
       </div>
     );
   }

@@ -7,9 +7,14 @@ import type {
   RowDoubleClickedEvent,
   RowSelectedEvent,
 } from "ag-grid-community";
+import { PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 
 import { api, getApiBaseUrl, NetworkError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { Button } from "../ui/Button";
+import { EmptyState } from "../ui/EmptyState";
+import { PageHeader } from "../ui/PageHeader";
+import { ValidationMessage } from "../ui/ValidationMessage";
 import { FormField, StammdatenFormModal } from "./StammdatenFormModal";
 import { formatDecimalForInput } from "../../utils/decimalInput";
 import "ag-grid-community/styles/ag-grid.css";
@@ -19,6 +24,7 @@ type FormMode = "create" | "edit";
 
 interface StammdatenGridProps<T extends { id: number }> {
   title: string;
+  description?: string;
   /** Singular for form titles, e.g. "Material" → "Material anlegen/bearbeiten" */
   entityLabel: string;
   endpoint: string;
@@ -54,6 +60,8 @@ interface StammdatenGridProps<T extends { id: number }> {
   ) => ReactNode;
   /** Wird bei jeder Formularänderung aufgerufen (z. B. Werk-Banner). */
   onFormValuesChange?: (values: Record<string, string | number | boolean>) => void;
+  /** Mindesthöhe der Tabelle in Pixel */
+  gridHeight?: number;
 }
 
 function formatFetchError(err: unknown, method: string, url: string): string {
@@ -112,6 +120,7 @@ function rowToFormValues<T extends { id: number }>(
 
 export function StammdatenGrid<T extends { id: number }>({
   title,
+  description,
   entityLabel,
   endpoint,
   listQuery = "",
@@ -128,6 +137,7 @@ export function StammdatenGrid<T extends { id: number }>({
   transformSubmitValues,
   transformLoadValues,
   onFormValuesChange,
+  gridHeight = 560,
 }: StammdatenGridProps<T>) {
   const { canWrite } = useAuth();
   const [rows, setRows] = useState<T[]>([]);
@@ -295,7 +305,7 @@ export function StammdatenGrid<T extends { id: number }>({
     const base = [...columnDefs];
     if (canWrite) {
       base.push({
-        headerName: "",
+        headerName: "Aktion",
         colId: "actions",
         width: 130,
         maxWidth: 140,
@@ -306,16 +316,18 @@ export function StammdatenGrid<T extends { id: number }>({
         cellRenderer: (params: ICellRendererParams<T>) => {
           if (!params.data) return null;
           return (
-            <button
-              type="button"
-              className="rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-1.5"
               onClick={(event) => {
                 event.stopPropagation();
                 openEditForm(params.data as T);
               }}
             >
+              <PencilSimple className="size-3.5" weight="bold" aria-hidden />
               Bearbeiten
-            </button>
+            </Button>
           );
         },
       } as ColDef<T>);
@@ -326,85 +338,107 @@ export function StammdatenGrid<T extends { id: number }>({
   const formTitle =
     formMode === "edit" ? `${entityLabel} bearbeiten` : `${entityLabel} anlegen`;
 
+  const meta = (
+    <>
+      {rows.length} {rows.length === 1 ? "Eintrag" : "Einträge"}
+      {refreshing ? " · Aktualisiere…" : ""}
+    </>
+  );
+
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
-          <p className="mt-1 text-xs text-gray-500">
-            API: {apiUrl}
-            {refreshing ? " · Aktualisiere Liste…" : ""}
-            {!initialLoading ? ` · ${rows.length} Einträge geladen` : ""}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              loadData().catch(() => undefined);
-            }}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Aktualisieren
-          </button>
-          {canWrite && (
-            <>
-              <button
-                type="button"
-                onClick={openCreateForm}
-                className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-              >
-                Neu
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-              >
-                Ausgewählte löschen
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        title={title}
+        description={description}
+        meta={meta}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                loadData().catch(() => undefined);
+              }}
+            >
+              Aktualisieren
+            </Button>
+            {canWrite && (
+              <>
+                <Button onClick={openCreateForm}>
+                  <Plus className="size-4" weight="bold" aria-hidden />
+                  Neu
+                </Button>
+                <Button variant="danger" onClick={handleDelete}>
+                  <Trash className="size-4" weight="bold" aria-hidden />
+                  Ausgewählte löschen
+                </Button>
+              </>
+            )}
+          </>
+        }
+      />
 
-      {toolbarExtra}
+      {toolbarExtra ? <div className="mb-4">{toolbarExtra}</div> : null}
 
-      {error && (
-        <div className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
-      )}
-      {success && (
-        <div className="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{success}</div>
-      )}
+      {error ? (
+        <ValidationMessage variant="error" className="mb-4">
+          {error}
+        </ValidationMessage>
+      ) : null}
+      {success ? (
+        <ValidationMessage variant="success" className="mb-4">
+          {success}
+        </ValidationMessage>
+      ) : null}
 
       {initialLoading ? (
-        <p className="text-gray-600">Lade Daten...</p>
+        <div className="app-card px-6 py-10 text-body-lg text-app-muted">Lade Daten…</div>
       ) : rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
-          Keine Einträge vorhanden.
-        </div>
+        <EmptyState
+          title={`Keine ${title.toLowerCase()} vorhanden`}
+          description={`Legen Sie den ersten Datensatz an, um ${entityLabel.toLowerCase()}-Stammdaten zu pflegen.`}
+          action={
+            canWrite ? (
+              <Button onClick={openCreateForm}>
+                <Plus className="size-4" weight="bold" aria-hidden />
+                {entityLabel} anlegen
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
-        <div className="ag-theme-quartz" style={{ height: 500, width: "100%" }}>
-          <AgGridReact<T>
-            rowData={rows}
-            columnDefs={cols}
-            getRowId={getRowId}
-            rowSelection="single"
-            onRowSelected={(event: RowSelectedEvent<T>) => {
-              if (event.node.isSelected()) {
-                const id = event.data?.id ?? null;
-                setSelectedId(id);
-                onSelectedIdChange?.(id);
-              }
-            }}
-            onRowDoubleClicked={(event: RowDoubleClickedEvent<T>) => {
-              if (event.data) {
-                openEditForm(event.data);
-              }
-            }}
-            defaultColDef={{ flex: 1, minWidth: 120, sortable: true, filter: true, resizable: true }}
-            animateRows
-          />
+        <div className="app-card overflow-hidden p-1">
+          <div
+            className="ag-theme-quartz ag-theme-kalkulation w-full"
+            style={{ height: gridHeight, minWidth: 0 }}
+          >
+            <AgGridReact<T>
+              rowData={rows}
+              columnDefs={cols}
+              getRowId={getRowId}
+              rowSelection="single"
+              onRowSelected={(event: RowSelectedEvent<T>) => {
+                if (event.node.isSelected()) {
+                  const id = event.data?.id ?? null;
+                  setSelectedId(id);
+                  onSelectedIdChange?.(id);
+                }
+              }}
+              onRowDoubleClicked={(event: RowDoubleClickedEvent<T>) => {
+                if (event.data) {
+                  openEditForm(event.data);
+                }
+              }}
+              defaultColDef={{
+                flex: 1,
+                minWidth: 120,
+                sortable: true,
+                filter: true,
+                resizable: true,
+              }}
+              animateRows
+              suppressCellFocus={false}
+            />
+          </div>
         </div>
       )}
 
