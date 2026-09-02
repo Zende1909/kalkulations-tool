@@ -623,6 +623,26 @@ export function SpritzgussPage() {
     return lohns.filter((l) => l.werk_id === form.werk_id || l.werk_id == null);
   }, [lohns, form.werk_id]);
 
+  const applyPlantLohnDefaults = (werkId: number) => {
+    const prod = lohns.find((l) => l.werk_id === werkId && l.rolle === "produktion");
+    const setup = lohns.find((l) => l.werk_id === werkId && l.rolle === "setup");
+    setForm((current) => ({
+      ...current,
+      lohnkosten_id: prod?.id ?? null,
+      lohnstundensatz: prod?.kosten_pro_stunde ?? current.lohnstundensatz,
+      setup_lohnstundensatz: setup?.kosten_pro_stunde ?? current.setup_lohnstundensatz,
+    }));
+    setDecimalRaw((current) => ({
+      ...current,
+      ...(prod
+        ? { lohnstundensatz: formatDecimalForInputDe(prod.kosten_pro_stunde) }
+        : {}),
+      ...(setup
+        ? { setup_lohnstundensatz: formatDecimalForInputDe(setup.kosten_pro_stunde) }
+        : {}),
+    }));
+  };
+
   const handleWerkChange = (id: string) => {
     if (!id) {
       setForm((current) => ({
@@ -635,16 +655,12 @@ export function SpritzgussPage() {
     }
     const wid = Number(id);
     const plant = werke.find((w) => w.id === wid);
-    const prod = lohns.find((l) => l.werk_id === wid && l.rolle === "produktion");
-    const setup = lohns.find((l) => l.werk_id === wid && l.rolle === "setup");
     setForm((current) => ({
       ...current,
       werk_id: wid,
       maschine_id: null,
-      lohnkosten_id: prod?.id ?? null,
-      lohnstundensatz: prod?.kosten_pro_stunde ?? current.lohnstundensatz,
-      setup_lohnstundensatz: setup?.kosten_pro_stunde ?? current.setup_lohnstundensatz,
     }));
+    applyPlantLohnDefaults(wid);
     if (plant) {
       setSelectedLandId(plant.land_id);
     }
@@ -771,6 +787,10 @@ export function SpritzgussPage() {
       setup_zeit_min: formatDecimalForInputDe(maschine.setup_zeit_min ?? 0),
       setup_mitarbeiter: formatDecimalForInputDe(maschine.setup_mitarbeiter ?? 0),
     }));
+    const werkId = maschine.werk_id ?? form.werk_id;
+    if (werkId != null) {
+      applyPlantLohnDefaults(werkId);
+    }
   };
 
   const handleLohnChange = (id: string) => {

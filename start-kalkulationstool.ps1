@@ -18,7 +18,7 @@ Write-Host "Starte Backend in neuem Fenster ($backendDir) ..."
 Start-Process -FilePath "powershell.exe" -WorkingDirectory $backendDir -ArgumentList @(
     "-NoExit",
     "-Command",
-    "python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+    "python -m alembic upgrade head; if (`$LASTEXITCODE -ne 0) { Write-Host 'Alembic-Migration fehlgeschlagen.' -ForegroundColor Red; pause; exit `$LASTEXITCODE }; python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
 )
 
 Write-Host "Starte Frontend in neuem Fenster ($frontendDir) ..."

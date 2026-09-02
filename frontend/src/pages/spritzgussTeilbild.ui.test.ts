@@ -16,6 +16,11 @@ describe("Einzelteilkalkulation Teilbild & gespeicherte Liste", () => {
     expect(pageSrc).toMatch(/teilbildPreview/);
   });
 
+  it("füllt Lohnsätze beim Werkwechsel in Form und Dezimalfelder", () => {
+    expect(pageSrc).toMatch(/applyPlantLohnDefaults/);
+    expect(pageSrc).toMatch(/setup_lohnstundensatz: formatDecimalForInputDe/);
+  });
+
   it("nutzt verbesserte gespeicherte Liste mit Filter", () => {
     expect(pageSrc).toMatch(/SpritzgussSavedList/);
     expect(savedListSrc).toMatch(/Gespeicherte Kalkulationen/);
@@ -29,5 +34,10 @@ describe("Einzelteilkalkulation Teilbild & gespeicherte Liste", () => {
     expect(apiSrc).toMatch(/customer_id/);
     expect(apiSrc).toMatch(/program_id/);
     expect(apiSrc).toMatch(/project_id/);
+  });
+
+  it("zeigt Ladefehler der gespeicherten Liste an", () => {
+    expect(savedListSrc).toMatch(/loadError/);
+    expect(savedListSrc).toMatch(/ValidationMessage/);
   });
 });

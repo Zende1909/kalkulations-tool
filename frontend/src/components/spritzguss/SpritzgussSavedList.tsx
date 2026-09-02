@@ -4,6 +4,7 @@ import { listCustomers, listPrograms, listProjects } from "../../api/hierarchy";
 import { listKalkulationen } from "../../api/spritzguss";
 import { Button } from "../ui/Button";
 import { SectionHeader } from "../ui/SectionHeader";
+import { ValidationMessage } from "../ui/ValidationMessage";
 import type { Customer, Program, Project } from "../../types/hierarchy";
 import type { SpritzgussListItem } from "../../types/spritzguss";
 import { teilbildSrc } from "../../utils/teilbild";
@@ -28,6 +29,7 @@ export function SpritzgussSavedList({
 }) {
   const [list, setList] = useState<SpritzgussListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -63,6 +65,7 @@ export function SpritzgussSavedList({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     listKalkulationen({
       customerId: customerId === "" ? undefined : Number(customerId),
       programId: programId === "" ? undefined : Number(programId),
@@ -71,8 +74,13 @@ export function SpritzgussSavedList({
       .then((items) => {
         if (!cancelled) setList(items);
       })
-      .catch(() => {
-        if (!cancelled) setList([]);
+      .catch((err) => {
+        if (!cancelled) {
+          setList([]);
+          setLoadError(
+            err instanceof Error ? err.message : "Gespeicherte Kalkulationen konnten nicht geladen werden.",
+          );
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -86,7 +94,10 @@ export function SpritzgussSavedList({
     setCustomerId("");
     setProgramId("");
     setProjectId("");
+    setLoadError(null);
   }
+
+  const filterActive = customerId !== "" || programId !== "" || projectId !== "";
 
   return (
     <section className="app-card p-5">
@@ -159,11 +170,19 @@ export function SpritzgussSavedList({
         </label>
       </div>
 
+      {loadError ? (
+        <ValidationMessage variant="error" className="mb-4">
+          {loadError}
+        </ValidationMessage>
+      ) : null}
+
       {loading ? (
         <p className="text-body-lg text-app-muted">Lade gespeicherte Kalkulationen…</p>
       ) : list.length === 0 ? (
         <p className="rounded-app border border-dashed border-app-border px-4 py-8 text-center text-app-muted">
-          Keine gespeicherten Kalkulationen für den gewählten Filter.
+          {filterActive
+            ? "Keine gespeicherten Kalkulationen für den gewählten Filter. Filter zurücksetzen, um alle anzuzeigen."
+            : "Noch keine gespeicherten Kalkulationen."}
         </p>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
