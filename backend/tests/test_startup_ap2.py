@@ -255,7 +255,7 @@ def test_ensure_investition_schema_contains_no_dml():
 
 def test_alembic_head_revision_is_plant_costing():
     heads = get_alembic_head_revisions()
-    assert heads == ("e1a0021_zykluszeit_prozessaufwand",)
+    assert heads == ("e1a0022_zykluszeit_entnahmeart",)
 
 
 def test_warn_if_database_behind_alembic_head_logs(caplog, tmp_path: Path):

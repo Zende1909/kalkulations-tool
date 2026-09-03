@@ -16,7 +16,7 @@ describe("Zykluszeit-Schätzung UI", () => {
   it("kommt mit den zentralen Eingaben aus", () => {
     expect(pageSrc).toMatch(/Zykluszeit-Schätzung/);
     expect(pageSrc).toMatch(/kühlzeitrelevante Wandstärke \(mm\)/);
-    expect(pageSrc).toMatch(/Teilegröße/);
+    expect(pageSrc).toMatch(/Entnahmeart/);
     expect(pageSrc).toMatch(/Prozessaufwand/);
     expect(pageSrc).toMatch(/Nebenzeiten gesamt \(s\)/);
   });
@@ -35,28 +35,54 @@ describe("Zykluszeit-Schätzung UI", () => {
     }
   });
 
-  it("bietet die Größenklassen und Prozessaufwand an", () => {
-    expect(pageSrc).toMatch(/ZYKLUSZEIT_GROESSENKLASSEN\.map/);
-    expect(pageSrc).toMatch(/zykluszeit_groessenklasse/);
+  it("bietet Entnahmeart und Prozessaufwand zur Auswahl an", () => {
+    expect(pageSrc).toMatch(/ZYKLUSZEIT_ENTNAHMEARTEN\.map/);
+    expect(pageSrc).toMatch(/zykluszeit_entnahmeart/);
     expect(pageSrc).toMatch(/zykluszeit_prozessaufwand/);
-    expect(pageSrc).toMatch(
-      /nebenzeitenRichtwert\(\s*form\.zykluszeit_groessenklasse,\s*zuhaltekraftT,\s*form\.zykluszeit_prozessaufwand/,
-    );
+    // Kein Auswahlfeld für die Teilegröße mehr: sie steuert die Nebenzeit nicht.
+    expect(pageSrc).not.toMatch(/setField\(\s*"zykluszeit_groessenklasse"/);
   });
 
-  it("leitet die Teilegröße auf Wunsch aus der Zuhaltekraft ab", () => {
-    expect(pageSrc).toMatch(/Automatisch aus Zuhaltekraft/);
-    expect(pageSrc).toMatch(/ZYKLUSZEIT_GROESSENKLASSE_AUTO/);
+  it("nutzt Zuhaltekraft, Schussgewicht und Kavitäten für die Vorschau", () => {
     expect(pageSrc).toMatch(/maschinenGroesse\?\.zuhaltekraft_erforderlich_t/);
-    expect(pageSrc).toMatch(/teilegroesseAusZuhaltekraft/);
+    expect(pageSrc).toMatch(/maschinenZuhaltekraftT/);
     expect(pageSrc).toMatch(
-      /buildZykluszeitPreviewPayload\(form,\s*decimalRaw,\s*zuhaltekraftT\)/,
+      /buildZykluszeitPreviewPayload\(form,\s*decimalRaw,\s*zuhaltekraftT,\s*maschinenZuhaltekraftT\)/,
     );
   });
 
-  it("erklärt, dass Kavitäten nur über die Nebenzeiten wirken", () => {
-    expect(pageSrc).toMatch(/Kavitätenzahl verlängert die Kühlzeit nicht/);
-    expect(pageSrc).toMatch(/bis 100 t klein, bis 300 t mittel, darüber groß/);
+  it("schlüsselt die Nebenzeit in ihre Komponenten auf", () => {
+    for (const feld of [
+      "nebenzeit_werkzeugbewegung_s",
+      "nebenzeit_einspritz_nachdruck_s",
+      "nebenzeit_dosierzeit_s",
+      "nebenzeit_dosier_ueberhang_s",
+      "nebenzeit_entnahme_s",
+      "nebenzeit_prozessaufwand_zuschlag_s",
+      "plastifizierleistung_kg_h",
+      "nebenzeiten_automatisch_s",
+    ]) {
+      expect(pageSrc).toContain(`zykluszeitVorschlag.${feld}`);
+    }
+    expect(pageSrc).toMatch(/Werkzeugbewegung/);
+    expect(pageSrc).toMatch(/Einspritzen und Nachdruck/);
+    expect(pageSrc).toMatch(/Dosierüberhang/);
+    expect(pageSrc).toMatch(/Kühlzeit für Weiterrechnung/);
+    expect(pageSrc).toMatch(/Vorgeschlagene Gesamtzykluszeit/);
+    expect(pageSrc).toMatch(/Aktuell verwendete Zykluszeit/);
+  });
+
+  it("kennzeichnet Erfahrungswerte, Parallelität und Fallbacks", () => {
+    expect(pageSrc).toMatch(/pauschale Erfahrungswerte/);
+    expect(pageSrc).toMatch(/Plastifizierung läuft parallel zur Kühlung/);
+    expect(pageSrc).toMatch(/Kavitätenzahl\s*\n?\s*verlängert die Kühlzeit nicht/);
+    expect(pageSrc).toMatch(/zykluszeitVorschlag\.zuhaltekraft_fallback/);
+    expect(pageSrc).toMatch(/zykluszeitVorschlag\.schussgewicht_fallback/);
+  });
+
+  it("zeigt nicht blockierende Plausibilitätswarnungen an", () => {
+    expect(pageSrc).toMatch(/zykluszeitVorschlag\.warnungen/);
+    expect(pageSrc).toMatch(/zykluszeitVorschlag\?\.warnungen/);
   });
 
   it("rechnet live mit Debounce wie die Maschinengrößen-Vorschau", () => {
@@ -101,6 +127,7 @@ describe("Zykluszeit-Schätzung UI", () => {
     expect(pageSrc).toMatch(/item\.zykluszeit_wandstaerke_mm/);
     expect(pageSrc).toMatch(/item\.zykluszeit_groessenklasse/);
     expect(pageSrc).toMatch(/item\.zykluszeit_prozessaufwand/);
+    expect(pageSrc).toMatch(/item\.zykluszeit_entnahmeart/);
     expect(pageSrc).toMatch(/item\.zykluszeit_nebenzeiten_gesamt_s/);
     expect(pageSrc).toMatch(/item\.zykluszeit_quelle/);
   });
@@ -110,8 +137,10 @@ describe("Zykluszeit-Schätzung UI", () => {
     expect(pageSrc).toMatch(/zykluszeit_wandstaerke_mm: form\.zykluszeit_wandstaerke_mm/);
     expect(pageSrc).toMatch(/zykluszeit_groessenklasse: form\.zykluszeit_groessenklasse/);
     expect(pageSrc).toMatch(/zykluszeit_prozessaufwand: form\.zykluszeit_prozessaufwand/);
+    expect(pageSrc).toMatch(/zykluszeit_entnahmeart: form\.zykluszeit_entnahmeart/);
     expect(apiSrc).toMatch(/"zykluszeit_wandstaerke_mm"/);
     expect(apiSrc).toMatch(/"zykluszeit_prozessaufwand"/);
+    expect(apiSrc).toMatch(/"zykluszeit_entnahmeart"/);
     expect(apiSrc).toMatch(/"zykluszeit_nebenzeiten_gesamt_s"/);
   });
 });

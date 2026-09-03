@@ -78,4 +78,4 @@ def test_alembic_head_is_e1a0009_for_ci_expectation():
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     heads = ScriptDirectory.from_config(cfg).get_heads()
-    assert heads == ["e1a0021_zykluszeit_prozessaufwand"]
+    assert heads == ["e1a0022_zykluszeit_entnahmeart"]

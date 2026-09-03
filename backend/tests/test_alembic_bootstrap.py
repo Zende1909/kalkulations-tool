@@ -115,10 +115,13 @@ def test_baseline_revision_is_discoverable():
 def test_alembic_head_is_plant_costing_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0021_zykluszeit_prozessaufwand"]
-    rev = scripts.get_revision("e1a0021_zykluszeit_prozessaufwand")
+    assert scripts.get_heads() == ["e1a0022_zykluszeit_entnahmeart"]
+    rev = scripts.get_revision("e1a0022_zykluszeit_entnahmeart")
     assert rev is not None
-    assert rev.down_revision == "e1a0020_spritzguss_teilbild"
+    assert rev.down_revision == "e1a0021_zykluszeit_prozessaufwand"
+    rev21 = scripts.get_revision("e1a0021_zykluszeit_prozessaufwand")
+    assert rev21 is not None
+    assert rev21.down_revision == "e1a0020_spritzguss_teilbild"
     rev20 = scripts.get_revision("e1a0020_spritzguss_teilbild")
     assert rev20 is not None
     assert rev20.down_revision == "e1a0019_drop_materialgruppe_quelle"

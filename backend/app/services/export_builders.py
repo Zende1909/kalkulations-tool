@@ -29,7 +29,7 @@ from app.services.dashboard import (
 from app.services.investition_financials import financial_fields_for_export
 from app.services.baugruppe_export_detail import build_baugruppe_detail_kalkulation
 from app.services.dashboard_assembly import build_assembly_overview
-from app.services.zykluszeit import GROESSENKLASSEN_LABELS
+from app.services.zykluszeit import DEFAULT_ENTNAHMEART, GROESSENKLASSEN_LABELS
 from app.services.export_models import (
     BaugruppeExportData,
     DashboardExportData,
@@ -89,12 +89,25 @@ def _zykluszeit_export_rows(obj: SpritzgussKalkulation, ergebnis: dict) -> list[
         "automatisch": "automatisch",
     }.get(str(nebenzeit_quelle or ""), "–")
     materialklasse = vorschlag.get("materialklasse")
+    entnahmeart = (
+        vorschlag.get("entnahmeart")
+        or getattr(obj, "zykluszeit_entnahmeart", None)
+        or DEFAULT_ENTNAHMEART
+    )
+    dosier_text = _num_str(vorschlag.get("nebenzeit_dosier_ueberhang_s"), "s")
+    if vorschlag.get("nebenzeit_dosierzeit_s") is not None:
+        dosier_text = (
+            f"{dosier_text} (Dosierzeit {_num_str(vorschlag.get('nebenzeit_dosierzeit_s'), 's')}, "
+            f"Plastifizierleistung "
+            f"{_num_str(vorschlag.get('plastifizierleistung_kg_h'), 'kg/h', 0)})"
+        )
     rows.extend(
         [
             ExportRow("kühlzeitrelevante Wandstärke", _num_str(wandstaerke, "mm")),
             ExportRow("Materialgruppe", str(vorschlag.get("materialgruppe") or "–")),
             ExportRow("Materialklasse", str(materialklasse or "–")),
-            ExportRow("Teilegröße (Nebenzeiten)", klasse_text),
+            ExportRow("Werkzeug-/Maschinenklasse (informativ)", klasse_text),
+            ExportRow("Entnahmeart", str(entnahmeart)),
             ExportRow("Prozessaufwand", str(prozessaufwand)),
             ExportRow(
                 "theoretische Kühlzeit",
@@ -103,6 +116,27 @@ def _zykluszeit_export_rows(obj: SpritzgussKalkulation, ergebnis: dict) -> list[
             ExportRow(
                 "Kühlzeit inkl. Zuschlag 1,5",
                 _num_str(wert("kuehlzeit_s", "zykluszeit_kuehlzeit_s"), "s"),
+            ),
+            ExportRow(
+                "Nebenzeit Werkzeugbewegung",
+                _num_str(vorschlag.get("nebenzeit_werkzeugbewegung_s"), "s"),
+            ),
+            ExportRow(
+                "Nebenzeit Einspritzen und Nachdruck",
+                _num_str(vorschlag.get("nebenzeit_einspritz_nachdruck_s"), "s"),
+            ),
+            ExportRow("Nebenzeit Dosierüberhang", dosier_text),
+            ExportRow(
+                "Nebenzeit Entnahme",
+                _num_str(vorschlag.get("nebenzeit_entnahme_s"), "s"),
+            ),
+            ExportRow(
+                "Nebenzeit Prozessaufwand",
+                _num_str(vorschlag.get("nebenzeit_prozessaufwand_zuschlag_s"), "s"),
+            ),
+            ExportRow(
+                "Nebenzeit automatisch gesamt",
+                _num_str(vorschlag.get("nebenzeiten_automatisch_s"), "s"),
             ),
             ExportRow(
                 "Nebenzeiten gesamt",
@@ -115,9 +149,26 @@ def _zykluszeit_export_rows(obj: SpritzgussKalkulation, ergebnis: dict) -> list[
             ),
         ]
     )
+    if vorschlag.get("schussgewicht_fallback"):
+        rows.append(
+            ExportRow(
+                "Zykluszeit-Schätzung Fallback",
+                "Ohne Schussgewicht: Einspritz- und Nachdruckzeit pauschal angesetzt.",
+            )
+        )
+    if vorschlag.get("zuhaltekraft_fallback"):
+        rows.append(
+            ExportRow(
+                "Zykluszeit-Schätzung Fallback",
+                "Ohne Zuhaltekraft: Werkzeugbewegung, Entnahme und "
+                "Plastifizierleistung pauschal angesetzt.",
+            )
+        )
     hinweis = vorschlag.get("hinweis") or getattr(obj, "zykluszeit_hinweis", None)
     if hinweis:
         rows.append(ExportRow("Zykluszeit-Schätzung Hinweis", str(hinweis)))
+    for warnung in vorschlag.get("warnungen") or []:
+        rows.append(ExportRow("Zykluszeit-Schätzung Warnung", str(warnung)))
     return rows
 
 

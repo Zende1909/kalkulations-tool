@@ -7,6 +7,7 @@
 
 import type { SpritzgussFormData } from "../types/spritzguss";
 import {
+  ZYKLUSZEIT_DEFAULT_ENTNAHMEART,
   ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
   ZYKLUSZEIT_DEFAULT_PROZESSAUFWAND,
 } from "../types/spritzguss";
@@ -17,9 +18,15 @@ export interface ZykluszeitPreviewPayload {
   zykluszeit_wandstaerke_mm: number | null;
   zykluszeit_groessenklasse: string;
   zykluszeit_prozessaufwand: string;
+  zykluszeit_entnahmeart: string;
   zykluszeit_nebenzeiten_gesamt_s: number | null;
   /** Aus der Maschinengrößen-Vorschau; enthält Kavitäten und Fläche. */
   zuhaltekraft_t: number | null;
+  /** Ersatzweise Zuhaltekraft der gewählten Maschine. */
+  maschinen_zuhaltekraft_t: number | null;
+  /** Für Einspritzzeit, Dosierüberhang und Greiferzuschlag. */
+  schussgewicht_g: number | null;
+  kavitaeten: number | null;
 }
 
 export function readZykluszeitDecimal(
@@ -45,7 +52,10 @@ export function buildZykluszeitPreviewPayload(
   form: SpritzgussFormData,
   decimalRaw: Record<string, string>,
   zuhaltekraftT: number | null = null,
+  maschinenZuhaltekraftT: number | null = null,
 ): ZykluszeitPreviewPayload {
+  const schussgewicht = readZykluszeitDecimal(decimalRaw, form, "schussgewicht_g", null);
+  const kavitaeten = readZykluszeitDecimal(decimalRaw, form, "kavitaeten", null);
   return {
     material_id: form.material_id,
     zykluszeit_wandstaerke_mm: readZykluszeitDecimal(
@@ -58,6 +68,7 @@ export function buildZykluszeitPreviewPayload(
       form.zykluszeit_groessenklasse || ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
     zykluszeit_prozessaufwand:
       form.zykluszeit_prozessaufwand || ZYKLUSZEIT_DEFAULT_PROZESSAUFWAND,
+    zykluszeit_entnahmeart: form.zykluszeit_entnahmeart || ZYKLUSZEIT_DEFAULT_ENTNAHMEART,
     zykluszeit_nebenzeiten_gesamt_s: readZykluszeitDecimal(
       decimalRaw,
       form,
@@ -66,5 +77,11 @@ export function buildZykluszeitPreviewPayload(
     ),
     zuhaltekraft_t:
       zuhaltekraftT != null && Number.isFinite(zuhaltekraftT) ? zuhaltekraftT : null,
+    maschinen_zuhaltekraft_t:
+      maschinenZuhaltekraftT != null && Number.isFinite(maschinenZuhaltekraftT)
+        ? maschinenZuhaltekraftT
+        : null,
+    schussgewicht_g: schussgewicht != null && schussgewicht > 0 ? schussgewicht : null,
+    kavitaeten: kavitaeten != null && kavitaeten >= 1 ? Math.floor(kavitaeten) : null,
   };
 }

@@ -82,6 +82,7 @@ def _create_schema(engine) -> None:
                     zykluszeit_wandstaerke_mm FLOAT,
                     zykluszeit_groessenklasse VARCHAR(16),
                     zykluszeit_prozessaufwand VARCHAR(16),
+                    zykluszeit_entnahmeart VARCHAR(16),
                     zykluszeit_kuehlzeit_s FLOAT,
                     zykluszeit_nebenzeiten_gesamt_s FLOAT,
                     zykluszeit_vorschlag_s FLOAT,

@@ -4,31 +4,52 @@ import { describe, expect, it } from "vitest";
 import {
   effektiveGroessenklasse,
   emptySpritzgussForm,
-  nebenzeitenRichtwert,
+  entnahmeartNormalisiert,
   teilegroesseAusZuhaltekraft,
+  ZYKLUSZEIT_DEFAULT_ENTNAHMEART,
   ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
+  ZYKLUSZEIT_ENTNAHMEARTEN,
   ZYKLUSZEIT_GROESSENKLASSEN,
 } from "../types/spritzguss";
 import { buildZykluszeitPreviewPayload } from "./zykluszeitPreview";
 import { parseSpritzgussDecimalFields } from "./spritzgussFormDecimals";
 
 describe("Größenklassen", () => {
-  it("hat drei Klassen mit Nebenzeiten-Richtwerten", () => {
+  it("bleibt eine informative Klassifizierung ohne eigene Nebenzeit", () => {
     expect(ZYKLUSZEIT_GROESSENKLASSEN.map((k) => k.key)).toEqual([
       "klein",
       "mittel",
       "gross",
     ]);
-    expect(ZYKLUSZEIT_GROESSENKLASSEN.map((k) => k.nebenzeiten)).toEqual([6, 10, 16]);
+    for (const klasse of ZYKLUSZEIT_GROESSENKLASSEN) {
+      expect(klasse).not.toHaveProperty("nebenzeiten");
+    }
+  });
+});
+
+describe("Entnahmeart", () => {
+  it("kennt werkzeugfallend und greifer mit greifer als Default", () => {
+    expect(ZYKLUSZEIT_ENTNAHMEARTEN.map((a) => a.key)).toEqual([
+      "werkzeugfallend",
+      "greifer",
+    ]);
+    expect(ZYKLUSZEIT_DEFAULT_ENTNAHMEART).toBe("greifer");
+    expect(emptySpritzgussForm().zykluszeit_entnahmeart).toBe("greifer");
   });
 
-  it("liefert für unbekannte Klassen den Default-Richtwert", () => {
-    expect(nebenzeitenRichtwert("klein")).toBe(6);
-    expect(nebenzeitenRichtwert("gross")).toBe(16);
-    expect(nebenzeitenRichtwert(null)).toBe(10);
-    expect(nebenzeitenRichtwert("gibtsnicht")).toBe(10);
-    expect(nebenzeitenRichtwert("klein", 80, "aufwendig")).toBe(11);
-    expect(nebenzeitenRichtwert("auto", null, "aufwendig")).toBe(15);
+  it("erklärt beide Varianten im UI-Text", () => {
+    const texte = Object.fromEntries(
+      ZYKLUSZEIT_ENTNAHMEARTEN.map((a) => [a.key, a.beschreibung]),
+    );
+    expect(texte.werkzeugfallend).toMatch(/fällt nach dem Auswerfen frei/);
+    expect(texte.greifer).toMatch(/bevor das Werkzeug schließen kann/);
+  });
+
+  it("fällt für fehlende oder unbekannte Werte auf greifer zurück", () => {
+    expect(entnahmeartNormalisiert(null)).toBe("greifer");
+    expect(entnahmeartNormalisiert(undefined)).toBe("greifer");
+    expect(entnahmeartNormalisiert("gibtsnicht")).toBe("greifer");
+    expect(entnahmeartNormalisiert("werkzeugfallend")).toBe("werkzeugfallend");
   });
 });
 
@@ -49,8 +70,6 @@ describe("Automatische Teilegröße aus der Zuhaltekraft", () => {
   it("löst auto gegen die Zuhaltekraft auf, manuelle Klassen bleiben stehen", () => {
     expect(effektiveGroessenklasse("auto", 480)).toBe("gross");
     expect(effektiveGroessenklasse("klein", 480)).toBe("klein");
-    expect(nebenzeitenRichtwert("auto", 480)).toBe(16);
-    expect(nebenzeitenRichtwert("klein", 480)).toBe(6);
   });
 });
 
@@ -60,8 +79,11 @@ describe("buildZykluszeitPreviewPayload", () => {
     expect(payload.zykluszeit_groessenklasse).toBe(ZYKLUSZEIT_DEFAULT_GROESSENKLASSE);
     expect(payload.zykluszeit_groessenklasse).toBe("auto");
     expect(payload.zykluszeit_prozessaufwand).toBe("normal");
+    expect(payload.zykluszeit_entnahmeart).toBe("greifer");
     expect(payload.zykluszeit_nebenzeiten_gesamt_s).toBeNull();
     expect(payload.zuhaltekraft_t).toBeNull();
+    expect(payload.maschinen_zuhaltekraft_t).toBeNull();
+    expect(payload.schussgewicht_g).toBeNull();
   });
 
   it("reicht die Zuhaltekraft aus der Maschinengrößen-Vorschau durch", () => {
@@ -69,8 +91,40 @@ describe("buildZykluszeitPreviewPayload", () => {
     expect(payload.zuhaltekraft_t).toBe(480);
   });
 
+  it("reicht die Maschinen-Zuhaltekraft als Ersatzwert durch", () => {
+    const payload = buildZykluszeitPreviewPayload(emptySpritzgussForm(), {}, null, 2653);
+    expect(payload.zuhaltekraft_t).toBeNull();
+    expect(payload.maschinen_zuhaltekraft_t).toBe(2653);
+  });
+
   it("verwirft eine unbrauchbare Zuhaltekraft", () => {
     expect(buildZykluszeitPreviewPayload(emptySpritzgussForm(), {}, NaN).zuhaltekraft_t).toBeNull();
+  });
+
+  it("übergibt Schussgewicht und Kavitäten live aus decimalRaw", () => {
+    const payload = buildZykluszeitPreviewPayload(emptySpritzgussForm(), {
+      schussgewicht_g: "2414",
+      kavitaeten: "2",
+    });
+    expect(payload.schussgewicht_g).toBeCloseTo(2414, 10);
+    expect(payload.kavitaeten).toBe(2);
+  });
+
+  it("verwirft ein Schussgewicht von 0", () => {
+    const payload = buildZykluszeitPreviewPayload(emptySpritzgussForm(), {
+      schussgewicht_g: "0",
+    });
+    expect(payload.schussgewicht_g).toBeNull();
+  });
+
+  it("übernimmt die gewählte Entnahmeart", () => {
+    const form = {
+      ...emptySpritzgussForm(),
+      zykluszeit_entnahmeart: "werkzeugfallend" as const,
+    };
+    expect(buildZykluszeitPreviewPayload(form, {}).zykluszeit_entnahmeart).toBe(
+      "werkzeugfallend",
+    );
   });
 
   it("liest Wandstärke live aus decimalRaw", () => {

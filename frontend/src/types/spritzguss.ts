@@ -102,13 +102,15 @@ export interface MaschinenGroesseResult {
 }
 
 /**
- * Teilegrößen-Klassen mit Richtwert für die Summe der Nebenzeiten.
+ * Informative Werkzeug-/Maschinenklasse. Sie beschreibt die Größenordnung des
+ * Werkzeugs; die Nebenzeit folgt den einzelnen Komponenten (Werkzeugbewegung,
+ * Einspritzen/Nachdruck, Dosierüberhang, Entnahme, Prozessaufwand).
  * Muss zu `GROESSENKLASSEN` im Backend-Service `zykluszeit` passen.
  */
 export const ZYKLUSZEIT_GROESSENKLASSEN = [
-  { key: "klein", label: "Klein – Handteil, einfache Entformung", nebenzeiten: 6 },
-  { key: "mittel", label: "Mittel – Standardteil, Roboterentnahme", nebenzeiten: 10 },
-  { key: "gross", label: "Groß – Großteil, Kernzug oder Einlegeteil", nebenzeiten: 16 },
+  { key: "klein", label: "Klein – Handteil, einfache Entformung" },
+  { key: "mittel", label: "Mittel – Standardteil, Roboterentnahme" },
+  { key: "gross", label: "Groß – Großteil, Kernzug oder Einlegeteil" },
 ] as const;
 
 export type ZykluszeitTeilegroesse = (typeof ZYKLUSZEIT_GROESSENKLASSEN)[number]["key"];
@@ -155,16 +157,29 @@ export type ZykluszeitProzessaufwand = "normal" | "aufwendig";
 export const ZYKLUSZEIT_DEFAULT_PROZESSAUFWAND: ZykluszeitProzessaufwand = "normal";
 export const ZYKLUSZEIT_PROZESSAUFWAND_ZUSCHLAG_S = 5;
 
-export function nebenzeitenRichtwert(
-  klasse: string | null | undefined,
-  zuhaltekraftT: number | null | undefined = null,
-  prozessaufwand: ZykluszeitProzessaufwand | null | undefined = "normal",
-): number {
-  const key = effektiveGroessenklasse(klasse, zuhaltekraftT);
-  const basis = ZYKLUSZEIT_GROESSENKLASSEN.find((k) => k.key === key)!.nebenzeiten;
-  return (prozessaufwand ?? "normal") === "aufwendig"
-    ? basis + ZYKLUSZEIT_PROZESSAUFWAND_ZUSCHLAG_S
-    : basis;
+/**
+ * Entnahmeart des Teils. Muss zu `ENTNAHMEART_WERTE` im Backend-Service
+ * `zykluszeit` passen; fehlende Werte gelten als `greifer`.
+ */
+export type ZykluszeitEntnahmeart = "werkzeugfallend" | "greifer";
+export const ZYKLUSZEIT_DEFAULT_ENTNAHMEART: ZykluszeitEntnahmeart = "greifer";
+export const ZYKLUSZEIT_ENTNAHMEARTEN = [
+  {
+    key: "werkzeugfallend",
+    label: "werkzeugfallend – Teil fällt frei aus",
+    beschreibung:
+      "Teil fällt nach dem Auswerfen frei aus dem Werkzeug, das Werkzeug kann direkt wieder schließen.",
+  },
+  {
+    key: "greifer",
+    label: "greifer – Handlingsystem entnimmt",
+    beschreibung:
+      "Handlingsystem oder Roboter fährt in das offene Werkzeug ein, entnimmt das Teil und fährt aus, bevor das Werkzeug schließen kann.",
+  },
+] as const;
+
+export function entnahmeartNormalisiert(wert: unknown): ZykluszeitEntnahmeart {
+  return wert === "werkzeugfallend" ? "werkzeugfallend" : ZYKLUSZEIT_DEFAULT_ENTNAHMEART;
 }
 
 export type ZykluszeitQuelle = "manuell" | "vorschlag";
@@ -172,6 +187,7 @@ export type ZykluszeitQuelle = "manuell" | "vorschlag";
 export interface ZykluszeitVorschlag {
   berechenbar: boolean;
   hinweis?: string | null;
+  warnungen?: string[] | null;
   wandstaerke_mm?: number | null;
   materialgruppe?: string | null;
   material_bezeichnung?: string | null;
@@ -179,6 +195,9 @@ export interface ZykluszeitVorschlag {
   groessenklasse?: string | null;
   groessenklasse_auswahl?: string | null;
   zuhaltekraft_t?: number | null;
+  schussgewicht_g?: number | null;
+  kavitaeten?: number | null;
+  entnahmeart?: string | null;
   prozessaufwand?: string | null;
   kuehlfaktor?: number | null;
   temperaturleitfaehigkeit_m2_s?: number | null;
@@ -187,6 +206,17 @@ export interface ZykluszeitVorschlag {
   entformungstemperatur_c?: number | null;
   optimale_kuehlzeit_s?: number | null;
   kuehlzeit_s?: number | null;
+  nebenzeit_werkzeugbewegung_s?: number | null;
+  nebenzeit_einspritz_nachdruck_s?: number | null;
+  nebenzeit_dosierzeit_s?: number | null;
+  nebenzeit_dosier_ueberhang_s?: number | null;
+  nebenzeit_entnahme_s?: number | null;
+  nebenzeit_prozessaufwand_zuschlag_s?: number | null;
+  plastifizierleistung_kg_h?: number | null;
+  schussmasse_gesamt_g?: number | null;
+  nebenzeiten_automatisch_s?: number | null;
+  schussgewicht_fallback?: boolean | null;
+  zuhaltekraft_fallback?: boolean | null;
   nebenzeiten_gesamt_s?: number | null;
   nebenzeit_quelle?: string | null;
   gesamtzykluszeit_s?: number | null;
@@ -249,7 +279,8 @@ export interface SpritzgussFormData {
   zykluszeit_wandstaerke_mm: number | null;
   zykluszeit_groessenklasse: ZykluszeitGroessenklasse;
   zykluszeit_prozessaufwand: ZykluszeitProzessaufwand;
-  /** Übersteuert den automatischen Richtwert, wenn gesetzt. */
+  zykluszeit_entnahmeart: ZykluszeitEntnahmeart;
+  /** Übersteuert die automatische Nebenzeit vollständig, wenn gesetzt. */
   zykluszeit_nebenzeiten_gesamt_s: number | null;
 
   lohnkosten_id: number | null;
@@ -347,6 +378,7 @@ export const emptySpritzgussForm = (): SpritzgussFormData => ({
   zykluszeit_wandstaerke_mm: null,
   zykluszeit_groessenklasse: ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
   zykluszeit_prozessaufwand: ZYKLUSZEIT_DEFAULT_PROZESSAUFWAND,
+  zykluszeit_entnahmeart: ZYKLUSZEIT_DEFAULT_ENTNAHMEART,
   zykluszeit_nebenzeiten_gesamt_s: null,
   lohnkosten_id: null,
   lohnstundensatz: 0,

@@ -51,6 +51,7 @@ export type CalcPayload = Pick<
   | "zykluszeit_wandstaerke_mm"
   | "zykluszeit_groessenklasse"
   | "zykluszeit_prozessaufwand"
+  | "zykluszeit_entnahmeart"
   | "zykluszeit_nebenzeiten_gesamt_s"
 > & {
   veredelung_zuordnungen?: VeredelungZuordnungInput[];

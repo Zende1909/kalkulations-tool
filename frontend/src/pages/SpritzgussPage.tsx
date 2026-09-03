@@ -29,9 +29,9 @@ import type { Lohnkosten, Land, Maschine, Material, Werk } from "../types/stammd
 import type { Veredelungsschritt } from "../types/veredelung";
 import {
   emptySpritzgussForm,
-  nebenzeitenRichtwert,
-  teilegroesseAusZuhaltekraft,
+  entnahmeartNormalisiert,
   ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
+  ZYKLUSZEIT_ENTNAHMEARTEN,
   ZYKLUSZEIT_GROESSENKLASSE_AUTO,
   ZYKLUSZEIT_GROESSENKLASSEN,
   ZYKLUSZEIT_PROZESSAUFWAND_ZUSCHLAG_S,
@@ -41,6 +41,7 @@ import {
   type VeredelungZuordnung,
   type VeredelungZuordnungInput,
   type WerkzeugAbrechnungsart,
+  type ZykluszeitEntnahmeart,
   type ZykluszeitGroessenklasse,
   type ZykluszeitProzessaufwand,
   type ZykluszeitVorschlag,
@@ -515,17 +516,17 @@ export function SpritzgussPage() {
 
   const zuhaltekraftT = maschinenGroesse?.zuhaltekraft_erforderlich_t ?? null;
 
-  const autoTeilegroesseLabel = useMemo(() => {
-    const key = teilegroesseAusZuhaltekraft(zuhaltekraftT);
-    const neben = nebenzeitenRichtwert(key, zuhaltekraftT, form.zykluszeit_prozessaufwand);
-    return zuhaltekraftT == null
-      ? `noch ohne Zuhaltekraft: ${neben} s`
-      : `${formatSizingNumber(zuhaltekraftT)} t → ${neben} s`;
-  }, [zuhaltekraftT, form.zykluszeit_prozessaufwand]);
+  /** Ersatzwert, wenn keine erforderliche Zuhaltekraft berechnet werden kann. */
+  const maschinenZuhaltekraftT = useMemo(() => {
+    const maschine = machines.find((m) => m.id === form.maschine_id);
+    const kraft = maschine?.schliesskraft_t ?? null;
+    return kraft != null && Number.isFinite(kraft) && kraft > 0 ? kraft : null;
+  }, [machines, form.maschine_id]);
 
   const zykluszeitPreviewPayload = useMemo(
-    () => buildZykluszeitPreviewPayload(form, decimalRaw, zuhaltekraftT),
-    [form, decimalRaw, zuhaltekraftT],
+    () =>
+      buildZykluszeitPreviewPayload(form, decimalRaw, zuhaltekraftT, maschinenZuhaltekraftT),
+    [form, decimalRaw, zuhaltekraftT, maschinenZuhaltekraftT],
   );
 
   useEffect(() => {
@@ -600,6 +601,7 @@ export function SpritzgussPage() {
       zykluszeit_wandstaerke_mm: form.zykluszeit_wandstaerke_mm,
       zykluszeit_groessenklasse: form.zykluszeit_groessenklasse,
       zykluszeit_prozessaufwand: form.zykluszeit_prozessaufwand,
+      zykluszeit_entnahmeart: form.zykluszeit_entnahmeart,
       zykluszeit_nebenzeiten_gesamt_s: form.zykluszeit_nebenzeiten_gesamt_s,
     }),
     [form, veredelungZuordnungen, hierarchy.project_id],
@@ -994,6 +996,7 @@ export function SpritzgussPage() {
         zykluszeit_groessenklasse: gespeicherteGroessenklasse(item.zykluszeit_groessenklasse),
         zykluszeit_prozessaufwand:
           item.zykluszeit_prozessaufwand === "aufwendig" ? "aufwendig" : "normal",
+        zykluszeit_entnahmeart: entnahmeartNormalisiert(item.zykluszeit_entnahmeart),
         zykluszeit_nebenzeiten_gesamt_s: item.zykluszeit_nebenzeiten_gesamt_s ?? null,
         lohnkosten_id: item.lohnkosten_id,
         lohnstundensatz: item.lohnstundensatz,
@@ -1466,11 +1469,11 @@ export function SpritzgussPage() {
               Konservative Abschätzung für die frühe Angebotskalkulation (1K-Thermoplast,
               Serien-Stahlwerkzeuge) aus Materialkennwerten und kühlzeitrelevanter Wandstärke.
               Der Wert ist ein Vorschlag und wird erst nach „Übernehmen“ in das Zykluszeitfeld
-              geschrieben. Die Kavitätenzahl verlängert die Kühlzeit nicht – alle Kavitäten
-              kühlen gleichzeitig – sie wirkt über die Zuhaltekraft auf die Nebenzeiten und
-              vervielfacht die Stückzahl je Schuss. IKET-Variante 2 gilt fachlich primär für
-              teilkristalline Thermoplaste; für amorphe Materialien ist der Vorschlag eine
-              vereinfachte Näherung.
+              geschrieben. Die Nebenzeit setzt sich aus Werkzeugbewegung, Einspritzen und
+              Nachdruck, Dosierüberhang, Entnahme und Prozessaufwand zusammen und nutzt
+              Zuhaltekraft, Schussgewicht und Kavitäten der Kalkulation. IKET-Variante 2 gilt
+              fachlich primär für teilkristalline Thermoplaste; für amorphe Materialien ist der
+              Vorschlag eine vereinfachte Näherung.
             </p>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div>
@@ -1488,30 +1491,26 @@ export function SpritzgussPage() {
                 </p>
               </div>
               <label className="block text-sm">
-                <span className="font-medium text-gray-700">Teilegröße</span>
+                <span className="font-medium text-gray-700">Entnahmeart</span>
                 <select
-                  value={form.zykluszeit_groessenklasse}
+                  value={form.zykluszeit_entnahmeart}
                   onChange={(e) =>
-                    setField(
-                      "zykluszeit_groessenklasse",
-                      e.target.value as ZykluszeitGroessenklasse,
-                    )
+                    setField("zykluszeit_entnahmeart", e.target.value as ZykluszeitEntnahmeart)
                   }
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
-                  <option value={ZYKLUSZEIT_GROESSENKLASSE_AUTO}>
-                    Automatisch aus Zuhaltekraft ({autoTeilegroesseLabel})
-                  </option>
-                  {ZYKLUSZEIT_GROESSENKLASSEN.map(({ key, label, nebenzeiten }) => (
+                  {ZYKLUSZEIT_ENTNAHMEARTEN.map(({ key, label }) => (
                     <option key={key} value={key}>
-                      {label} (
-                      {form.zykluszeit_prozessaufwand === "aufwendig"
-                        ? nebenzeiten + ZYKLUSZEIT_PROZESSAUFWAND_ZUSCHLAG_S
-                        : nebenzeiten}{" "}
-                      s)
+                      {label}
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  {
+                    ZYKLUSZEIT_ENTNAHMEARTEN.find((a) => a.key === form.zykluszeit_entnahmeart)
+                      ?.beschreibung
+                  }
+                </p>
               </label>
               <label className="block text-sm">
                 <span className="font-medium text-gray-700">Prozessaufwand</span>
@@ -1530,32 +1529,29 @@ export function SpritzgussPage() {
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
                   {form.zykluszeit_prozessaufwand === "aufwendig"
-                    ? "Zusätzlicher Zeitbedarf, zum Beispiel durch Einlegeteile, manuelle Entnahme, mehrere Kernzüge, Ausschrauben oder aufwendiges Roboterhandling (+5 s nur auf die automatische Nebenzeit)."
+                    ? `Zusätzlicher Zeitbedarf, zum Beispiel durch Einlegeteile, mehrere Kernzüge oder Ausschrauben (+${ZYKLUSZEIT_PROZESSAUFWAND_ZUSCHLAG_S} s nur auf die automatische Nebenzeit).`
                     : "Standardprozess ohne besonderen Entformungs- oder Handlingaufwand."}
                 </p>
               </label>
-              <NumberInput
-                fieldKey="zykluszeit_nebenzeiten_gesamt_s"
-                label="Nebenzeiten gesamt (s)"
-                value={
-                  form.zykluszeit_nebenzeiten_gesamt_s ??
-                  nebenzeitenRichtwert(
-                    form.zykluszeit_groessenklasse,
-                    zuhaltekraftT,
-                    form.zykluszeit_prozessaufwand,
-                  )
-                }
-                decimalRaw={decimalRaw}
-                onDecimalChange={handleDecimalChange}
-              />
+              <div>
+                <NumberInput
+                  fieldKey="zykluszeit_nebenzeiten_gesamt_s"
+                  label="Nebenzeiten gesamt (s)"
+                  value={
+                    form.zykluszeit_nebenzeiten_gesamt_s ??
+                    zykluszeitVorschlag?.nebenzeiten_automatisch_s ??
+                    0
+                  }
+                  decimalRaw={decimalRaw}
+                  onDecimalChange={handleDecimalChange}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Leer lassen, um die automatische Nebenzeit aus den Komponenten unten zu
+                  verwenden. Eine manuelle Nebenzeit hat Vorrang und wird durch Entnahmeart,
+                  Schussgewicht, Kavitäten und Prozessaufwand nicht verändert.
+                </p>
+              </div>
             </div>
-            <p className="mt-1 text-xs text-gray-500">
-              Nebenzeiten = Schließen, Einspritzen, Öffnen und Entnahme (pauschaler
-              Erfahrungswert). Leer lassen, um die automatische Nebenzeit aus Zuhaltekraft und
-              Prozessaufwand zu verwenden. Eine manuelle Nebenzeit hat Vorrang und wird durch
-              den Prozessaufwand nicht verändert. Im Modus „Automatisch“ folgt die Teilegröße
-              der erforderlichen Zuhaltekraft aus „Maschinengröße“ (bis 100 t klein, bis 300 t mittel, darüber groß).
-            </p>
 
             <div className="mt-4 rounded-md border border-gray-100 bg-gray-50 p-3 text-sm">
               {zykluszeitVorschlag?.berechenbar ? (
@@ -1563,34 +1559,115 @@ export function SpritzgussPage() {
                   <div className="font-medium text-gray-900">
                     Vorschlag {formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s)} s
                   </div>
-                  <div className="mt-1 text-gray-700">
-                    Kühlzeit {formatSekunden(zykluszeitVorschlag.kuehlzeit_s)} s + Nebenzeiten{" "}
-                    {formatSekunden(zykluszeitVorschlag.nebenzeiten_gesamt_s)} s (
-                    {zykluszeitVorschlag.nebenzeit_quelle === "manuell"
-                      ? "manuell"
-                      : "automatisch"}
-                    {zykluszeitVorschlag.prozessaufwand
-                      ? `, Prozessaufwand ${zykluszeitVorschlag.prozessaufwand}`
-                      : ""}
-                    )
-                    {zykluszeitVorschlag.groessenklasse_auswahl ===
-                      ZYKLUSZEIT_GROESSENKLASSE_AUTO && (
-                      <>
-                        {" "}
-                        (Teilegröße{" "}
-                        {
-                          ZYKLUSZEIT_GROESSENKLASSEN.find(
-                            (k) => k.key === zykluszeitVorschlag.groessenklasse,
-                          )?.key
-                        }{" "}
-                        automatisch aus{" "}
-                        {zykluszeitVorschlag.zuhaltekraft_t == null
-                          ? "fehlender Zuhaltekraft"
-                          : `${formatSizingNumber(zykluszeitVorschlag.zuhaltekraft_t)} t`}
+                  <dl className="mt-2 grid gap-x-6 gap-y-1 text-gray-700 sm:grid-cols-2">
+                    <div className="flex justify-between gap-2">
+                      <dt>Werkzeugbewegung</dt>
+                      <dd>
+                        {formatSekunden(zykluszeitVorschlag.nebenzeit_werkzeugbewegung_s)} s
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>Einspritzen und Nachdruck</dt>
+                      <dd>
+                        {formatSekunden(zykluszeitVorschlag.nebenzeit_einspritz_nachdruck_s)} s
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>
+                        Dosierüberhang
+                        <span className="ml-1 text-xs text-gray-500">
+                          (Dosierzeit{" "}
+                          {formatSekunden(zykluszeitVorschlag.nebenzeit_dosierzeit_s)} s bei{" "}
+                          {formatSekunden(zykluszeitVorschlag.plastifizierleistung_kg_h, 0)} kg/h)
+                        </span>
+                      </dt>
+                      <dd>
+                        {formatSekunden(zykluszeitVorschlag.nebenzeit_dosier_ueberhang_s)} s
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>
+                        Entnahme
+                        <span className="ml-1 text-xs text-gray-500">
+                          ({zykluszeitVorschlag.entnahmeart ?? "–"})
+                        </span>
+                      </dt>
+                      <dd>{formatSekunden(zykluszeitVorschlag.nebenzeit_entnahme_s)} s</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>
+                        Prozessaufwand
+                        <span className="ml-1 text-xs text-gray-500">
+                          ({zykluszeitVorschlag.prozessaufwand ?? "normal"})
+                        </span>
+                      </dt>
+                      <dd>
+                        {formatSekunden(
+                          zykluszeitVorschlag.nebenzeit_prozessaufwand_zuschlag_s,
+                        )}{" "}
+                        s
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2 font-medium text-gray-900">
+                      <dt>
+                        Nebenzeit gesamt
+                        <span className="ml-1 text-xs font-normal text-gray-500">
+                          (
+                          {zykluszeitVorschlag.nebenzeit_quelle === "manuell"
+                            ? "manuell"
+                            : "automatisch"}
+                          )
+                        </span>
+                      </dt>
+                      <dd>{formatSekunden(zykluszeitVorschlag.nebenzeiten_gesamt_s)} s</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>Kühlzeit für Weiterrechnung</dt>
+                      <dd>{formatSekunden(zykluszeitVorschlag.kuehlzeit_s)} s</dd>
+                    </div>
+                    <div className="flex justify-between gap-2 font-medium text-gray-900">
+                      <dt>Vorgeschlagene Gesamtzykluszeit</dt>
+                      <dd>{formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s)} s</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>Aktuell verwendete Zykluszeit</dt>
+                      <dd>
+                        {formatSekunden(form.zykluszeit_s)} s (
+                        {form.zykluszeit_quelle === "vorschlag"
+                          ? "aus Vorschlag übernommen"
+                          : "manuell erfasst"}
                         )
-                      </>
-                    )}
-                  </div>
+                      </dd>
+                    </div>
+                  </dl>
+                  {zykluszeitVorschlag.nebenzeit_quelle === "manuell" ? (
+                    <p className="mt-2 text-xs text-gray-500">
+                      Die Komponenten sind informativ: die manuell eingegebene Nebenzeit von{" "}
+                      {formatSekunden(zykluszeitVorschlag.nebenzeiten_gesamt_s)} s hat Vorrang
+                      (automatisch wären es{" "}
+                      {formatSekunden(zykluszeitVorschlag.nebenzeiten_automatisch_s)} s).
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-xs text-gray-500">
+                    Die Nebenzeitwerte sind pauschale Erfahrungswerte für die frühe
+                    Angebotskalkulation. Die Plastifizierung läuft parallel zur Kühlung – nur
+                    der Dosierüberhang über die Kühlzeit ist taktwirksam. Die Kavitätenzahl
+                    verlängert die Kühlzeit nicht, wirkt aber über die Schussmasse auf die
+                    Dosierzeit.
+                  </p>
+                  {zykluszeitVorschlag.zuhaltekraft_fallback ? (
+                    <p className="mt-1 text-xs text-amber-800">
+                      Ohne Zuhaltekraft: Werkzeugbewegung, Entnahme und Plastifizierleistung
+                      sind pauschal angesetzt. Maschinengröße berechnen oder Maschine wählen.
+                    </p>
+                  ) : null}
+                  {zykluszeitVorschlag.schussgewicht_fallback ? (
+                    <p className="mt-1 text-xs text-amber-800">
+                      Ohne Schussgewicht: Einspritz- und Nachdruckzeit pauschal mit{" "}
+                      {formatSekunden(zykluszeitVorschlag.nebenzeit_einspritz_nachdruck_s)} s
+                      angesetzt, Dosierüberhang nicht bewertet.
+                    </p>
+                  ) : null}
                   <div className="mt-2 text-xs text-gray-500">
                     {zykluszeitVorschlag.materialgruppe} (
                     {zykluszeitVorschlag.material_bezeichnung}
@@ -1603,17 +1680,37 @@ export function SpritzgussPage() {
                     · theoretische Kühlzeit{" "}
                     {formatSekunden(zykluszeitVorschlag.optimale_kuehlzeit_s)} s × Zuschlag{" "}
                     {formatSekunden(zykluszeitVorschlag.kuehlfaktor, 1)} · kühlzeitrelevante
-                    Wandstärke {formatSekunden(zykluszeitVorschlag.wandstaerke_mm)} mm
+                    Wandstärke {formatSekunden(zykluszeitVorschlag.wandstaerke_mm)} mm ·
+                    maßgebliche Zuhaltekraft{" "}
+                    {zykluszeitVorschlag.zuhaltekraft_t == null
+                      ? "–"
+                      : `${formatSizingNumber(zykluszeitVorschlag.zuhaltekraft_t)} t`}{" "}
+                    ({ZYKLUSZEIT_GROESSENKLASSEN.find(
+                      (k) => k.key === zykluszeitVorschlag.groessenklasse,
+                    )?.label ?? "–"}
+                    )
                   </div>
                   {zykluszeitVorschlag.hinweis ? (
                     <p className="mt-2 text-xs text-amber-800">{zykluszeitVorschlag.hinweis}</p>
                   ) : null}
+                  {(zykluszeitVorschlag.warnungen ?? []).map((warnung) => (
+                    <p key={warnung} className="mt-2 text-xs text-amber-800">
+                      {warnung}
+                    </p>
+                  ))}
                 </>
               ) : (
-                <p className="text-amber-800">
-                  {zykluszeitVorschlag?.hinweis ??
-                    "Die Schätzung erscheint, sobald Materialkennwerte und kühlzeitrelevante Wandstärke gepflegt sind."}
-                </p>
+                <>
+                  <p className="text-amber-800">
+                    {zykluszeitVorschlag?.hinweis ??
+                      "Die Schätzung erscheint, sobald Materialkennwerte und kühlzeitrelevante Wandstärke gepflegt sind."}
+                  </p>
+                  {(zykluszeitVorschlag?.warnungen ?? []).map((warnung) => (
+                    <p key={warnung} className="mt-2 text-xs text-amber-800">
+                      {warnung}
+                    </p>
+                  ))}
+                </>
               )}
             </div>
 

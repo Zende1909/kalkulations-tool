@@ -242,6 +242,15 @@ def _apply_zykluszeit_result(obj: SpritzgussKalkulation, result: ZykluszeitResul
     obj.zykluszeit_hinweis = result.hinweis
 
 
+def _maschinen_zuhaltekraft_t(db: Session, maschine_id: int | None) -> float | None:
+    """Zuhaltekraft der gewählten Maschine als Ersatz für die erforderliche."""
+    if maschine_id is None:
+        return None
+    maschine = db.get(Maschine, maschine_id)
+    kraft = getattr(maschine, "schliesskraft_t", None) if maschine is not None else None
+    return float(kraft) if kraft else None
+
+
 def _run_zykluszeit_for_model(
     db: Session, obj: SpritzgussKalkulation
 ) -> ZykluszeitResult | None:
@@ -263,6 +272,10 @@ def _run_zykluszeit_for_model(
             nebenzeiten_gesamt_s=obj.zykluszeit_nebenzeiten_gesamt_s,
             # Von `_run_maschinen_groesse_for_model` unmittelbar zuvor gesetzt.
             zuhaltekraft_t=obj.maschinen_groesse_zuhaltekraft_erforderlich_t,
+            maschinen_zuhaltekraft_t=_maschinen_zuhaltekraft_t(db, obj.maschine_id),
+            schussgewicht_g=obj.schussgewicht_g,
+            kavitaeten=obj.kavitaeten,
+            entnahmeart=getattr(obj, "zykluszeit_entnahmeart", None),
             prozessaufwand=getattr(obj, "zykluszeit_prozessaufwand", None),
         ),
         db=db,
@@ -284,6 +297,11 @@ def _run_zykluszeit_for_request(
             groessenklasse=body.zykluszeit_groessenklasse,
             nebenzeiten_gesamt_s=body.zykluszeit_nebenzeiten_gesamt_s,
             zuhaltekraft_t=zuhaltekraft_t,
+            maschinen_zuhaltekraft_t=getattr(body, "maschinen_zuhaltekraft_t", None)
+            or _maschinen_zuhaltekraft_t(db, getattr(body, "maschine_id", None)),
+            schussgewicht_g=getattr(body, "schussgewicht_g", None),
+            kavitaeten=getattr(body, "kavitaeten", None),
+            entnahmeart=getattr(body, "zykluszeit_entnahmeart", None),
             prozessaufwand=getattr(body, "zykluszeit_prozessaufwand", None),
         ),
         db=db,

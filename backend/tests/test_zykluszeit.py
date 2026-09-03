@@ -31,17 +31,31 @@ from app.services.material_thermik import (
 from app.services.maschinen_groesse import MaschinenGroesseInput, berechne_maschinen_groesse
 from app.services.spritzguss_kalkulation import SpritzgussInput, berechne_spritzguss
 from app.services.zykluszeit import (
+    DEFAULT_ENTNAHMEART,
     DEFAULT_GROESSENKLASSE,
+    ENTNAHME_GREIFER_JE_WEITERE_KAVITAET_S,
+    ENTNAHME_GREIFER_KAVITAETEN_MAX_S,
     GROESSENKLASSE_AUTO,
     GROESSENKLASSEN,
+    GROSSTEIL_WARNUNG_TEXT,
     KUEHLFAKTOR,
     MAX_WANDSTAERKE_MM,
-    NEBENZEITEN_JE_KLASSE,
+    PROZESSAUFWAND_ZUSCHLAG_S,
+    SPRITZZEIT_MAX_S,
+    SPRITZZEIT_MIN_S,
+    SPRITZZEIT_OHNE_SCHUSSGEWICHT_S,
     ZykluszeitInput,
+    automatische_nebenzeiten,
     berechne_zykluszeit,
-    default_nebenzeiten_s,
+    dosierzeit_s,
+    einspritz_nachdruckzeit_s,
+    entnahmezeit_s,
     klasse_aus_zuhaltekraft,
+    massgebliche_zuhaltekraft_t,
+    normalisiere_entnahmeart,
     normalisiere_groessenklasse,
+    plastifizierleistung_kg_h,
+    werkzeugbewegungszeit_s,
 )
 
 API = "/api/v1"
@@ -59,8 +73,30 @@ POM_WANDSTAERKE_MM = 4.5
 IKET_NEBENZEITEN_S = 12.5
 
 
+# Automatische Nebenzeit für `_pom_input()` ohne Zuhaltekraft und Schussgewicht:
+# 6,0 s Werkzeugbewegung + 3,0 s Einspritzen (Fallback) + 0,0 s Dosierüberhang
+# + 5,0 s Greiferentnahme (Fallback) + 0,0 s Prozessaufwand.
+POM_AUTO_NEBENZEIT_S = 14.0
+
+# Referenzbeispiel aus der Praxis: PP, 2.414 g Schussgewicht, 1 Kavität,
+# 2.653 t erforderliche Zuhaltekraft, kühlzeitrelevante Wandstärke 2,5 mm.
+REFERENZ = {
+    "wandstaerke_mm": 2.5,
+    "materialgruppe": "PP",
+    "schussgewicht_g": 2414.0,
+    "kavitaeten": 1,
+    "zuhaltekraft_t": 2653.0,
+}
+
+
 def _pom_input(**overrides) -> ZykluszeitInput:
     kwargs = {"wandstaerke_mm": POM_WANDSTAERKE_MM, "materialgruppe": "POM"}
+    kwargs.update(overrides)
+    return ZykluszeitInput(**kwargs)
+
+
+def _referenz_input(**overrides) -> ZykluszeitInput:
+    kwargs = dict(REFERENZ)
     kwargs.update(overrides)
     return ZykluszeitInput(**kwargs)
 
@@ -144,31 +180,241 @@ def test_alle_materialgruppen_liefern_plausible_kuehlzeit():
 # --------------------------------------------------------------------------------------
 
 
-def test_groessenklassen_richtwerte():
-    assert NEBENZEITEN_JE_KLASSE == {"klein": 6.0, "mittel": 10.0, "gross": 16.0}
+def test_groessenklassen_bleiben_informative_klassifizierung():
     assert DEFAULT_GROESSENKLASSE == "mittel"
-    assert [key for key, _label, _s in GROESSENKLASSEN] == ["klein", "mittel", "gross"]
+    assert [key for key, _label in GROESSENKLASSEN] == ["klein", "mittel", "gross"]
 
 
-def test_klasse_bestimmt_nebenzeiten():
-    for klasse, richtwert in NEBENZEITEN_JE_KLASSE.items():
-        result = berechne_zykluszeit(_pom_input(groessenklasse=klasse))
-        assert result.groessenklasse == klasse
-        assert result.nebenzeiten_gesamt_s == pytest.approx(richtwert)
-        assert result.gesamtzykluszeit_s == pytest.approx(result.kuehlzeit_s + richtwert)
+def test_referenzbeispiel_grosses_bauteil_mit_greifer():
+    """PP, 2.414 g, 1 Kavität, 2.653 t, 2,5 mm → rund 75,3 s."""
+    result = berechne_zykluszeit(_referenz_input())
+    assert result.berechenbar is True
+    assert result.optimale_kuehlzeit_s == pytest.approx(11.04, abs=0.02)
+    assert result.kuehlzeit_s == pytest.approx(16.56, abs=0.02)
+    assert result.nebenzeit_werkzeugbewegung_s == pytest.approx(22.0)
+    assert result.nebenzeit_einspritz_nachdruck_s == pytest.approx(15.98, abs=0.01)
+    assert result.plastifizierleistung_kg_h == pytest.approx(330.0)
+    assert result.nebenzeit_dosierzeit_s == pytest.approx(26.33, abs=0.02)
+    assert result.nebenzeit_dosier_ueberhang_s == pytest.approx(9.77, abs=0.03)
+    assert result.nebenzeit_entnahme_s == pytest.approx(11.0)
+    assert result.nebenzeit_prozessaufwand_zuschlag_s == pytest.approx(0.0)
+    assert result.nebenzeiten_gesamt_s == pytest.approx(58.75, abs=0.05)
+    assert result.nebenzeit_quelle == "automatisch"
+    assert result.entnahmeart == "greifer"
+    assert result.gesamtzykluszeit_s == pytest.approx(75.31, abs=0.05)
 
 
-def test_unbekannte_klasse_faellt_auf_default():
-    assert default_nebenzeiten_s("gibtsnicht") == NEBENZEITEN_JE_KLASSE[DEFAULT_GROESSENKLASSE]
-    result = berechne_zykluszeit(_pom_input(groessenklasse=None))
-    assert result.groessenklasse == DEFAULT_GROESSENKLASSE
+def test_referenzbeispiel_werkzeugfallend():
+    result = berechne_zykluszeit(_referenz_input(entnahmeart="werkzeugfallend"))
+    assert result.nebenzeit_entnahme_s == pytest.approx(2.0)
+    assert result.gesamtzykluszeit_s == pytest.approx(66.31, abs=0.05)
 
 
-def test_eigene_nebenzeiten_uebersteuern_die_klasse():
-    result = berechne_zykluszeit(_pom_input(groessenklasse="klein", nebenzeiten_gesamt_s=21.5))
+def test_referenzbeispiel_aufwendig():
+    result = berechne_zykluszeit(_referenz_input(prozessaufwand="aufwendig"))
+    assert result.nebenzeit_prozessaufwand_zuschlag_s == pytest.approx(
+        PROZESSAUFWAND_ZUSCHLAG_S
+    )
+    assert result.gesamtzykluszeit_s == pytest.approx(80.31, abs=0.05)
+
+
+@pytest.mark.parametrize(
+    ("zuhaltekraft_t", "erwartet"),
+    [
+        (1.0, 4.0),
+        (100.0, 4.0),
+        (100.1, 6.0),
+        (300.0, 6.0),
+        (300.1, 10.0),
+        (800.0, 10.0),
+        (800.1, 14.0),
+        (1500.0, 14.0),
+        (1500.1, 18.0),
+        (2500.0, 18.0),
+        (2500.1, 22.0),
+        (None, 6.0),
+        (0.0, 6.0),
+    ],
+)
+def test_werkzeugbewegungszeit_je_zuhaltekraftklasse(zuhaltekraft_t, erwartet):
+    assert werkzeugbewegungszeit_s(zuhaltekraft_t) == pytest.approx(erwartet)
+
+
+@pytest.mark.parametrize(
+    ("schussgewicht_g", "erwartet"),
+    [
+        (1.0, 1.506),
+        (0.5, 1.503),
+        (100.0, 2.1),
+        (2414.0, 15.984),
+        (4750.0, SPRITZZEIT_MAX_S),
+        (100000.0, SPRITZZEIT_MAX_S),
+    ],
+)
+def test_einspritzzeit_aus_schussgewicht(schussgewicht_g, erwartet):
+    assert einspritz_nachdruckzeit_s(schussgewicht_g) == pytest.approx(erwartet, abs=1e-6)
+    assert SPRITZZEIT_MIN_S <= einspritz_nachdruckzeit_s(schussgewicht_g) <= SPRITZZEIT_MAX_S
+
+
+def test_einspritzzeit_bleibt_in_den_grenzen():
+    """Untergrenze 1,5 s (Grundzeit) und Obergrenze 30,0 s werden nie verlassen."""
+    assert SPRITZZEIT_MIN_S == 1.5
+    assert SPRITZZEIT_MAX_S == 30.0
+    assert einspritz_nachdruckzeit_s(1e-9) == pytest.approx(SPRITZZEIT_MIN_S, abs=1e-6)
+    assert einspritz_nachdruckzeit_s(4750.0) == pytest.approx(SPRITZZEIT_MAX_S)
+    assert einspritz_nachdruckzeit_s(1e9) == pytest.approx(SPRITZZEIT_MAX_S)
+
+
+@pytest.mark.parametrize("schussgewicht_g", [None, 0.0, -5.0])
+def test_einspritzzeit_fallback_ohne_schussgewicht(schussgewicht_g):
+    assert einspritz_nachdruckzeit_s(schussgewicht_g) == pytest.approx(
+        SPRITZZEIT_OHNE_SCHUSSGEWICHT_S
+    )
+    result = berechne_zykluszeit(_pom_input(schussgewicht_g=schussgewicht_g))
+    assert result.schussgewicht_fallback is True
+    assert result.nebenzeit_einspritz_nachdruck_s == pytest.approx(
+        SPRITZZEIT_OHNE_SCHUSSGEWICHT_S
+    )
+
+
+@pytest.mark.parametrize(
+    ("zuhaltekraft_t", "erwartet"),
+    [
+        (100.0, 25.0),
+        (300.0, 50.0),
+        (800.0, 110.0),
+        (1500.0, 200.0),
+        (2500.0, 280.0),
+        (2500.1, 330.0),
+        (None, 50.0),
+    ],
+)
+def test_plastifizierleistung_je_zuhaltekraftklasse(zuhaltekraft_t, erwartet):
+    assert plastifizierleistung_kg_h(zuhaltekraft_t) == pytest.approx(erwartet)
+
+
+def test_dosierueberhang_ist_null_wenn_dosierzeit_unter_kuehlzeit():
+    """POM 4,5 mm kühlt lang; ein kleiner Schuss ist längst dosiert."""
+    result = berechne_zykluszeit(
+        _pom_input(schussgewicht_g=60.0, kavitaeten=1, zuhaltekraft_t=480.0)
+    )
+    assert result.nebenzeit_dosierzeit_s < result.kuehlzeit_s
+    assert result.nebenzeit_dosier_ueberhang_s == pytest.approx(0.0)
+
+
+def test_dosierueberhang_aus_schussgewicht_kavitaeten_und_leistung():
+    result = berechne_zykluszeit(_referenz_input(kavitaeten=2))
+    soll_dosier = dosierzeit_s(2414.0 * 2, 330.0)
+    assert result.schussmasse_gesamt_g == pytest.approx(4828.0)
+    assert result.nebenzeit_dosierzeit_s == pytest.approx(soll_dosier)
+    assert result.nebenzeit_dosier_ueberhang_s == pytest.approx(
+        soll_dosier - result.kuehlzeit_s
+    )
+
+
+def test_kavitaeten_erhoehen_die_kuehlzeit_nicht_aber_die_dosierzeit():
+    einfach = berechne_zykluszeit(_referenz_input(kavitaeten=1))
+    doppelt = berechne_zykluszeit(_referenz_input(kavitaeten=2))
+    assert doppelt.kuehlzeit_s == pytest.approx(einfach.kuehlzeit_s)
+    assert doppelt.nebenzeit_dosierzeit_s == pytest.approx(
+        einfach.nebenzeit_dosierzeit_s * 2
+    )
+    assert doppelt.nebenzeit_dosier_ueberhang_s > einfach.nebenzeit_dosier_ueberhang_s
+
+
+@pytest.mark.parametrize(
+    ("entnahmeart", "zuhaltekraft_t", "erwartet"),
+    [
+        ("werkzeugfallend", 300.0, 1.0),
+        ("werkzeugfallend", 300.1, 1.5),
+        ("werkzeugfallend", 1500.0, 1.5),
+        ("werkzeugfallend", 1500.1, 2.0),
+        ("werkzeugfallend", None, 1.0),
+        ("greifer", 300.0, 3.0),
+        ("greifer", 300.1, 5.0),
+        ("greifer", 800.0, 5.0),
+        ("greifer", 800.1, 7.0),
+        ("greifer", 1500.0, 7.0),
+        ("greifer", 1500.1, 9.0),
+        ("greifer", 2500.0, 9.0),
+        ("greifer", 2500.1, 11.0),
+        ("greifer", None, 5.0),
+    ],
+)
+def test_entnahmezeit_je_art_und_zuhaltekraftklasse(entnahmeart, zuhaltekraft_t, erwartet):
+    assert entnahmezeit_s(entnahmeart, zuhaltekraft_t, 1) == pytest.approx(erwartet)
+
+
+def test_greifer_kavitaetenzuschlag_wird_begrenzt():
+    basis = entnahmezeit_s("greifer", 400.0, 1)
+    assert entnahmezeit_s("greifer", 400.0, 2) == pytest.approx(
+        basis + ENTNAHME_GREIFER_JE_WEITERE_KAVITAET_S
+    )
+    assert entnahmezeit_s("greifer", 400.0, 5) == pytest.approx(
+        basis + 4 * ENTNAHME_GREIFER_JE_WEITERE_KAVITAET_S
+    )
+    # 21 Kavitäten wären 4,0 s; ab 22 greift die Begrenzung.
+    assert entnahmezeit_s("greifer", 400.0, 21) == pytest.approx(
+        basis + ENTNAHME_GREIFER_KAVITAETEN_MAX_S
+    )
+    assert entnahmezeit_s("greifer", 400.0, 60) == pytest.approx(
+        basis + ENTNAHME_GREIFER_KAVITAETEN_MAX_S
+    )
+    # Werkzeugfallend kennt keinen Kavitätenzuschlag.
+    assert entnahmezeit_s("werkzeugfallend", 400.0, 60) == pytest.approx(
+        entnahmezeit_s("werkzeugfallend", 400.0, 1)
+    )
+
+
+def test_nebenzeit_ist_summe_der_komponenten():
+    result = berechne_zykluszeit(_referenz_input())
+    assert result.nebenzeiten_automatisch_s == pytest.approx(
+        result.nebenzeit_werkzeugbewegung_s
+        + result.nebenzeit_einspritz_nachdruck_s
+        + result.nebenzeit_dosier_ueberhang_s
+        + result.nebenzeit_entnahme_s
+        + result.nebenzeit_prozessaufwand_zuschlag_s
+    )
+    assert result.gesamtzykluszeit_s == pytest.approx(
+        result.kuehlzeit_s + result.nebenzeiten_gesamt_s
+    )
+
+
+def test_prozessaufwand_zuschlag_wird_genau_einmal_addiert():
+    normal = berechne_zykluszeit(_referenz_input(prozessaufwand="normal"))
+    aufwendig = berechne_zykluszeit(_referenz_input(prozessaufwand="aufwendig"))
+    assert PROZESSAUFWAND_ZUSCHLAG_S == 5.0
+    assert aufwendig.nebenzeiten_gesamt_s == pytest.approx(
+        normal.nebenzeiten_gesamt_s + PROZESSAUFWAND_ZUSCHLAG_S
+    )
+    assert aufwendig.gesamtzykluszeit_s == pytest.approx(
+        normal.gesamtzykluszeit_s + PROZESSAUFWAND_ZUSCHLAG_S
+    )
+
+
+def test_eigene_nebenzeiten_uebersteuern_alle_komponenten():
+    result = berechne_zykluszeit(_referenz_input(nebenzeiten_gesamt_s=21.5))
     assert result.nebenzeiten_gesamt_s == pytest.approx(21.5)
     assert result.nebenzeit_quelle == "manuell"
     assert result.gesamtzykluszeit_s == pytest.approx(result.kuehlzeit_s + 21.5)
+    # Die Komponenten bleiben zur Nachvollziehbarkeit erhalten.
+    assert result.nebenzeiten_automatisch_s == pytest.approx(58.75, abs=0.05)
+
+
+@pytest.mark.parametrize("entnahmeart", ["greifer", "werkzeugfallend"])
+@pytest.mark.parametrize("prozessaufwand", ["normal", "aufwendig"])
+def test_manuelle_nebenzeit_ignoriert_entnahmeart_und_prozessaufwand(
+    entnahmeart, prozessaufwand
+):
+    result = berechne_zykluszeit(
+        _referenz_input(
+            entnahmeart=entnahmeart,
+            prozessaufwand=prozessaufwand,
+            nebenzeiten_gesamt_s=7.0,
+        )
+    )
+    assert result.nebenzeiten_gesamt_s == pytest.approx(7.0)
+    assert result.nebenzeit_quelle == "manuell"
 
 
 def test_negative_nebenzeiten_werden_abgelehnt():
@@ -177,61 +423,88 @@ def test_negative_nebenzeiten_werden_abgelehnt():
     assert "nicht negativ" in result.hinweis
 
 
-@pytest.mark.parametrize(
-    ("zuhaltekraft_t", "aufwand", "erwartet"),
-    [
-        (80.0, "normal", 6.0),
-        (80.0, "aufwendig", 11.0),
-        (200.0, "normal", 10.0),
-        (200.0, "aufwendig", 15.0),
-        (400.0, "normal", 16.0),
-        (400.0, "aufwendig", 21.0),
-        (None, "normal", 10.0),
-        (None, "aufwendig", 15.0),
-    ],
-)
-def test_prozessaufwand_auf_automatische_nebenzeit(zuhaltekraft_t, aufwand, erwartet):
-    result = berechne_zykluszeit(
-        _pom_input(
-            groessenklasse="auto",
-            zuhaltekraft_t=zuhaltekraft_t,
-            prozessaufwand=aufwand,
-        )
-    )
-    assert result.berechenbar is True
-    assert result.prozessaufwand == aufwand
-    assert result.nebenzeit_quelle == "automatisch"
-    assert result.nebenzeiten_gesamt_s == pytest.approx(erwartet)
+def test_fehlende_entnahmeart_nutzt_greifer():
+    assert DEFAULT_ENTNAHMEART == "greifer"
+    assert normalisiere_entnahmeart(None) == "greifer"
+    assert normalisiere_entnahmeart("") == "greifer"
+    assert normalisiere_entnahmeart("gibtsnicht") == "greifer"
+    assert normalisiere_entnahmeart("WERKZEUGFALLEND") == "werkzeugfallend"
+    ohne = berechne_zykluszeit(_referenz_input(entnahmeart=None))
+    mit = berechne_zykluszeit(_referenz_input(entnahmeart="greifer"))
+    assert ohne.entnahmeart == "greifer"
+    assert ohne.gesamtzykluszeit_s == pytest.approx(mit.gesamtzykluszeit_s)
 
 
 def test_fehlender_prozessaufwand_nutzt_normal():
-    result = berechne_zykluszeit(_pom_input(groessenklasse="klein", prozessaufwand=None))
+    result = berechne_zykluszeit(_referenz_input(prozessaufwand=None))
     assert result.prozessaufwand == "normal"
-    assert result.nebenzeiten_gesamt_s == pytest.approx(6.0)
+    assert result.nebenzeit_prozessaufwand_zuschlag_s == pytest.approx(0.0)
 
 
-def test_manuelle_nebenzeit_ignoriert_prozessaufwand():
+def test_maschinen_zuhaltekraft_dient_als_ersatz():
+    assert massgebliche_zuhaltekraft_t(2653.0, 3000.0) == pytest.approx(2653.0)
+    assert massgebliche_zuhaltekraft_t(None, 3000.0) == pytest.approx(3000.0)
+    assert massgebliche_zuhaltekraft_t(0.0, 3000.0) == pytest.approx(3000.0)
+    assert massgebliche_zuhaltekraft_t(None, None) is None
     result = berechne_zykluszeit(
-        _pom_input(
-            groessenklasse="auto",
-            zuhaltekraft_t=80.0,
-            prozessaufwand="aufwendig",
-            nebenzeiten_gesamt_s=7.0,
-        )
+        _referenz_input(zuhaltekraft_t=None, maschinen_zuhaltekraft_t=2653.0)
     )
-    assert result.nebenzeiten_gesamt_s == pytest.approx(7.0)
-    assert result.nebenzeit_quelle == "manuell"
-    assert result.prozessaufwand == "aufwendig"
+    assert result.zuhaltekraft_t == pytest.approx(2653.0)
+    assert result.zuhaltekraft_fallback is False
+    assert result.gesamtzykluszeit_s == pytest.approx(75.31, abs=0.05)
 
 
-def test_prozessaufwand_zuschlag_nicht_doppelt():
-    from app.services.zykluszeit import PROZESSAUFWAND_ZUSCHLAG_S, automatische_nebenzeiten_s
+def test_fehlende_zuhaltekraft_weist_fallback_aus():
+    result = berechne_zykluszeit(_referenz_input(zuhaltekraft_t=None))
+    assert result.zuhaltekraft_fallback is True
+    assert result.nebenzeit_werkzeugbewegung_s == pytest.approx(6.0)
+    assert result.nebenzeit_entnahme_s == pytest.approx(5.0)
+    assert result.plastifizierleistung_kg_h == pytest.approx(50.0)
 
-    auto = automatische_nebenzeiten_s(
-        groessenklasse="auto", zuhaltekraft_t=80.0, prozessaufwand="aufwendig"
+
+def test_grossteil_warnung_blockiert_nicht():
+    result = berechne_zykluszeit(_referenz_input(wandstaerke_mm=2.5))
+    assert result.berechenbar is True
+    assert GROSSTEIL_WARNUNG_TEXT in result.warnungen
+    ohne_warnung = berechne_zykluszeit(_referenz_input(wandstaerke_mm=2.9))
+    assert GROSSTEIL_WARNUNG_TEXT in ohne_warnung.warnungen
+    # Die Warnung löst keinen Zuschlag aus.
+    assert result.nebenzeiten_gesamt_s == pytest.approx(
+        automatische_nebenzeiten(
+            zuhaltekraft_t=2653.0,
+            schussgewicht_g=2414.0,
+            kavitaeten=1,
+            entnahmeart="greifer",
+            prozessaufwand="normal",
+            kuehlzeit_s=result.kuehlzeit_s,
+        ).gesamt_s
     )
-    assert auto == pytest.approx(6.0 + PROZESSAUFWAND_ZUSCHLAG_S)
-    assert PROZESSAUFWAND_ZUSCHLAG_S == 5.0
+
+
+@pytest.mark.parametrize(
+    ("zuhaltekraft_t", "wandstaerke_mm"),
+    [(2653.0, 3.0), (2653.0, 4.0), (800.0, 2.5), (None, 2.5)],
+)
+def test_grossteil_warnung_erscheint_nicht(zuhaltekraft_t, wandstaerke_mm):
+    result = berechne_zykluszeit(
+        _referenz_input(zuhaltekraft_t=zuhaltekraft_t, wandstaerke_mm=wandstaerke_mm)
+    )
+    assert result.warnungen == []
+
+
+def test_ergebnis_enthaelt_keine_nan_oder_negativen_zeiten():
+    for inp in (
+        _referenz_input(),
+        _referenz_input(kavitaeten=8, prozessaufwand="aufwendig"),
+        _referenz_input(zuhaltekraft_t=None, schussgewicht_g=None),
+        _pom_input(),
+    ):
+        result = berechne_zykluszeit(inp)
+        for key, value in result.as_dict().items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                continue
+            assert math.isfinite(value), key
+            assert value >= 0, key
 
 
 def test_amorph_liefert_naeherungs_hinweis_bleibt_aber_berechenbar():
@@ -286,7 +559,6 @@ def test_auto_klasse_folgt_der_zuhaltekraft(zuhaltekraft_t: float, erwartete_kla
     assert result.groessenklasse == erwartete_klasse
     assert result.groessenklasse_auswahl == "auto"
     assert result.zuhaltekraft_t == pytest.approx(zuhaltekraft_t)
-    assert result.nebenzeiten_gesamt_s == pytest.approx(NEBENZEITEN_JE_KLASSE[erwartete_klasse])
 
 
 def test_auto_ohne_zuhaltekraft_nutzt_den_default():
@@ -305,11 +577,13 @@ def test_auto_ist_der_default_und_unbekannte_werte_landen_dort():
     assert result.groessenklasse == "gross"
 
 
-def test_manuelle_klasse_ignoriert_die_zuhaltekraft():
-    result = berechne_zykluszeit(_pom_input(groessenklasse="klein", zuhaltekraft_t=800.0))
-    assert result.groessenklasse == "klein"
-    assert result.groessenklasse_auswahl == "klein"
-    assert result.nebenzeiten_gesamt_s == pytest.approx(NEBENZEITEN_JE_KLASSE["klein"])
+def test_manuelle_klasse_beeinflusst_die_nebenzeit_nicht_mehr():
+    """Die Klasse ist nur noch informativ; die Nebenzeit folgt der Zuhaltekraft."""
+    manuell = berechne_zykluszeit(_pom_input(groessenklasse="klein", zuhaltekraft_t=800.0))
+    automatisch = berechne_zykluszeit(_pom_input(groessenklasse="auto", zuhaltekraft_t=800.0))
+    assert manuell.groessenklasse == "klein"
+    assert manuell.groessenklasse_auswahl == "klein"
+    assert manuell.nebenzeiten_gesamt_s == pytest.approx(automatisch.nebenzeiten_gesamt_s)
 
 
 def test_eigene_nebenzeiten_uebersteuern_auch_die_auto_klasse():
@@ -327,7 +601,8 @@ def test_teilergebnis_traegt_die_auto_aufloesung_mit():
     assert result.berechenbar is False
     assert result.groessenklasse == "gross"
     assert result.groessenklasse_auswahl == GROESSENKLASSE_AUTO
-    assert result.nebenzeiten_gesamt_s == pytest.approx(NEBENZEITEN_JE_KLASSE["gross"])
+    # 10,0 s Werkzeugbewegung (500 t) + 3,0 s Einspritz-Fallback + 5,0 s Greifer.
+    assert result.nebenzeiten_gesamt_s == pytest.approx(18.0)
 
 
 def test_zuhaltekraft_aus_kavitaeten_hebt_die_klasse():
@@ -366,7 +641,7 @@ def test_fehlende_materialgruppe_liefert_hinweis():
     assert "Materialgruppe" in result.hinweis
     assert result.gesamtzykluszeit_s is None
     # Die Nebenzeiten bleiben trotzdem sichtbar.
-    assert result.nebenzeiten_gesamt_s == pytest.approx(10.0)
+    assert result.nebenzeiten_gesamt_s == pytest.approx(POM_AUTO_NEBENZEIT_S)
 
 
 def test_unbekannte_materialgruppe_liefert_hinweis():
@@ -607,7 +882,7 @@ def test_preview_endpoint_nutzt_groessenklasse(client: TestClient):
     )
     body = res.json()
     assert body["groessenklasse"] == "klein"
-    assert body["nebenzeiten_gesamt_s"] == pytest.approx(6.0)
+    assert body["nebenzeiten_gesamt_s"] == pytest.approx(POM_AUTO_NEBENZEIT_S)
 
 
 def test_preview_ohne_material_liefert_hinweis(client: TestClient):
@@ -640,6 +915,64 @@ def test_schema_prozessaufwand_normalisierung():
         ZykluszeitFields(zykluszeit_prozessaufwand="extrem")
 
 
+def test_schema_entnahmeart_normalisierung():
+    assert (
+        ZykluszeitFields(zykluszeit_entnahmeart="GREIFER").zykluszeit_entnahmeart == "greifer"
+    )
+    assert ZykluszeitFields().zykluszeit_entnahmeart is None
+    with pytest.raises(Exception, match="Entnahmeart"):
+        ZykluszeitFields(zykluszeit_entnahmeart="handentnahme")
+
+
+def test_preview_endpoint_liefert_identische_werte_wie_der_service(client: TestClient, db: Session):
+    """Punkt 22: API und Service (und damit das Frontend) rechnen gleich."""
+    db.add(
+        Material(
+            bezeichnung="PP Copo",
+            material_nr="PP-REF",
+            preis_pro_kg=1.4,
+            dichte=0.92,
+            materialgruppe="PP",
+        )
+    )
+    db.flush()
+    material_id = db.query(Material).filter(Material.material_nr == "PP-REF").one().id
+
+    res = client.post(
+        f"{API}/spritzguss/zykluszeit/berechnen",
+        json={
+            "material_id": material_id,
+            "zykluszeit_wandstaerke_mm": "2,5",
+            "zykluszeit_entnahmeart": "greifer",
+            "zykluszeit_prozessaufwand": "normal",
+            "zuhaltekraft_t": "2653",
+            "schussgewicht_g": "2414",
+            "kavitaeten": 1,
+        },
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    soll = berechne_zykluszeit(_referenz_input(), db=db).as_dict()
+    for key in (
+        "kuehlzeit_s",
+        "nebenzeit_werkzeugbewegung_s",
+        "nebenzeit_einspritz_nachdruck_s",
+        "nebenzeit_dosierzeit_s",
+        "nebenzeit_dosier_ueberhang_s",
+        "nebenzeit_entnahme_s",
+        "nebenzeit_prozessaufwand_zuschlag_s",
+        "plastifizierleistung_kg_h",
+        "schussmasse_gesamt_g",
+        "nebenzeiten_automatisch_s",
+        "nebenzeiten_gesamt_s",
+        "gesamtzykluszeit_s",
+    ):
+        assert body[key] == pytest.approx(soll[key]), key
+    assert body["entnahmeart"] == "greifer"
+    assert body["warnungen"] == [GROSSTEIL_WARNUNG_TEXT]
+    assert body["gesamtzykluszeit_s"] == pytest.approx(75.31, abs=0.05)
+
+
 def test_preview_endpoint_leitet_klasse_aus_zuhaltekraft_ab(client: TestClient):
     material_id = _pom_material_ueber_api(client, "POM-AUTO")
 
@@ -657,10 +990,13 @@ def test_preview_endpoint_leitet_klasse_aus_zuhaltekraft_ab(client: TestClient):
     klein = preview(80.0)
     gross = preview(650.0)
     assert klein["groessenklasse"] == "klein"
-    assert klein["nebenzeiten_gesamt_s"] == pytest.approx(6.0)
+    # 4,0 s Werkzeugbewegung + 3,0 s Einspritz-Fallback + 3,0 s Greifer.
+    assert klein["nebenzeiten_gesamt_s"] == pytest.approx(10.0)
     assert gross["groessenklasse"] == "gross"
     assert gross["groessenklasse_auswahl"] == "auto"
     assert gross["zuhaltekraft_t"] == pytest.approx(650.0)
+    # 10,0 s Werkzeugbewegung + 3,0 s Einspritz-Fallback + 5,0 s Greifer.
+    assert gross["nebenzeiten_gesamt_s"] == pytest.approx(18.0)
     # Nur die Nebenzeiten unterscheiden sich, die Kühlzeit bleibt gleich.
     assert gross["kuehlzeit_s"] == pytest.approx(klein["kuehlzeit_s"])
 
@@ -755,6 +1091,7 @@ def _kalkulation_schema(engine) -> None:
                     zykluszeit_wandstaerke_mm FLOAT,
                     zykluszeit_groessenklasse VARCHAR(16),
                     zykluszeit_prozessaufwand VARCHAR(16),
+                    zykluszeit_entnahmeart VARCHAR(16),
                     zykluszeit_kuehlzeit_s FLOAT,
                     zykluszeit_nebenzeiten_gesamt_s FLOAT,
                     zykluszeit_vorschlag_s FLOAT,
@@ -832,10 +1169,12 @@ def test_schaetzung_am_datensatz_wird_berechnet_und_gespeichert(kalk_db: Session
     assert result is not None and result.berechenbar is True
 
     _alpha, t_opt_soll = _erwartete_kuehlzeit(wandstaerke_mm=POM_WANDSTAERKE_MM, **POM)
+    # 60 g Schuss, 1 Kavität, keine Zuhaltekraft: 6,0 + 1,86 + 0,0 + 5,0 s.
+    soll_nebenzeit = 6.0 + einspritz_nachdruckzeit_s(60.0) + 5.0
     kalk_db.expire_all()
     geladen = kalk_db.get(SpritzgussKalkulation, obj.id)
     assert geladen.zykluszeit_kuehlzeit_s == pytest.approx(t_opt_soll * 1.5)
-    assert geladen.zykluszeit_vorschlag_s == pytest.approx(t_opt_soll * 1.5 + 10.0)
+    assert geladen.zykluszeit_vorschlag_s == pytest.approx(t_opt_soll * 1.5 + soll_nebenzeit)
     assert geladen.zykluszeit_hinweis is None
     # Der Vorschlag überschreibt die bestehende Zykluszeit nicht.
     assert geladen.zykluszeit_s == pytest.approx(30.0)
@@ -856,8 +1195,13 @@ def test_datensatz_nutzt_gespeicherte_zuhaltekraft_fuer_die_auto_klasse(kalk_db:
 
     result = _run_zykluszeit_for_model(kalk_db, obj)
     assert result.groessenklasse == "gross"
-    assert result.nebenzeiten_gesamt_s == pytest.approx(NEBENZEITEN_JE_KLASSE["gross"])
-    assert obj.zykluszeit_vorschlag_s == pytest.approx(result.kuehlzeit_s + 16.0)
+    assert result.zuhaltekraft_t == pytest.approx(480.0)
+    # 10,0 s Werkzeugbewegung (480 t) + Einspritzzeit (60 g) + 0,0 s Dosierüberhang
+    # + 5,0 s Greifer + 3 × 0,2 s Kavitätenzuschlag.
+    soll_nebenzeit = 10.0 + einspritz_nachdruckzeit_s(60.0) + 5.0 + 0.6
+    assert result.nebenzeit_dosier_ueberhang_s == pytest.approx(0.0)
+    assert result.nebenzeiten_gesamt_s == pytest.approx(soll_nebenzeit)
+    assert obj.zykluszeit_vorschlag_s == pytest.approx(result.kuehlzeit_s + soll_nebenzeit)
 
 
 def test_eigene_nebenzeiten_bleiben_beim_neuberechnen_erhalten(kalk_db: Session):
@@ -947,14 +1291,87 @@ def test_export_rows_aus_ergebnis_und_orm(kalk_db: Session):
     assert aus_ergebnis["kühlzeitrelevante Wandstärke"] == "4.50 mm"
     assert aus_ergebnis["Materialgruppe"] == "POM"
     assert aus_ergebnis["Prozessaufwand"] == "normal"
-    assert aus_ergebnis["Nebenzeiten gesamt"] == "10.00 s"
+    assert aus_ergebnis["Entnahmeart"] == "greifer"
+    assert aus_ergebnis["Nebenzeit Werkzeugbewegung"] == "6.00 s"
+    assert aus_ergebnis["Nebenzeit Einspritzen und Nachdruck"] == "1.86 s"
+    assert aus_ergebnis["Nebenzeit Entnahme"] == "5.00 s"
+    assert aus_ergebnis["Nebenzeit Prozessaufwand"] == "0.00 s"
+    assert "Dosierzeit" in aus_ergebnis["Nebenzeit Dosierüberhang"]
+    assert "Plastifizierleistung 50 kg/h" in aus_ergebnis["Nebenzeit Dosierüberhang"]
+    assert aus_ergebnis["Nebenzeiten gesamt"] == "12.86 s"
+    assert aus_ergebnis["Nebenzeit automatisch gesamt"] == "12.86 s"
     assert aus_ergebnis["Nebenzeit Quelle"] == "automatisch"
-    assert aus_ergebnis["Zykluszeit-Schätzung gesamt"] == "56.75 s"
+    assert aus_ergebnis["Zykluszeit-Schätzung gesamt"] == "59.61 s"
 
     # Paritätsprüfung: die gespeicherten Spalten liefern dieselben Kernwerte.
     aus_orm = {row.label: row.value for row in _zykluszeit_export_rows(obj, {})}
     for label in ("Kühlzeit inkl. Zuschlag 1,5", "Zykluszeit-Schätzung gesamt"):
         assert aus_orm[label] == aus_ergebnis[label]
+
+
+def test_export_enthaelt_warnung_bei_grossem_werkzeug_und_duenner_wand(kalk_db: Session):
+    material = Material(
+        bezeichnung="PP Copo",
+        material_nr="PP-EXP",
+        preis_pro_kg=1.4,
+        dichte=0.92,
+        materialgruppe="PP",
+    )
+    kalk_db.add(material)
+    kalk_db.flush()
+    obj = _kalkulation(
+        material_id=material.id,
+        schussgewicht_g=2414.0,
+        kavitaeten=1,
+        zykluszeit_wandstaerke_mm=2.5,
+        zykluszeit_entnahmeart="greifer",
+        maschinen_groesse_zuhaltekraft_erforderlich_t=2653.0,
+    )
+    kalk_db.add(obj)
+    kalk_db.flush()
+    result = _run_zykluszeit_for_model(kalk_db, obj)
+
+    assert result.gesamtzykluszeit_s == pytest.approx(75.31, abs=0.05)
+    rows = {
+        row.label: row.value
+        for row in _zykluszeit_export_rows(obj, {"zykluszeit_vorschlag": result.as_dict()})
+    }
+    assert rows["Zykluszeit-Schätzung Warnung"] == GROSSTEIL_WARNUNG_TEXT
+    assert rows["Nebenzeit Werkzeugbewegung"] == "22.00 s"
+    assert rows["Nebenzeit Entnahme"] == "11.00 s"
+
+
+def test_entnahmeart_bleibt_beim_neuladen_erhalten(kalk_db: Session):
+    material = _pom_material(kalk_db)
+    obj = _kalkulation(
+        material_id=material.id,
+        zykluszeit_wandstaerke_mm=POM_WANDSTAERKE_MM,
+        zykluszeit_entnahmeart="werkzeugfallend",
+    )
+    kalk_db.add(obj)
+    kalk_db.flush()
+    result = _run_zykluszeit_for_model(kalk_db, obj)
+    kalk_db.commit()
+    kalk_db.expire_all()
+
+    geladen = kalk_db.get(SpritzgussKalkulation, obj.id)
+    assert geladen.zykluszeit_entnahmeart == "werkzeugfallend"
+    assert result.entnahmeart == "werkzeugfallend"
+    erneut = _run_zykluszeit_for_model(kalk_db, geladen)
+    assert erneut.gesamtzykluszeit_s == pytest.approx(result.gesamtzykluszeit_s)
+
+
+def test_datensatz_ohne_entnahmeart_nutzt_greifer(kalk_db: Session):
+    material = _pom_material(kalk_db)
+    obj = _kalkulation(
+        material_id=material.id,
+        zykluszeit_wandstaerke_mm=POM_WANDSTAERKE_MM,
+        zykluszeit_entnahmeart=None,
+    )
+    kalk_db.add(obj)
+    kalk_db.flush()
+    result = _run_zykluszeit_for_model(kalk_db, obj)
+    assert result.entnahmeart == "greifer"
 
 
 def test_export_rows_ohne_schaetzung_zeigen_nur_quelle():
