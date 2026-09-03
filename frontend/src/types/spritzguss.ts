@@ -219,7 +219,15 @@ export interface ZykluszeitVorschlag {
   zuhaltekraft_fallback?: boolean | null;
   nebenzeiten_gesamt_s?: number | null;
   nebenzeit_quelle?: string | null;
+  /** Vorschlag in ganzen Sekunden; dieser Wert wird übernommen. */
   gesamtzykluszeit_s?: number | null;
+  /** Ungerundete Summe aus Kühlzeit und Nebenzeit. */
+  gesamtzykluszeit_exakt_s?: number | null;
+  /** gueltig | nicht_plausibel | nicht_berechenbar */
+  status?: "gueltig" | "nicht_plausibel" | "nicht_berechenbar" | string | null;
+  kann_uebernommen_werden?: boolean | null;
+  dosierzeit_warnfaktor?: number | null;
+  dosierzeit_warngrenze_s?: number | null;
 }
 
 export interface SpritzgussCalcResponse {

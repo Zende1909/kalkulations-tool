@@ -41,8 +41,11 @@ Priorität der Nebenzeit:
 2. Sonst gilt ``t_neben_auto``.
 3. Die Quelle bleibt im Ergebnis als ``manuell``/``automatisch`` erkennbar.
 
-Es wird durchgehend ungerundet in ``float`` gerechnet; gerundet wird nur in der
-Anzeige beziehungsweise im Export.
+Kühlzeit und Nebenzeitkomponenten werden durchgehend ungerundet in ``float``
+gerechnet. Nur die vorgeschlagene Gesamtzykluszeit wird am Ende kaufmännisch
+auf eine volle Sekunde gerundet: ``gesamtzykluszeit_s`` ist der Wert, der
+angezeigt, exportiert und bei „Übernehmen“ in die Kalkulation geschrieben wird.
+Die ungerundete Summe bleibt als ``gesamtzykluszeit_exakt_s`` nachvollziehbar.
 """
 
 from __future__ import annotations
@@ -160,6 +163,22 @@ GROSSTEIL_WARNUNG_TEXT = (
     "Materialanhäufungen die kühlzeitrelevante Wandstärke bestimmen."
 )
 
+# Kritischer Dosierengpass: großes Schussgewicht auf einer aus der Zuhaltekraft
+# abgeleiteten kleinen Plastifizierklasse. Konservative Angebots-Plausibilität,
+# kein Nachweis einer tatsächlichen Maschinenüberlastung – maximale Schussgewichte
+# je Maschine liegen nicht vor.
+DOSIERZEIT_WARNFAKTOR = 3.0
+DOSIERZEIT_WARNGRENZE_S = 60.0
+
+STATUS_GUELTIG = "gueltig"
+STATUS_NICHT_PLAUSIBEL = "nicht_plausibel"
+STATUS_NICHT_BERECHENBAR = "nicht_berechenbar"
+STATUS_WERTE: tuple[str, ...] = (
+    STATUS_GUELTIG,
+    STATUS_NICHT_PLAUSIBEL,
+    STATUS_NICHT_BERECHENBAR,
+)
+
 # Informative Werkzeug-/Maschinenklasse. Sie beschreibt die Größenordnung des
 # Werkzeugs und wird weiterhin gespeichert und angezeigt, steuert die
 # Nebenzeit aber nicht mehr: diese folgt den Komponenten oben.
@@ -191,6 +210,19 @@ NEBENZEIT_QUELLE_MANUELL = "manuell"
 NEBENZEIT_QUELLE_AUTOMATISCH = "automatisch"
 
 
+def _zahl_de(wert: float, nachkommastellen: int) -> str:
+    """Anzeigezahl ohne interne Variablennamen, deutsches Dezimalformat."""
+    vorzeichen = "-" if wert < 0 else ""
+    betrag = abs(float(wert))
+    if nachkommastellen <= 0:
+        ganz = int(math.floor(betrag + 0.5))
+        return vorzeichen + f"{ganz:,}".replace(",", ".")
+    text = f"{betrag:.{nachkommastellen}f}"
+    ganz_s, frac = text.split(".")
+    ganz_s = f"{int(ganz_s):,}".replace(",", ".")
+    return f"{vorzeichen}{ganz_s},{frac}"
+
+
 def _positiv_oder_none(wert: float | int | None) -> float | None:
     """Endliche, positive Zahl als ``float`` – sonst ``None``."""
     if wert is None:
@@ -202,6 +234,17 @@ def _positiv_oder_none(wert: float | int | None) -> float | None:
     if not math.isfinite(parsed) or parsed <= 0:
         return None
     return parsed
+
+
+def runde_auf_sekunde(wert: float) -> float:
+    """Kaufmännisch auf eine volle Sekunde runden (0,5 s wird aufgerundet).
+
+    Angebotszykluszeiten werden in ganzen Sekunden geführt. Bewusst nicht
+    ``round()``, das kaufmännisch nicht rundet (``round(0.5) == 0``).
+    """
+    gerundet = float(math.floor(wert + 0.5))
+    # Eine Zykluszeit von 0 s wäre in Kapazität und Kosten nicht verwendbar.
+    return max(1.0, gerundet)
 
 
 def _staffelwert(
@@ -507,7 +550,15 @@ class ZykluszeitResult:
     zuhaltekraft_fallback: bool = False
     nebenzeiten_gesamt_s: float | None = None
     nebenzeit_quelle: str | None = None
+    # Vorschlag in ganzen Sekunden; dieser Wert wird übernommen.
     gesamtzykluszeit_s: float | None = None
+    # Ungerundete Summe aus Kühlzeit und Nebenzeit zur Nachvollziehbarkeit.
+    gesamtzykluszeit_exakt_s: float | None = None
+    # gueltig | nicht_plausibel | nicht_berechenbar
+    status: str = STATUS_NICHT_BERECHENBAR
+    kann_uebernommen_werden: bool = False
+    dosierzeit_warnfaktor: float = DOSIERZEIT_WARNFAKTOR
+    dosierzeit_warngrenze_s: float = DOSIERZEIT_WARNGRENZE_S
 
     def as_dict(self) -> dict:
         return {
@@ -546,6 +597,11 @@ class ZykluszeitResult:
             "nebenzeiten_gesamt_s": self.nebenzeiten_gesamt_s,
             "nebenzeit_quelle": self.nebenzeit_quelle,
             "gesamtzykluszeit_s": self.gesamtzykluszeit_s,
+            "gesamtzykluszeit_exakt_s": self.gesamtzykluszeit_exakt_s,
+            "status": self.status,
+            "kann_uebernommen_werden": self.kann_uebernommen_werden,
+            "dosierzeit_warnfaktor": self.dosierzeit_warnfaktor,
+            "dosierzeit_warngrenze_s": self.dosierzeit_warngrenze_s,
         }
 
 
@@ -583,6 +639,81 @@ def grossteil_warnung(
     if kraft > GROSSTEIL_WARNUNG_ZUHALTEKRAFT_T and dicke < GROSSTEIL_WARNUNG_WANDSTAERKE_MM:
         return GROSSTEIL_WARNUNG_TEXT
     return None
+
+
+def dosierengpass_ist_kritisch(
+    *,
+    dosierzeit_s: float | None,
+    kuehlzeit_s: float | None,
+    schussgewicht_g: float | None,
+    plastifizierleistung_kg_h: float | None,
+    zuhaltekraft_t: float | None,
+    schussgewicht_fallback: bool = False,
+    zuhaltekraft_fallback: bool = False,
+) -> bool:
+    """True bei extremem Dosierengpass relativ zur Kühlzeit und Plastifizierklasse.
+
+    Ohne Schussgewicht oder ohne maßgebliche Zuhaltekraft greifen die bestehenden
+    Fallbacks; dann wird kein Schussgewichts-/Dosierengpass gemeldet.
+    """
+    if schussgewicht_fallback or zuhaltekraft_fallback:
+        return False
+    if _positiv_oder_none(schussgewicht_g) is None:
+        return False
+    if _positiv_oder_none(zuhaltekraft_t) is None:
+        return False
+    if _positiv_oder_none(plastifizierleistung_kg_h) is None:
+        return False
+    if dosierzeit_s is None or kuehlzeit_s is None:
+        return False
+    try:
+        dosier = float(dosierzeit_s)
+        kuehl = float(kuehlzeit_s)
+        leistung = float(plastifizierleistung_kg_h)
+    except (TypeError, ValueError):
+        return False
+    if not all(math.isfinite(v) for v in (dosier, kuehl, leistung)):
+        return False
+    if kuehl <= 0 or leistung <= 0 or dosier <= 0:
+        return False
+    return dosier > DOSIERZEIT_WARNFAKTOR * kuehl and dosier > DOSIERZEIT_WARNGRENZE_S
+
+
+def dosierengpass_warnung(
+    *,
+    dosierzeit_s: float,
+    kuehlzeit_s: float,
+    schussgewicht_g: float,
+    kavitaeten: int,
+    zuhaltekraft_t: float,
+    plastifizierleistung_kg_h: float,
+    dosier_ueberhang_s: float | None = None,
+    gesamtzykluszeit_s: float | None = None,
+) -> str:
+    """Fachliche Meldung ohne interne Variablennamen."""
+    zeilen = [
+        (
+            f"Die berechnete Dosierzeit von {_zahl_de(dosierzeit_s, 1)} s ist für die "
+            "aktuell aus der Zuhaltekraft abgeleitete Maschinen-/Plastifizierklasse "
+            "ungewöhnlich hoch. Bitte prüfen Sie, ob Schussgewicht, Maße, "
+            "Kavitätenzahl und die empfohlene Maschine zusammenpassen. Ohne maximale "
+            "Schussgewichte der Maschine kann nur ein Plausibilitätshinweis ausgegeben "
+            "werden. Der Vorschlag kann nicht automatisch übernommen werden."
+        ),
+        f"Schussgewicht: {_zahl_de(schussgewicht_g, 0)} g",
+        f"Kavitäten: {kavitaeten}",
+        f"Maßgebliche Zuhaltekraft: {_zahl_de(zuhaltekraft_t, 1)} t",
+        f"Plastifizierleistung: {_zahl_de(plastifizierleistung_kg_h, 0)} kg/h",
+        f"Dosierzeit: {_zahl_de(dosierzeit_s, 1)} s",
+        f"Kühlzeit für Weiterrechnung: {_zahl_de(kuehlzeit_s, 2)} s",
+    ]
+    if dosier_ueberhang_s is not None and math.isfinite(dosier_ueberhang_s):
+        zeilen.append(f"Dosierüberhang: {_zahl_de(dosier_ueberhang_s, 1)} s")
+    if gesamtzykluszeit_s is not None and math.isfinite(gesamtzykluszeit_s):
+        zeilen.append(
+            f"Vorgeschlagene Gesamtzeit: {_zahl_de(gesamtzykluszeit_s, 0)} s"
+        )
+    return " ".join(zeilen[:1]) + " " + " · ".join(zeilen[1:])
 
 
 @dataclass
@@ -631,6 +762,10 @@ def _basis_result(ctx: _Kontext) -> ZykluszeitResult:
         zuhaltekraft_fallback=ctx.komponenten.zuhaltekraft_fallback,
         nebenzeiten_gesamt_s=ctx.nebenzeiten,
         nebenzeit_quelle=ctx.nebenzeit_quelle,
+        status=STATUS_NICHT_BERECHENBAR,
+        kann_uebernommen_werden=False,
+        dosierzeit_warnfaktor=DOSIERZEIT_WARNFAKTOR,
+        dosierzeit_warngrenze_s=DOSIERZEIT_WARNGRENZE_S,
     )
 
 
@@ -792,6 +927,7 @@ def berechne_zykluszeit(inp: ZykluszeitInput, db: Session | None = None) -> Zykl
     gesamt = kuehlzeit + nebenzeiten
     if not math.isfinite(gesamt) or gesamt <= 0:
         return _teilergebnis(ungueltig, ctx)
+    gesamt_gerundet = runde_auf_sekunde(gesamt)
 
     result = _basis_result(ctx)
     result.berechenbar = True
@@ -807,5 +943,31 @@ def berechne_zykluszeit(inp: ZykluszeitInput, db: Session | None = None) -> Zykl
     result.entformungstemperatur_c = t_e
     result.optimale_kuehlzeit_s = t_opt
     result.kuehlzeit_s = kuehlzeit
-    result.gesamtzykluszeit_s = gesamt
+    result.gesamtzykluszeit_s = gesamt_gerundet
+    result.gesamtzykluszeit_exakt_s = gesamt
+    result.status = STATUS_GUELTIG
+    result.kann_uebernommen_werden = True
+    if dosierengpass_ist_kritisch(
+        dosierzeit_s=komponenten.dosierzeit_s,
+        kuehlzeit_s=kuehlzeit,
+        schussgewicht_g=schussgewicht,
+        plastifizierleistung_kg_h=komponenten.plastifizierleistung_kg_h,
+        zuhaltekraft_t=zuhaltekraft,
+        schussgewicht_fallback=komponenten.schussgewicht_fallback,
+        zuhaltekraft_fallback=komponenten.zuhaltekraft_fallback,
+    ):
+        result.status = STATUS_NICHT_PLAUSIBEL
+        result.kann_uebernommen_werden = False
+        result.warnungen.append(
+            dosierengpass_warnung(
+                dosierzeit_s=komponenten.dosierzeit_s,
+                kuehlzeit_s=kuehlzeit,
+                schussgewicht_g=schussgewicht or 0.0,
+                kavitaeten=kavitaeten,
+                zuhaltekraft_t=zuhaltekraft or 0.0,
+                plastifizierleistung_kg_h=komponenten.plastifizierleistung_kg_h,
+                dosier_ueberhang_s=komponenten.dosier_ueberhang_s,
+                gesamtzykluszeit_s=gesamt_gerundet,
+            )
+        )
     return result

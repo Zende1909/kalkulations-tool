@@ -90,6 +90,12 @@ function formatSekunden(value: number | null | undefined, digits = 2): string {
   });
 }
 
+/** Ganze Sekunden ohne Nachkommastellen, sonst zwei Nachkommastellen. */
+function formatZykluszeitFeld(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "–";
+  return formatSekunden(value, Number.isInteger(value) ? 0 : 2);
+}
+
 function euro(value: number | undefined | null): string {
   if (value == null || Number.isNaN(value)) return "–";
   return value.toLocaleString("de-DE", {
@@ -547,14 +553,18 @@ export function SpritzgussPage() {
   }, [zykluszeitPreviewPayload]);
 
   const uebernehmeZykluszeit = () => {
-    const wert = zykluszeitVorschlag?.gesamtzykluszeit_s;
+    if (!zykluszeitVorschlag?.kann_uebernommen_werden) return;
+    // `gesamtzykluszeit_s` ist bereits auf eine volle Sekunde gerundet.
+    const wert = zykluszeitVorschlag.gesamtzykluszeit_s;
     if (wert == null || !Number.isFinite(wert)) return;
     setForm((current) => ({ ...current, zykluszeit_s: wert, zykluszeit_quelle: "vorschlag" }));
     setDecimalRaw((current) => ({
       ...current,
       zykluszeit_s: formatDecimalForInputDe(wert),
     }));
-    setSuccess("Zykluszeitvorschlag in das Zykluszeitfeld übernommen.");
+    setSuccess(
+      `Zykluszeitvorschlag mit ${formatSekunden(wert, 0)} s in das Zykluszeitfeld übernommen.`,
+    );
   };
 
   const selectedMaterial = useMemo(
@@ -1468,8 +1478,8 @@ export function SpritzgussPage() {
             <p className="mb-3 text-xs text-gray-600">
               Konservative Abschätzung für die frühe Angebotskalkulation (1K-Thermoplast,
               Serien-Stahlwerkzeuge) aus Materialkennwerten und kühlzeitrelevanter Wandstärke.
-              Der Wert ist ein Vorschlag und wird erst nach „Übernehmen“ in das Zykluszeitfeld
-              geschrieben. Die Nebenzeit setzt sich aus Werkzeugbewegung, Einspritzen und
+              Der Vorschlag wird auf eine volle Sekunde gerundet und erst nach „Übernehmen“ in
+              das Zykluszeitfeld geschrieben. Die Nebenzeit setzt sich aus Werkzeugbewegung, Einspritzen und
               Nachdruck, Dosierüberhang, Entnahme und Prozessaufwand zusammen und nutzt
               Zuhaltekraft, Schussgewicht und Kavitäten der Kalkulation. IKET-Variante 2 gilt
               fachlich primär für teilkristalline Thermoplaste; für amorphe Materialien ist der
@@ -1553,11 +1563,92 @@ export function SpritzgussPage() {
               </div>
             </div>
 
-            <div className="mt-4 rounded-md border border-gray-100 bg-gray-50 p-3 text-sm">
+            <div
+              className={
+                zykluszeitVorschlag?.status === "nicht_plausibel"
+                  ? "mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm"
+                  : "mt-4 rounded-md border border-gray-100 bg-gray-50 p-3 text-sm"
+              }
+              role={zykluszeitVorschlag?.status === "nicht_plausibel" ? "alert" : undefined}
+            >
               {zykluszeitVorschlag?.berechenbar ? (
+                zykluszeitVorschlag.status === "nicht_plausibel" ? (
+                <>
+                  <div className="font-medium text-amber-950">
+                    Zykluszeitvorschlag nicht plausibel
+                  </div>
+                  <p className="mt-1 text-sm text-amber-950">
+                    Die berechnete Dosierzeit passt nicht zur aus der Zuhaltekraft abgeleiteten
+                    Maschinen-/Plastifizierklasse. Ohne hinterlegte maximale Schussgewichte je
+                    Maschine ist nur ein Plausibilitätshinweis möglich – der Wert darf nicht
+                    automatisch übernommen werden.
+                  </p>
+                  <dl className="mt-2 grid gap-x-6 gap-y-1 text-amber-950 sm:grid-cols-2">
+                    <div className="flex justify-between gap-2">
+                      <dt>Berechnete Dosierzeit</dt>
+                      <dd>{formatSekunden(zykluszeitVorschlag.nebenzeit_dosierzeit_s)} s</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>Kühlzeit für Weiterrechnung</dt>
+                      <dd>{formatSekunden(zykluszeitVorschlag.kuehlzeit_s)} s</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>Plastifizierleistung</dt>
+                      <dd>
+                        {formatSekunden(zykluszeitVorschlag.plastifizierleistung_kg_h, 0)} kg/h
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>Schussgewicht</dt>
+                      <dd>
+                        {formatSekunden(zykluszeitVorschlag.schussgewicht_g, 0)} g ·{" "}
+                        {zykluszeitVorschlag.kavitaeten ?? 1} Kav.
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>Maßgebliche Zuhaltekraft</dt>
+                      <dd>
+                        {zykluszeitVorschlag.zuhaltekraft_t == null
+                          ? "–"
+                          : `${formatSizingNumber(zykluszeitVorschlag.zuhaltekraft_t)} t`}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>Dosierüberhang</dt>
+                      <dd>
+                        {formatSekunden(zykluszeitVorschlag.nebenzeit_dosier_ueberhang_s)} s
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>Berechnete Gesamtzeit (nicht übernehmbar)</dt>
+                      <dd>{formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s, 0)} s</dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt>Aktuell verwendete Zykluszeit</dt>
+                      <dd>
+                        {formatZykluszeitFeld(form.zykluszeit_s)} s (
+                        {form.zykluszeit_quelle === "vorschlag"
+                          ? "aus Vorschlag übernommen"
+                          : "manuell erfasst"}
+                        )
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="mt-2 text-xs text-amber-900">
+                    Bitte Maße, Schussgewicht, Kavitätenzahl und Maschinenauslegung prüfen. Die
+                    manuelle Zykluszeit bleibt unverändert nutzbar.
+                  </p>
+                  {(zykluszeitVorschlag.warnungen ?? []).map((warnung) => (
+                    <p key={warnung} className="mt-2 text-xs text-amber-900">
+                      {warnung}
+                    </p>
+                  ))}
+                </>
+                ) : (
                 <>
                   <div className="font-medium text-gray-900">
-                    Vorschlag {formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s)} s
+                    Vorschlag {formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s, 0)} s
+                    <span className="ml-2 text-xs font-normal text-gray-500">gültig</span>
                   </div>
                   <dl className="mt-2 grid gap-x-6 gap-y-1 text-gray-700 sm:grid-cols-2">
                     <div className="flex justify-between gap-2">
@@ -1626,13 +1717,19 @@ export function SpritzgussPage() {
                       <dd>{formatSekunden(zykluszeitVorschlag.kuehlzeit_s)} s</dd>
                     </div>
                     <div className="flex justify-between gap-2 font-medium text-gray-900">
-                      <dt>Vorgeschlagene Gesamtzykluszeit</dt>
-                      <dd>{formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s)} s</dd>
+                      <dt>
+                        Vorgeschlagene Gesamtzykluszeit
+                        <span className="ml-1 text-xs font-normal text-gray-500">
+                          (ungerundet{" "}
+                          {formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_exakt_s)} s)
+                        </span>
+                      </dt>
+                      <dd>{formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s, 0)} s</dd>
                     </div>
                     <div className="flex justify-between gap-2">
                       <dt>Aktuell verwendete Zykluszeit</dt>
                       <dd>
-                        {formatSekunden(form.zykluszeit_s)} s (
+                        {formatZykluszeitFeld(form.zykluszeit_s)} s (
                         {form.zykluszeit_quelle === "vorschlag"
                           ? "aus Vorschlag übernommen"
                           : "manuell erfasst"}
@@ -1699,6 +1796,7 @@ export function SpritzgussPage() {
                     </p>
                   ))}
                 </>
+                )
               ) : (
                 <>
                   <p className="text-amber-800">
@@ -1718,13 +1816,19 @@ export function SpritzgussPage() {
               <button
                 type="button"
                 onClick={uebernehmeZykluszeit}
-                disabled={!zykluszeitVorschlag?.berechenbar}
+                disabled={!zykluszeitVorschlag?.kann_uebernommen_werden}
+                aria-disabled={!zykluszeitVorschlag?.kann_uebernommen_werden}
+                title={
+                  zykluszeitVorschlag?.kann_uebernommen_werden
+                    ? "Vorschlag in das Zykluszeitfeld übernehmen"
+                    : "Vorschlag nicht übernehmbar – Eingaben prüfen oder Zykluszeit manuell setzen"
+                }
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300"
               >
                 Übernehmen
               </button>
               <span className="text-sm text-gray-600">
-                Aktuelle Zykluszeit: {formatSekunden(form.zykluszeit_s)} s (
+                Aktuelle Zykluszeit: {formatZykluszeitFeld(form.zykluszeit_s)} s (
                 {form.zykluszeit_quelle === "vorschlag"
                   ? "aus Vorschlag übernommen"
                   : "manuell erfasst"}

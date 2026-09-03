@@ -141,6 +141,11 @@ class ZykluszeitResultSchema(BaseModel):
     nebenzeiten_gesamt_s: float | None = None
     nebenzeit_quelle: str | None = None
     gesamtzykluszeit_s: float | None = None
+    gesamtzykluszeit_exakt_s: float | None = None
+    status: str | None = None
+    kann_uebernommen_werden: bool = False
+    dosierzeit_warnfaktor: float | None = None
+    dosierzeit_warngrenze_s: float | None = None
 
 
 __all__ = [

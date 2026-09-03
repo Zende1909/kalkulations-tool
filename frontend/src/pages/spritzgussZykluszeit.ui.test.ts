@@ -100,14 +100,33 @@ describe("Zykluszeit-Schätzung UI", () => {
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.optimale_kuehlzeit_s/);
   });
 
+  it("zeigt den Vorschlag in ganzen Sekunden und weist die exakte Summe aus", () => {
+    expect(pageSrc).toMatch(/Der Vorschlag wird auf eine volle Sekunde gerundet/);
+    expect(pageSrc).toMatch(
+      /formatSekunden\(zykluszeitVorschlag\.gesamtzykluszeit_s,\s*0\)/,
+    );
+    expect(pageSrc).toMatch(/zykluszeitVorschlag\.gesamtzykluszeit_exakt_s/);
+    expect(pageSrc).toMatch(/ungerundet/);
+  });
+
   it("schreibt den Vorschlag erst nach Klick auf Übernehmen ins Zykluszeitfeld", () => {
     expect(pageSrc).toMatch(/uebernehmeZykluszeit/);
     expect(pageSrc).toMatch(/>\s*Übernehmen\s*<\/button>/);
+    expect(pageSrc).toMatch(/if \(!zykluszeitVorschlag\?\.kann_uebernommen_werden\) return;/);
+    expect(pageSrc).toMatch(/disabled=\{!zykluszeitVorschlag\?\.kann_uebernommen_werden\}/);
     expect(pageSrc).toMatch(/zykluszeit_s: wert,\s*zykluszeit_quelle: "vorschlag"/);
-    // Kein automatisches Überschreiben aus dem Vorschau-Effekt heraus.
     expect(pageSrc).not.toMatch(
       /setZykluszeitVorschlag\(result\);\s*setField\("zykluszeit_s"/,
     );
+  });
+
+  it("sperrt Übernehmen bei nicht plausiblem Vorschlag", () => {
+    expect(pageSrc).toMatch(/Zykluszeitvorschlag nicht plausibel/);
+    expect(pageSrc).toMatch(/status === "nicht_plausibel"/);
+    expect(pageSrc).toMatch(/kann_uebernommen_werden/);
+    expect(pageSrc).toMatch(/maximale Schussgewichte/);
+    expect(pageSrc).toMatch(/role=\{zykluszeitVorschlag\?\.status === "nicht_plausibel" \? "alert"/);
+    expect(pageSrc).not.toMatch(/disabled=\{!zykluszeitVorschlag\?\.berechenbar\}/);
   });
 
   it("markiert manuelle Eingaben als Quelle manuell", () => {

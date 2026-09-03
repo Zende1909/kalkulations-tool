@@ -144,8 +144,33 @@ def _zykluszeit_export_rows(obj: SpritzgussKalkulation, ergebnis: dict) -> list[
             ),
             ExportRow("Nebenzeit Quelle", nebenzeit_quelle_text),
             ExportRow(
-                "Zykluszeit-Schätzung gesamt",
-                _num_str(wert("gesamtzykluszeit_s", "zykluszeit_vorschlag_s"), "s"),
+                "Zykluszeit-Schätzung gesamt (gerundet)",
+                _num_str(wert("gesamtzykluszeit_s", "zykluszeit_vorschlag_s"), "s", 0),
+            ),
+            ExportRow(
+                "Zykluszeit-Schätzung gesamt (ungerundet)",
+                _num_str(vorschlag.get("gesamtzykluszeit_exakt_s"), "s"),
+            ),
+            ExportRow(
+                "Zykluszeitvorschlag Status",
+                {
+                    "gueltig": "gültig – übernehmbar",
+                    "nicht_plausibel": "nicht plausibel – nicht übernehmbar",
+                    "nicht_berechenbar": "nicht berechenbar",
+                }.get(str(vorschlag.get("status") or ""), str(vorschlag.get("status") or "–")),
+            ),
+            ExportRow(
+                "Zykluszeitvorschlag übernehmbar",
+                "ja" if vorschlag.get("kann_uebernommen_werden") else "nein",
+            ),
+            ExportRow(
+                "Dosierzeit-Warnschwellen",
+                (
+                    f"Faktor {vorschlag.get('dosierzeit_warnfaktor')} · "
+                    f"Mindest-Dosierzeit {_num_str(vorschlag.get('dosierzeit_warngrenze_s'), 's', 0)}"
+                    if vorschlag.get("dosierzeit_warnfaktor") is not None
+                    else "–"
+                ),
             ),
         ]
     )
