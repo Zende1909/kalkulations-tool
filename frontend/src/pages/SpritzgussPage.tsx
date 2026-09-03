@@ -16,7 +16,7 @@ import {
   spritzgussXlsxUrl,
 } from "../api/reports";
 import { listVeredelungsschritte } from "../api/veredelung";
-import { getAverageJahresstueckzahl } from "../api/hierarchy";
+import { getAverageJahresstueckzahl, getProgram } from "../api/hierarchy";
 import { ExportButtons } from "../components/ExportButtons";
 import { SpritzgussSavedList } from "../components/spritzguss/SpritzgussSavedList";
 import { TeilbildField } from "../components/spritzguss/TeilbildField";
@@ -355,6 +355,7 @@ export function SpritzgussPage() {
   const [jahresbedarfHint, setJahresbedarfHint] = useState<string | null>(null);
   const [jahresbedarfLoading, setJahresbedarfLoading] = useState(false);
   const [maschinenGroesse, setMaschinenGroesse] = useState<MaschinenGroesseResult | null>(null);
+  const [maschineManuell, setMaschineManuell] = useState(false);
   const [zykluszeitVorschlag, setZykluszeitVorschlag] = useState<ZykluszeitVorschlag | null>(
     null,
   );
@@ -666,6 +667,7 @@ export function SpritzgussPage() {
         maschine_id: null,
         lohnkosten_id: null,
       }));
+      setMaschineManuell(false);
       return;
     }
     const wid = Number(id);
@@ -675,11 +677,49 @@ export function SpritzgussPage() {
       werk_id: wid,
       maschine_id: null,
     }));
+    setMaschineManuell(false);
     applyPlantLohnDefaults(wid);
     if (plant) {
       setSelectedLandId(plant.land_id);
     }
   };
+
+  // Automatische Vorbelegung von Werk/Land aus der Projekt-Programm-Vorgabe.
+  // Wir überschreiben nur, wenn der Nutzer noch keine Werk-Auswahl getroffen hat.
+  useEffect(() => {
+    if (form.werk_id != null) return;
+    if (selectedLandId != null) return;
+
+    const programId = hierarchy.program_id ?? null;
+    if (programId == null) return;
+    if (!lohns.length || !werke.length) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const program = await getProgram(programId);
+        const productionPlant = (program.production_plant ?? "").trim();
+        if (!productionPlant || cancelled) return;
+
+        const werk =
+          werke.find((w) => w.code === productionPlant) ??
+          werke.find((w) => w.name === productionPlant) ??
+          werke.find((w) => (w.code ?? "").toLowerCase() === productionPlant.toLowerCase());
+        if (!werk || cancelled) return;
+
+        setSelectedLandId(werk.land_id);
+        setForm((current) => ({ ...current, werk_id: werk.id, maschine_id: null }));
+        setMaschineManuell(false);
+        applyPlantLohnDefaults(werk.id);
+      } catch {
+        // Fallback: ohne Zuordnung bleibt die manuelle Auswahl aktiv.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hierarchy.program_id, form.werk_id, selectedLandId, werke, lohns]);
 
   const veredelungGesamtAktiv = useMemo(
     () =>
@@ -778,11 +818,14 @@ export function SpritzgussPage() {
     }));
   };
 
-  const handleMaschineChange = (id: string) => {
+  const handleMaschineChange = (id: string, opts?: { manual?: boolean }) => {
     if (!id) {
       setField("maschine_id", null);
+      setMaschineManuell(false);
       return;
     }
+    const manual = opts?.manual ?? true;
+    if (manual) setMaschineManuell(true);
     const maschine = machines.find((m) => m.id === Number(id));
     if (!maschine) return;
     setForm((current) => ({
@@ -829,6 +872,22 @@ export function SpritzgussPage() {
   const applyMaschinenGroesseResponse = (result: MaschinenGroesseResult | null | undefined) => {
     setMaschinenGroesse(result ?? null);
   };
+
+  // Automatische Maschinen-Auswahl aus der Maschinengrößenberechnung,
+  // solange der Nutzer noch nichts manuell geändert hat.
+  useEffect(() => {
+    if (maschineManuell) return;
+    if (maschinenGroesse?.empfohlene_maschine_id == null) return;
+
+    const empfohleneId = maschinenGroesse.empfohlene_maschine_id;
+    const maschine = machines.find((m) => m.id === empfohleneId);
+    if (!maschine) return;
+    if (form.maschine_id === maschine.id) return;
+
+    // `manual: false` heißt: wir übernehmen die Empfehlung, markieren die
+    // Auswahl aber noch nicht als Nutzer-Änderung.
+    handleMaschineChange(String(maschine.id), { manual: false });
+  }, [maschineManuell, maschinenGroesse?.empfohlene_maschine_id, form.maschine_id, machines]);
 
   const handleBerechnen = async () => {
     setBusy(true);
@@ -983,7 +1042,12 @@ export function SpritzgussPage() {
         maschinen_groesse_breite_mm: item.maschinen_groesse_breite_mm ?? null,
         maschinen_groesse_laenge_mm: item.maschinen_groesse_laenge_mm ?? null,
         maschinen_groesse_oeffnungen_pct: item.maschinen_groesse_oeffnungen_pct ?? null,
-        maschinen_groesse_proj_flaeche_mm2: item.maschinen_groesse_proj_flaeche_mm2 ?? null,
+        // Backend persistiert bei Bestandsdaten ggf. nur die Nettofläche.
+        // Für den `flaeche`-Modus akzeptieren wir die Nettofläche als Eingabewert.
+        maschinen_groesse_proj_flaeche_mm2:
+          item.maschinen_groesse_proj_flaeche_mm2 ??
+          item.maschinen_groesse_proj_flaeche_netto_mm2 ??
+          null,
         werk_id: item.werk_id ?? null,
         losgroesse: item.losgroesse ?? null,
         losgroesse_modus: inferLegacyLosgroesseModus(item.losgroesse_modus, item.losgroesse),
@@ -1035,6 +1099,7 @@ export function SpritzgussPage() {
       } else {
         setSelectedLandId(null);
       }
+      setMaschineManuell(item.maschine_id != null);
       setDecimalRaw(
         loadSpritzgussDecimalRaw({
           ...emptySpritzgussForm(),
@@ -1058,7 +1123,10 @@ export function SpritzgussPage() {
           maschinen_groesse_breite_mm: item.maschinen_groesse_breite_mm ?? null,
           maschinen_groesse_laenge_mm: item.maschinen_groesse_laenge_mm ?? null,
           maschinen_groesse_oeffnungen_pct: item.maschinen_groesse_oeffnungen_pct ?? null,
-          maschinen_groesse_proj_flaeche_mm2: item.maschinen_groesse_proj_flaeche_mm2 ?? null,
+          maschinen_groesse_proj_flaeche_mm2:
+            item.maschinen_groesse_proj_flaeche_mm2 ??
+            item.maschinen_groesse_proj_flaeche_netto_mm2 ??
+            null,
           zykluszeit_wandstaerke_mm: item.zykluszeit_wandstaerke_mm ?? null,
           zykluszeit_nebenzeiten_gesamt_s: item.zykluszeit_nebenzeiten_gesamt_s ?? null,
         }),
@@ -1094,6 +1162,7 @@ export function SpritzgussPage() {
     setSelectedVeredelung([]);
     setBloecke(null);
     setMaschinenGroesse(null);
+    setMaschineManuell(false);
     setZykluszeitVorschlag(null);
     setSuccess(null);
     setError(null);
