@@ -106,7 +106,7 @@ def test_m5_is_in_alembic_chain_before_head():
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0020_spritzguss_teilbild"]
+    assert scripts.get_heads() == ["e1a0021_zykluszeit_prozessaufwand"]
     rev = scripts.get_revision(REVISION)
     assert rev is not None
     assert rev.down_revision == PREV

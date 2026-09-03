@@ -10,13 +10,16 @@ from app.schemas.numbers import parse_de_float
 from app.services.zykluszeit import (
     AUSWAHLWERTE,
     DEFAULT_GROESSENKLASSE,
+    DEFAULT_PROZESSAUFWAND,
     GROESSENKLASSE_AUTO,
     KUEHLFAKTOR,
+    PROZESSAUFWAND_WERTE,
     normalisiere_groessenklasse,
+    normalisiere_prozessaufwand,
 )
 
 _FLOAT_LABELS: dict[str, str] = {
-    "zykluszeit_wandstaerke_mm": "Äquivalente Wandstärke",
+    "zykluszeit_wandstaerke_mm": "kühlzeitrelevante Wandstärke",
     "zykluszeit_nebenzeiten_gesamt_s": "Nebenzeiten gesamt",
 }
 
@@ -27,6 +30,7 @@ class ZykluszeitFields(BaseModel):
     zykluszeit_quelle: str | None = None
     zykluszeit_wandstaerke_mm: float | None = Field(default=None, gt=0)
     zykluszeit_groessenklasse: str | None = None
+    zykluszeit_prozessaufwand: str | None = None
     zykluszeit_nebenzeiten_gesamt_s: float | None = Field(default=None, ge=0)
 
     @field_validator(*_FLOAT_LABELS.keys(), mode="before")
@@ -45,6 +49,17 @@ class ZykluszeitFields(BaseModel):
             zulaessig = ", ".join(AUSWAHLWERTE)
             raise ValueError(f"Größenklasse muss eine von {zulaessig} sein.")
         return klasse
+
+    @field_validator("zykluszeit_prozessaufwand", mode="before")
+    @classmethod
+    def coerce_prozessaufwand(cls, value: Any) -> str | None:
+        if value is None or value == "":
+            return None
+        key = str(value).strip().lower()
+        if key not in PROZESSAUFWAND_WERTE:
+            zulaessig = ", ".join(PROZESSAUFWAND_WERTE)
+            raise ValueError(f"Prozessaufwand muss eine von {zulaessig} sein.")
+        return key
 
     @field_validator("zykluszeit_quelle", mode="before")
     @classmethod
@@ -71,9 +86,11 @@ class ZykluszeitResultSchema(BaseModel):
     wandstaerke_mm: float | None = None
     materialgruppe: str | None = None
     material_bezeichnung: str | None = None
+    materialklasse: str | None = None
     groessenklasse: str | None = None
     groessenklasse_auswahl: str | None = None
     zuhaltekraft_t: float | None = None
+    prozessaufwand: str | None = None
     kuehlfaktor: float | None = None
     temperaturleitfaehigkeit_m2_s: float | None = None
     werkzeugtemperatur_c: float | None = None
@@ -82,15 +99,18 @@ class ZykluszeitResultSchema(BaseModel):
     optimale_kuehlzeit_s: float | None = None
     kuehlzeit_s: float | None = None
     nebenzeiten_gesamt_s: float | None = None
+    nebenzeit_quelle: str | None = None
     gesamtzykluszeit_s: float | None = None
 
 
 __all__ = [
     "DEFAULT_GROESSENKLASSE",
+    "DEFAULT_PROZESSAUFWAND",
     "GROESSENKLASSE_AUTO",
     "KUEHLFAKTOR",
     "ZykluszeitCalcRequest",
     "ZykluszeitFields",
     "ZykluszeitResultSchema",
     "normalisiere_groessenklasse",
+    "normalisiere_prozessaufwand",
 ]

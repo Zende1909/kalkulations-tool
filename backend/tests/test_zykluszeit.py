@@ -167,6 +167,7 @@ def test_unbekannte_klasse_faellt_auf_default():
 def test_eigene_nebenzeiten_uebersteuern_die_klasse():
     result = berechne_zykluszeit(_pom_input(groessenklasse="klein", nebenzeiten_gesamt_s=21.5))
     assert result.nebenzeiten_gesamt_s == pytest.approx(21.5)
+    assert result.nebenzeit_quelle == "manuell"
     assert result.gesamtzykluszeit_s == pytest.approx(result.kuehlzeit_s + 21.5)
 
 
@@ -174,6 +175,91 @@ def test_negative_nebenzeiten_werden_abgelehnt():
     result = berechne_zykluszeit(_pom_input(nebenzeiten_gesamt_s=-1))
     assert result.berechenbar is False
     assert "nicht negativ" in result.hinweis
+
+
+@pytest.mark.parametrize(
+    ("zuhaltekraft_t", "aufwand", "erwartet"),
+    [
+        (80.0, "normal", 6.0),
+        (80.0, "aufwendig", 11.0),
+        (200.0, "normal", 10.0),
+        (200.0, "aufwendig", 15.0),
+        (400.0, "normal", 16.0),
+        (400.0, "aufwendig", 21.0),
+        (None, "normal", 10.0),
+        (None, "aufwendig", 15.0),
+    ],
+)
+def test_prozessaufwand_auf_automatische_nebenzeit(zuhaltekraft_t, aufwand, erwartet):
+    result = berechne_zykluszeit(
+        _pom_input(
+            groessenklasse="auto",
+            zuhaltekraft_t=zuhaltekraft_t,
+            prozessaufwand=aufwand,
+        )
+    )
+    assert result.berechenbar is True
+    assert result.prozessaufwand == aufwand
+    assert result.nebenzeit_quelle == "automatisch"
+    assert result.nebenzeiten_gesamt_s == pytest.approx(erwartet)
+
+
+def test_fehlender_prozessaufwand_nutzt_normal():
+    result = berechne_zykluszeit(_pom_input(groessenklasse="klein", prozessaufwand=None))
+    assert result.prozessaufwand == "normal"
+    assert result.nebenzeiten_gesamt_s == pytest.approx(6.0)
+
+
+def test_manuelle_nebenzeit_ignoriert_prozessaufwand():
+    result = berechne_zykluszeit(
+        _pom_input(
+            groessenklasse="auto",
+            zuhaltekraft_t=80.0,
+            prozessaufwand="aufwendig",
+            nebenzeiten_gesamt_s=7.0,
+        )
+    )
+    assert result.nebenzeiten_gesamt_s == pytest.approx(7.0)
+    assert result.nebenzeit_quelle == "manuell"
+    assert result.prozessaufwand == "aufwendig"
+
+
+def test_prozessaufwand_zuschlag_nicht_doppelt():
+    from app.services.zykluszeit import PROZESSAUFWAND_ZUSCHLAG_S, automatische_nebenzeiten_s
+
+    auto = automatische_nebenzeiten_s(
+        groessenklasse="auto", zuhaltekraft_t=80.0, prozessaufwand="aufwendig"
+    )
+    assert auto == pytest.approx(6.0 + PROZESSAUFWAND_ZUSCHLAG_S)
+    assert PROZESSAUFWAND_ZUSCHLAG_S == 5.0
+
+
+def test_amorph_liefert_naeherungs_hinweis_bleibt_aber_berechenbar():
+    result = berechne_zykluszeit(_pom_input(materialgruppe="ABS"))
+    assert result.berechenbar is True
+    assert result.materialklasse == "amorph"
+    assert result.hinweis is not None
+    assert "vereinfachte Näherung" in result.hinweis
+
+
+def test_teilkristallin_ohne_warnhinweis():
+    result = berechne_zykluszeit(_pom_input(materialgruppe="POM"))
+    assert result.berechenbar is True
+    assert result.materialklasse == "teilkristallin"
+    assert result.hinweis is None
+
+
+def test_temperaturordnung_wird_geprueft(monkeypatch):
+    from app.services import zykluszeit as zykluszeit_mod
+    from app.services.material_thermik import ThermikDefaults
+
+    bad = ThermikDefaults(
+        "TEST", "Test", 1000.0, 2000.0, 0.2, 90.0, 100.0, 80.0  # T_E < T_W
+    )
+    monkeypatch.setattr(zykluszeit_mod, "defaults_fuer_gruppe", lambda _g: bad)
+    result = berechne_zykluszeit(_pom_input(materialgruppe="TEST"))
+    assert result.berechenbar is False
+    assert "Entformungstemperatur" in (result.hinweis or "")
 
 
 # --------------------------------------------------------------------------------------
@@ -292,7 +378,7 @@ def test_unbekannte_materialgruppe_liefert_hinweis():
 def test_fehlende_wandstaerke_liefert_hinweis():
     result = berechne_zykluszeit(_pom_input(wandstaerke_mm=None))
     assert result.berechenbar is False
-    assert "Wandstärke" in result.hinweis
+    assert "kühlzeitrelevante Wandstärke" in result.hinweis
 
 
 @pytest.mark.parametrize("wandstaerke", [0, -1.5, float("nan"), MAX_WANDSTAERKE_MM + 1])
@@ -547,6 +633,13 @@ def test_schema_lehnt_ungueltige_groessenklasse_ab():
         ZykluszeitFields(zykluszeit_groessenklasse="riesig")
 
 
+def test_schema_prozessaufwand_normalisierung():
+    assert ZykluszeitFields(zykluszeit_prozessaufwand="AUFWENDIG").zykluszeit_prozessaufwand == "aufwendig"
+    assert ZykluszeitFields().zykluszeit_prozessaufwand is None
+    with pytest.raises(Exception, match="Prozessaufwand"):
+        ZykluszeitFields(zykluszeit_prozessaufwand="extrem")
+
+
 def test_preview_endpoint_leitet_klasse_aus_zuhaltekraft_ab(client: TestClient):
     material_id = _pom_material_ueber_api(client, "POM-AUTO")
 
@@ -661,6 +754,7 @@ def _kalkulation_schema(engine) -> None:
                     zykluszeit_quelle VARCHAR(16),
                     zykluszeit_wandstaerke_mm FLOAT,
                     zykluszeit_groessenklasse VARCHAR(16),
+                    zykluszeit_prozessaufwand VARCHAR(16),
                     zykluszeit_kuehlzeit_s FLOAT,
                     zykluszeit_nebenzeiten_gesamt_s FLOAT,
                     zykluszeit_vorschlag_s FLOAT,
@@ -850,9 +944,11 @@ def test_export_rows_aus_ergebnis_und_orm(kalk_db: Session):
         for row in _zykluszeit_export_rows(obj, {"zykluszeit_vorschlag": result.as_dict()})
     }
     assert aus_ergebnis["Zykluszeit Quelle"] == "Übernommen aus Zykluszeit-Schätzung"
-    assert aus_ergebnis["Äquivalente Wandstärke"] == "4.50 mm"
+    assert aus_ergebnis["kühlzeitrelevante Wandstärke"] == "4.50 mm"
     assert aus_ergebnis["Materialgruppe"] == "POM"
+    assert aus_ergebnis["Prozessaufwand"] == "normal"
     assert aus_ergebnis["Nebenzeiten gesamt"] == "10.00 s"
+    assert aus_ergebnis["Nebenzeit Quelle"] == "automatisch"
     assert aus_ergebnis["Zykluszeit-Schätzung gesamt"] == "56.75 s"
 
     # Paritätsprüfung: die gespeicherten Spalten liefern dieselben Kernwerte.

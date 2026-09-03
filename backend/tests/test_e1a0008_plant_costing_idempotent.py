@@ -243,6 +243,7 @@ def _create_pre_plant_skeleton(engine: Engine) -> None:
                     zykluszeit_quelle VARCHAR(16),
                     zykluszeit_wandstaerke_mm FLOAT,
                     zykluszeit_groessenklasse VARCHAR(16),
+                    zykluszeit_prozessaufwand VARCHAR(16),
                     zykluszeit_kuehlzeit_s FLOAT,
                     zykluszeit_nebenzeiten_gesamt_s FLOAT,
                     zykluszeit_vorschlag_s FLOAT,
@@ -331,7 +332,7 @@ def test_alembic_head_is_e1a0009_after_werk_params():
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     heads = ScriptDirectory.from_config(cfg).get_heads()
-    assert heads == ["e1a0020_spritzguss_teilbild"]
+    assert heads == ["e1a0021_zykluszeit_prozessaufwand"]
     rev = ScriptDirectory.from_config(cfg).get_revision(REVISION)
     assert rev is not None
     assert rev.down_revision == PREV

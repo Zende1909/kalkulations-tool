@@ -85,6 +85,8 @@ class SpritzgussKalkulation(Base, TimestampMixin):
     zykluszeit_quelle: Mapped[str | None] = mapped_column(String(16), nullable=True)
     zykluszeit_wandstaerke_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
     zykluszeit_groessenklasse: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # kühlzeitrelevante Wandstärke intern als zykluszeit_wandstaerke_mm (Abwärtskompatibilität)
+    zykluszeit_prozessaufwand: Mapped[str | None] = mapped_column(String(16), nullable=True)
     zykluszeit_kuehlzeit_s: Mapped[float | None] = mapped_column(Float, nullable=True)
     zykluszeit_nebenzeiten_gesamt_s: Mapped[float | None] = mapped_column(Float, nullable=True)
     zykluszeit_vorschlag_s: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -151,12 +151,20 @@ export function effektiveGroessenklasse(
   return treffer ? treffer.key : teilegroesseAusZuhaltekraft(zuhaltekraftT);
 }
 
+export type ZykluszeitProzessaufwand = "normal" | "aufwendig";
+export const ZYKLUSZEIT_DEFAULT_PROZESSAUFWAND: ZykluszeitProzessaufwand = "normal";
+export const ZYKLUSZEIT_PROZESSAUFWAND_ZUSCHLAG_S = 5;
+
 export function nebenzeitenRichtwert(
   klasse: string | null | undefined,
   zuhaltekraftT: number | null | undefined = null,
+  prozessaufwand: ZykluszeitProzessaufwand | null | undefined = "normal",
 ): number {
   const key = effektiveGroessenklasse(klasse, zuhaltekraftT);
-  return ZYKLUSZEIT_GROESSENKLASSEN.find((k) => k.key === key)!.nebenzeiten;
+  const basis = ZYKLUSZEIT_GROESSENKLASSEN.find((k) => k.key === key)!.nebenzeiten;
+  return (prozessaufwand ?? "normal") === "aufwendig"
+    ? basis + ZYKLUSZEIT_PROZESSAUFWAND_ZUSCHLAG_S
+    : basis;
 }
 
 export type ZykluszeitQuelle = "manuell" | "vorschlag";
@@ -167,9 +175,11 @@ export interface ZykluszeitVorschlag {
   wandstaerke_mm?: number | null;
   materialgruppe?: string | null;
   material_bezeichnung?: string | null;
+  materialklasse?: string | null;
   groessenklasse?: string | null;
   groessenklasse_auswahl?: string | null;
   zuhaltekraft_t?: number | null;
+  prozessaufwand?: string | null;
   kuehlfaktor?: number | null;
   temperaturleitfaehigkeit_m2_s?: number | null;
   werkzeugtemperatur_c?: number | null;
@@ -178,6 +188,7 @@ export interface ZykluszeitVorschlag {
   optimale_kuehlzeit_s?: number | null;
   kuehlzeit_s?: number | null;
   nebenzeiten_gesamt_s?: number | null;
+  nebenzeit_quelle?: string | null;
   gesamtzykluszeit_s?: number | null;
 }
 
@@ -233,11 +244,12 @@ export interface SpritzgussFormData {
   kavitaeten: number;
   maschinenstundensatz: number;
 
-  /** Zykluszeit-Schätzung */
+  /** Zykluszeit-Schätzung; wandstaerke_mm = kühlzeitrelevante Wandstärke */
   zykluszeit_quelle: ZykluszeitQuelle;
   zykluszeit_wandstaerke_mm: number | null;
   zykluszeit_groessenklasse: ZykluszeitGroessenklasse;
-  /** Übersteuert den Richtwert der Größenklasse, wenn gesetzt. */
+  zykluszeit_prozessaufwand: ZykluszeitProzessaufwand;
+  /** Übersteuert den automatischen Richtwert, wenn gesetzt. */
   zykluszeit_nebenzeiten_gesamt_s: number | null;
 
   lohnkosten_id: number | null;
@@ -334,6 +346,7 @@ export const emptySpritzgussForm = (): SpritzgussFormData => ({
   zykluszeit_quelle: "manuell",
   zykluszeit_wandstaerke_mm: null,
   zykluszeit_groessenklasse: ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
+  zykluszeit_prozessaufwand: ZYKLUSZEIT_DEFAULT_PROZESSAUFWAND,
   zykluszeit_nebenzeiten_gesamt_s: null,
   lohnkosten_id: null,
   lohnstundensatz: 0,

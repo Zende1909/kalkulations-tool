@@ -34,6 +34,7 @@ import {
   ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
   ZYKLUSZEIT_GROESSENKLASSE_AUTO,
   ZYKLUSZEIT_GROESSENKLASSEN,
+  ZYKLUSZEIT_PROZESSAUFWAND_ZUSCHLAG_S,
   type SpritzgussBloecke,
   type SpritzgussFormData,
   type MaschinenGroesseResult,
@@ -41,6 +42,7 @@ import {
   type VeredelungZuordnungInput,
   type WerkzeugAbrechnungsart,
   type ZykluszeitGroessenklasse,
+  type ZykluszeitProzessaufwand,
   type ZykluszeitVorschlag,
 } from "../types/spritzguss";
 import { FormDecimalInput } from "../components/FormDecimalInput";
@@ -515,11 +517,11 @@ export function SpritzgussPage() {
 
   const autoTeilegroesseLabel = useMemo(() => {
     const key = teilegroesseAusZuhaltekraft(zuhaltekraftT);
-    const klasse = ZYKLUSZEIT_GROESSENKLASSEN.find((k) => k.key === key)!;
+    const neben = nebenzeitenRichtwert(key, zuhaltekraftT, form.zykluszeit_prozessaufwand);
     return zuhaltekraftT == null
-      ? `noch ohne Zuhaltekraft: ${klasse.nebenzeiten} s`
-      : `${formatSizingNumber(zuhaltekraftT)} t → ${klasse.nebenzeiten} s`;
-  }, [zuhaltekraftT]);
+      ? `noch ohne Zuhaltekraft: ${neben} s`
+      : `${formatSizingNumber(zuhaltekraftT)} t → ${neben} s`;
+  }, [zuhaltekraftT, form.zykluszeit_prozessaufwand]);
 
   const zykluszeitPreviewPayload = useMemo(
     () => buildZykluszeitPreviewPayload(form, decimalRaw, zuhaltekraftT),
@@ -597,6 +599,7 @@ export function SpritzgussPage() {
       zykluszeit_quelle: form.zykluszeit_quelle,
       zykluszeit_wandstaerke_mm: form.zykluszeit_wandstaerke_mm,
       zykluszeit_groessenklasse: form.zykluszeit_groessenklasse,
+      zykluszeit_prozessaufwand: form.zykluszeit_prozessaufwand,
       zykluszeit_nebenzeiten_gesamt_s: form.zykluszeit_nebenzeiten_gesamt_s,
     }),
     [form, veredelungZuordnungen, hierarchy.project_id],
@@ -989,6 +992,8 @@ export function SpritzgussPage() {
         zykluszeit_quelle: item.zykluszeit_quelle ?? "manuell",
         zykluszeit_wandstaerke_mm: item.zykluszeit_wandstaerke_mm ?? null,
         zykluszeit_groessenklasse: gespeicherteGroessenklasse(item.zykluszeit_groessenklasse),
+        zykluszeit_prozessaufwand:
+          item.zykluszeit_prozessaufwand === "aufwendig" ? "aufwendig" : "normal",
         zykluszeit_nebenzeiten_gesamt_s: item.zykluszeit_nebenzeiten_gesamt_s ?? null,
         lohnkosten_id: item.lohnkosten_id,
         lohnstundensatz: item.lohnstundensatz,
@@ -1458,20 +1463,30 @@ export function SpritzgussPage() {
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <h3 className="mb-1 font-semibold text-gray-900">Zykluszeit-Schätzung</h3>
             <p className="mb-3 text-xs text-gray-600">
-              Grobe Abschätzung für 1-Komponenten-Thermoplaste aus Materialgruppe und
-              Wandstärke. Der Wert ist ein Vorschlag und wird erst nach „Übernehmen“ in das
-              Zykluszeitfeld geschrieben. Die Kavitätenzahl verlängert die Kühlzeit nicht – alle
-              Kavitäten kühlen gleichzeitig – sie wirkt über die Zuhaltekraft auf die Nebenzeiten
-              und vervielfacht die Stückzahl je Schuss.
+              Konservative Abschätzung für die frühe Angebotskalkulation (1K-Thermoplast,
+              Serien-Stahlwerkzeuge) aus Materialkennwerten und kühlzeitrelevanter Wandstärke.
+              Der Wert ist ein Vorschlag und wird erst nach „Übernehmen“ in das Zykluszeitfeld
+              geschrieben. Die Kavitätenzahl verlängert die Kühlzeit nicht – alle Kavitäten
+              kühlen gleichzeitig – sie wirkt über die Zuhaltekraft auf die Nebenzeiten und
+              vervielfacht die Stückzahl je Schuss. IKET-Variante 2 gilt fachlich primär für
+              teilkristalline Thermoplaste; für amorphe Materialien ist der Vorschlag eine
+              vereinfachte Näherung.
             </p>
-            <div className="grid gap-3 md:grid-cols-3">
-              <NumberInput
-                fieldKey="zykluszeit_wandstaerke_mm"
-                label="Wandstärke (mm)"
-                value={form.zykluszeit_wandstaerke_mm ?? 0}
-                decimalRaw={decimalRaw}
-                onDecimalChange={handleDecimalChange}
-              />
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <NumberInput
+                  fieldKey="zykluszeit_wandstaerke_mm"
+                  label="kühlzeitrelevante Wandstärke (mm)"
+                  value={form.zykluszeit_wandstaerke_mm ?? 0}
+                  decimalRaw={decimalRaw}
+                  onDecimalChange={handleDecimalChange}
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Maßgebend ist die größte für die Kühlung relevante Wandstärke einschließlich
+                  lokaler Dickstellen, zum Beispiel an Domen, Rippenkreuzungen oder
+                  Materialanhäufungen. Nicht automatisch die mittlere Wandstärke verwenden.
+                </p>
+              </div>
               <label className="block text-sm">
                 <span className="font-medium text-gray-700">Teilegröße</span>
                 <select
@@ -1489,27 +1504,57 @@ export function SpritzgussPage() {
                   </option>
                   {ZYKLUSZEIT_GROESSENKLASSEN.map(({ key, label, nebenzeiten }) => (
                     <option key={key} value={key}>
-                      {label} ({nebenzeiten} s)
+                      {label} (
+                      {form.zykluszeit_prozessaufwand === "aufwendig"
+                        ? nebenzeiten + ZYKLUSZEIT_PROZESSAUFWAND_ZUSCHLAG_S
+                        : nebenzeiten}{" "}
+                      s)
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="block text-sm">
+                <span className="font-medium text-gray-700">Prozessaufwand</span>
+                <select
+                  value={form.zykluszeit_prozessaufwand}
+                  onChange={(e) =>
+                    setField(
+                      "zykluszeit_prozessaufwand",
+                      e.target.value as ZykluszeitProzessaufwand,
+                    )
+                  }
+                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+                >
+                  <option value="normal">normal – Standardprozess</option>
+                  <option value="aufwendig">aufwendig – zusätzlicher Zeitbedarf</option>
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  {form.zykluszeit_prozessaufwand === "aufwendig"
+                    ? "Zusätzlicher Zeitbedarf, zum Beispiel durch Einlegeteile, manuelle Entnahme, mehrere Kernzüge, Ausschrauben oder aufwendiges Roboterhandling (+5 s nur auf die automatische Nebenzeit)."
+                    : "Standardprozess ohne besonderen Entformungs- oder Handlingaufwand."}
+                </p>
               </label>
               <NumberInput
                 fieldKey="zykluszeit_nebenzeiten_gesamt_s"
                 label="Nebenzeiten gesamt (s)"
                 value={
                   form.zykluszeit_nebenzeiten_gesamt_s ??
-                  nebenzeitenRichtwert(form.zykluszeit_groessenklasse, zuhaltekraftT)
+                  nebenzeitenRichtwert(
+                    form.zykluszeit_groessenklasse,
+                    zuhaltekraftT,
+                    form.zykluszeit_prozessaufwand,
+                  )
                 }
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              Nebenzeiten = Schließen, Einspritzen, Öffnen und Entnahme. Leer lassen, um den
-              Richtwert der Teilegröße zu verwenden. Im Modus „Automatisch“ folgt die Teilegröße
-              der erforderlichen Zuhaltekraft aus „Maschinengröße“, in die Kavitäten und
-              projizierte Fläche eingehen (bis 100 t klein, bis 300 t mittel, darüber groß).
+              Nebenzeiten = Schließen, Einspritzen, Öffnen und Entnahme (pauschaler
+              Erfahrungswert). Leer lassen, um die automatische Nebenzeit aus Zuhaltekraft und
+              Prozessaufwand zu verwenden. Eine manuelle Nebenzeit hat Vorrang und wird durch
+              den Prozessaufwand nicht verändert. Im Modus „Automatisch“ folgt die Teilegröße
+              der erforderlichen Zuhaltekraft aus „Maschinengröße“ (bis 100 t klein, bis 300 t mittel, darüber groß).
             </p>
 
             <div className="mt-4 rounded-md border border-gray-100 bg-gray-50 p-3 text-sm">
@@ -1520,7 +1565,14 @@ export function SpritzgussPage() {
                   </div>
                   <div className="mt-1 text-gray-700">
                     Kühlzeit {formatSekunden(zykluszeitVorschlag.kuehlzeit_s)} s + Nebenzeiten{" "}
-                    {formatSekunden(zykluszeitVorschlag.nebenzeiten_gesamt_s)} s
+                    {formatSekunden(zykluszeitVorschlag.nebenzeiten_gesamt_s)} s (
+                    {zykluszeitVorschlag.nebenzeit_quelle === "manuell"
+                      ? "manuell"
+                      : "automatisch"}
+                    {zykluszeitVorschlag.prozessaufwand
+                      ? `, Prozessaufwand ${zykluszeitVorschlag.prozessaufwand}`
+                      : ""}
+                    )
                     {zykluszeitVorschlag.groessenklasse_auswahl ===
                       ZYKLUSZEIT_GROESSENKLASSE_AUTO && (
                       <>
@@ -1541,19 +1593,26 @@ export function SpritzgussPage() {
                   </div>
                   <div className="mt-2 text-xs text-gray-500">
                     {zykluszeitVorschlag.materialgruppe} (
-                    {zykluszeitVorschlag.material_bezeichnung}), Werkzeug{" "}
-                    {formatSekunden(zykluszeitVorschlag.werkzeugtemperatur_c, 0)} °C, Schmelze{" "}
-                    {formatSekunden(zykluszeitVorschlag.schmelzetemperatur_c, 0)} °C, Entformung{" "}
-                    {formatSekunden(zykluszeitVorschlag.entformungstemperatur_c, 0)} °C ·
-                    theoretische Kühlzeit{" "}
+                    {zykluszeitVorschlag.material_bezeichnung}
+                    {zykluszeitVorschlag.materialklasse
+                      ? `, ${zykluszeitVorschlag.materialklasse}`
+                      : ""}
+                    ), Werkzeug {formatSekunden(zykluszeitVorschlag.werkzeugtemperatur_c, 0)} °C,
+                    Schmelze {formatSekunden(zykluszeitVorschlag.schmelzetemperatur_c, 0)} °C,
+                    Entformung {formatSekunden(zykluszeitVorschlag.entformungstemperatur_c, 0)} °C
+                    · theoretische Kühlzeit{" "}
                     {formatSekunden(zykluszeitVorschlag.optimale_kuehlzeit_s)} s × Zuschlag{" "}
-                    {formatSekunden(zykluszeitVorschlag.kuehlfaktor, 1)}
+                    {formatSekunden(zykluszeitVorschlag.kuehlfaktor, 1)} · kühlzeitrelevante
+                    Wandstärke {formatSekunden(zykluszeitVorschlag.wandstaerke_mm)} mm
                   </div>
+                  {zykluszeitVorschlag.hinweis ? (
+                    <p className="mt-2 text-xs text-amber-800">{zykluszeitVorschlag.hinweis}</p>
+                  ) : null}
                 </>
               ) : (
                 <p className="text-amber-800">
                   {zykluszeitVorschlag?.hinweis ??
-                    "Die Schätzung erscheint, sobald Materialgruppe und Wandstärke gepflegt sind."}
+                    "Die Schätzung erscheint, sobald Materialkennwerte und kühlzeitrelevante Wandstärke gepflegt sind."}
                 </p>
               )}
             </div>

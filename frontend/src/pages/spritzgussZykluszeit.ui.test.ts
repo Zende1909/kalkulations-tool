@@ -13,10 +13,11 @@ const materialPageSrc = readFileSync(
 const apiSrc = readFileSync(resolve(__dirname, "../api/spritzguss.ts"), "utf-8");
 
 describe("Zykluszeit-Schätzung UI", () => {
-  it("kommt mit drei Eingaben aus", () => {
+  it("kommt mit den zentralen Eingaben aus", () => {
     expect(pageSrc).toMatch(/Zykluszeit-Schätzung/);
-    expect(pageSrc).toMatch(/Wandstärke \(mm\)/);
+    expect(pageSrc).toMatch(/kühlzeitrelevante Wandstärke \(mm\)/);
     expect(pageSrc).toMatch(/Teilegröße/);
+    expect(pageSrc).toMatch(/Prozessaufwand/);
     expect(pageSrc).toMatch(/Nebenzeiten gesamt \(s\)/);
   });
 
@@ -34,11 +35,12 @@ describe("Zykluszeit-Schätzung UI", () => {
     }
   });
 
-  it("bietet die Größenklassen mit ihrem Nebenzeiten-Richtwert an", () => {
+  it("bietet die Größenklassen und Prozessaufwand an", () => {
     expect(pageSrc).toMatch(/ZYKLUSZEIT_GROESSENKLASSEN\.map/);
     expect(pageSrc).toMatch(/zykluszeit_groessenklasse/);
+    expect(pageSrc).toMatch(/zykluszeit_prozessaufwand/);
     expect(pageSrc).toMatch(
-      /nebenzeitenRichtwert\(form\.zykluszeit_groessenklasse,\s*zuhaltekraftT\)/,
+      /nebenzeitenRichtwert\(\s*form\.zykluszeit_groessenklasse,\s*zuhaltekraftT,\s*form\.zykluszeit_prozessaufwand/,
     );
   });
 
@@ -68,6 +70,7 @@ describe("Zykluszeit-Schätzung UI", () => {
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.kuehlzeit_s/);
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.nebenzeiten_gesamt_s/);
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.materialgruppe/);
+    expect(pageSrc).toMatch(/theoretische Kühlzeit/);
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.optimale_kuehlzeit_s/);
   });
 
@@ -97,6 +100,7 @@ describe("Zykluszeit-Schätzung UI", () => {
   it("stellt gespeicherte Werte beim Neuladen wieder her", () => {
     expect(pageSrc).toMatch(/item\.zykluszeit_wandstaerke_mm/);
     expect(pageSrc).toMatch(/item\.zykluszeit_groessenklasse/);
+    expect(pageSrc).toMatch(/item\.zykluszeit_prozessaufwand/);
     expect(pageSrc).toMatch(/item\.zykluszeit_nebenzeiten_gesamt_s/);
     expect(pageSrc).toMatch(/item\.zykluszeit_quelle/);
   });
@@ -105,7 +109,9 @@ describe("Zykluszeit-Schätzung UI", () => {
     expect(pageSrc).toMatch(/zykluszeit_quelle: form\.zykluszeit_quelle/);
     expect(pageSrc).toMatch(/zykluszeit_wandstaerke_mm: form\.zykluszeit_wandstaerke_mm/);
     expect(pageSrc).toMatch(/zykluszeit_groessenklasse: form\.zykluszeit_groessenklasse/);
+    expect(pageSrc).toMatch(/zykluszeit_prozessaufwand: form\.zykluszeit_prozessaufwand/);
     expect(apiSrc).toMatch(/"zykluszeit_wandstaerke_mm"/);
+    expect(apiSrc).toMatch(/"zykluszeit_prozessaufwand"/);
     expect(apiSrc).toMatch(/"zykluszeit_nebenzeiten_gesamt_s"/);
   });
 });

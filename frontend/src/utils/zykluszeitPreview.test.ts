@@ -27,6 +27,8 @@ describe("Größenklassen", () => {
     expect(nebenzeitenRichtwert("gross")).toBe(16);
     expect(nebenzeitenRichtwert(null)).toBe(10);
     expect(nebenzeitenRichtwert("gibtsnicht")).toBe(10);
+    expect(nebenzeitenRichtwert("klein", 80, "aufwendig")).toBe(11);
+    expect(nebenzeitenRichtwert("auto", null, "aufwendig")).toBe(15);
   });
 });
 
@@ -57,6 +59,7 @@ describe("buildZykluszeitPreviewPayload", () => {
     const payload = buildZykluszeitPreviewPayload(emptySpritzgussForm(), {});
     expect(payload.zykluszeit_groessenklasse).toBe(ZYKLUSZEIT_DEFAULT_GROESSENKLASSE);
     expect(payload.zykluszeit_groessenklasse).toBe("auto");
+    expect(payload.zykluszeit_prozessaufwand).toBe("normal");
     expect(payload.zykluszeit_nebenzeiten_gesamt_s).toBeNull();
     expect(payload.zuhaltekraft_t).toBeNull();
   });

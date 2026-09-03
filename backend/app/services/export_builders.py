@@ -80,11 +80,26 @@ def _zykluszeit_export_rows(obj: SpritzgussKalkulation, ergebnis: dict) -> list[
             else "automatisch, ohne Zuhaltekraft"
         )
         klasse_text = f"{klasse_text} ({herkunft})"
+    prozessaufwand = vorschlag.get("prozessaufwand") or getattr(
+        obj, "zykluszeit_prozessaufwand", None
+    ) or "normal"
+    nebenzeit_quelle = vorschlag.get("nebenzeit_quelle")
+    nebenzeit_quelle_text = {
+        "manuell": "manuell",
+        "automatisch": "automatisch",
+    }.get(str(nebenzeit_quelle or ""), "–")
+    materialklasse = vorschlag.get("materialklasse")
     rows.extend(
         [
-            ExportRow("Äquivalente Wandstärke", _num_str(wandstaerke, "mm")),
+            ExportRow("kühlzeitrelevante Wandstärke", _num_str(wandstaerke, "mm")),
             ExportRow("Materialgruppe", str(vorschlag.get("materialgruppe") or "–")),
+            ExportRow("Materialklasse", str(materialklasse or "–")),
             ExportRow("Teilegröße (Nebenzeiten)", klasse_text),
+            ExportRow("Prozessaufwand", str(prozessaufwand)),
+            ExportRow(
+                "theoretische Kühlzeit",
+                _num_str(vorschlag.get("optimale_kuehlzeit_s"), "s"),
+            ),
             ExportRow(
                 "Kühlzeit inkl. Zuschlag 1,5",
                 _num_str(wert("kuehlzeit_s", "zykluszeit_kuehlzeit_s"), "s"),
@@ -93,6 +108,7 @@ def _zykluszeit_export_rows(obj: SpritzgussKalkulation, ergebnis: dict) -> list[
                 "Nebenzeiten gesamt",
                 _num_str(wert("nebenzeiten_gesamt_s", "zykluszeit_nebenzeiten_gesamt_s"), "s"),
             ),
+            ExportRow("Nebenzeit Quelle", nebenzeit_quelle_text),
             ExportRow(
                 "Zykluszeit-Schätzung gesamt",
                 _num_str(wert("gesamtzykluszeit_s", "zykluszeit_vorschlag_s"), "s"),

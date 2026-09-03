@@ -263,6 +263,7 @@ def _run_zykluszeit_for_model(
             nebenzeiten_gesamt_s=obj.zykluszeit_nebenzeiten_gesamt_s,
             # Von `_run_maschinen_groesse_for_model` unmittelbar zuvor gesetzt.
             zuhaltekraft_t=obj.maschinen_groesse_zuhaltekraft_erforderlich_t,
+            prozessaufwand=getattr(obj, "zykluszeit_prozessaufwand", None),
         ),
         db=db,
     )
@@ -283,6 +284,7 @@ def _run_zykluszeit_for_request(
             groessenklasse=body.zykluszeit_groessenklasse,
             nebenzeiten_gesamt_s=body.zykluszeit_nebenzeiten_gesamt_s,
             zuhaltekraft_t=zuhaltekraft_t,
+            prozessaufwand=getattr(body, "zykluszeit_prozessaufwand", None),
         ),
         db=db,
     )

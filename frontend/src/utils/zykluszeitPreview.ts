@@ -6,13 +6,17 @@
  */
 
 import type { SpritzgussFormData } from "../types/spritzguss";
-import { ZYKLUSZEIT_DEFAULT_GROESSENKLASSE } from "../types/spritzguss";
+import {
+  ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
+  ZYKLUSZEIT_DEFAULT_PROZESSAUFWAND,
+} from "../types/spritzguss";
 import { coerceFormDecimal } from "./decimalInput";
 
 export interface ZykluszeitPreviewPayload {
   material_id: number | null;
   zykluszeit_wandstaerke_mm: number | null;
   zykluszeit_groessenklasse: string;
+  zykluszeit_prozessaufwand: string;
   zykluszeit_nebenzeiten_gesamt_s: number | null;
   /** Aus der Maschinengrößen-Vorschau; enthält Kavitäten und Fläche. */
   zuhaltekraft_t: number | null;
@@ -52,6 +56,8 @@ export function buildZykluszeitPreviewPayload(
     ),
     zykluszeit_groessenklasse:
       form.zykluszeit_groessenklasse || ZYKLUSZEIT_DEFAULT_GROESSENKLASSE,
+    zykluszeit_prozessaufwand:
+      form.zykluszeit_prozessaufwand || ZYKLUSZEIT_DEFAULT_PROZESSAUFWAND,
     zykluszeit_nebenzeiten_gesamt_s: readZykluszeitDecimal(
       decimalRaw,
       form,
