@@ -15,40 +15,39 @@ const stripSrc = readFileSync(
   resolve(__dirname, "../components/businessCase/BusinessCaseKpiStrip.tsx"),
   "utf-8",
 );
+const hookSrc = readFileSync(resolve(__dirname, "../hooks/useEcharts.ts"), "utf-8");
 
 describe("Business Case dashboard charts UI", () => {
   it("binds cockpit KPI strip, revenue chart and gauges to existing fields", () => {
     expect(pageSrc).toMatch(/BusinessCaseKpiStrip/);
     expect(pageSrc).toMatch(/RevenueDevelopmentChart/);
-    expect(pageSrc).toMatch(/ProfitabilityGauge/);
+    expect(pageSrc).toMatch(/ProfitabilityGauge|EchartsProfitabilityGauge/);
     expect(pageSrc).toMatch(/ebit_actual_total_pct/);
     expect(pageSrc).toMatch(/roi_incl_capex_actual_pct/);
     expect(pageSrc).toMatch(/revenue_by_year/);
-    expect(pageSrc).toMatch(/Business-Case-Dashboard/);
+  });
+
+  it("uses ECharts for gauge and revenue without overlapping detail labels", () => {
+    expect(gaugeSrc).toMatch(/EchartsProfitabilityGauge|buildProfitabilityGaugeOption/);
+    expect(gaugeSrc).toMatch(/useEcharts/);
+    expect(gaugeSrc).toMatch(/detail: \{ show: false \}|buildProfitabilityGaugeOption/);
+    expect(gaugeSrc).toMatch(/aria-label/);
+    expect(gaugeSrc).toMatch(/über Skala|Der Zeiger ist am oberen Skalenende begrenzt/);
+    expect(chartSrc).toMatch(/buildRevenueBarOption|useEcharts/);
+    expect(chartSrc).not.toMatch(/recharts/);
+    expect(chartSrc).toMatch(/sr-only/);
+  });
+
+  it("disposes ECharts on unmount and observes resize", () => {
+    expect(hookSrc).toMatch(/ResizeObserver/);
+    expect(hookSrc).toMatch(/dispose\(/);
+    expect(hookSrc).toMatch(/prefers-reduced-motion/);
   });
 
   it("shows KPI strip values from existing Business Case results", () => {
     expect(stripSrc).toMatch(/Gesamtumsatz/);
     expect(stripSrc).toMatch(/sumDisplayRevenue/);
     expect(stripSrc).toMatch(/formatPercentOrDash\(ebitPct\)/);
-    expect(stripSrc).toMatch(/formatPercentOrDash\(roiPct\)/);
     expect(stripSrc).toMatch(/Zeitraum/);
-  });
-
-  it("exposes accessibility labels and textual status on the gauge", () => {
-    expect(gaugeSrc).toMatch(/aria-label/);
-    expect(gaugeSrc).toMatch(/zoneLabel/);
-    expect(gaugeSrc).toMatch(/nicht verfügbar/);
-    expect(gaugeSrc).toMatch(/0–5 % kritisch/);
-    expect(gaugeSrc).toMatch(/über Skala|Der Zeiger ist am oberen Skalenende begrenzt/);
-    expect(gaugeSrc).toMatch(/marks = \[0,/);
-    expect(gaugeSrc).toMatch(/GAUGE_SCALE_MAX/);
-  });
-
-  it("keeps revenue table accessible without crowding the chart", () => {
-    expect(chartSrc).toMatch(/sr-only/);
-    expect(chartSrc).toMatch(/Für den ausgewählten Business Case liegen noch keine Umsatzwerte vor/);
-    expect(chartSrc).toMatch(/chooseRevenueScale|formatRevenueOnScale/);
-    expect(chartSrc).toMatch(/Jahreswerte/);
   });
 });

@@ -1,17 +1,9 @@
 import { useMemo, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 
+import { useEcharts, type EChartsCoreOption } from "../../hooks/useEcharts";
 import { formatRevenueEuro } from "../../pages/businessCaseFormatting";
 import type { BusinessCaseRevenueYearRow } from "../../types/businessCase";
+import { buildRevenueBarOption } from "../../utils/businessCaseEchartsOptions";
 import {
   buildRevenueChartPoints,
   chooseRevenueScale,
@@ -19,6 +11,14 @@ import {
   hasDisplayableRevenue,
   sumDisplayRevenue,
 } from "../../utils/businessCaseRevenueChart";
+
+function RevenueBarHost({ option }: { option: EChartsCoreOption }) {
+  const { containerProps } = useEcharts(option, {
+    className: "h-48 w-full min-w-0",
+    "aria-hidden": true,
+  });
+  return <div {...containerProps} />;
+}
 
 export function RevenueDevelopmentChart({
   rows,
@@ -33,17 +33,15 @@ export function RevenueDevelopmentChart({
     [points],
   );
   const total = sumDisplayRevenue(points);
-  const lastYear = points.length > 0 ? points[points.length - 1].calendar_year : null;
-  const chartData = points.map((p) => ({
-    year: String(p.calendar_year),
-    umsatz: p.display_revenue ?? 0,
-    series: p.series,
-    isLatest: p.calendar_year === lastYear,
-  }));
   const seriesLabel =
     points.find((p) => p.series !== "none")?.series === "bottom"
       ? "Bottom Price"
       : "tatsächlich";
+
+  const option = useMemo(
+    () => (hasData ? buildRevenueBarOption(points, scale, seriesLabel) : null),
+    [hasData, points, scale, seriesLabel],
+  );
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5">
@@ -67,57 +65,14 @@ export function RevenueDevelopmentChart({
         ) : null}
       </div>
 
-      {!hasData ? (
+      {!hasData || option == null ? (
         <p className="mt-5 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
           Für den ausgewählten Business Case liegen noch keine Umsatzwerte vor.
         </p>
       ) : (
         <>
           <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_180px]">
-            <div className="h-48 w-full min-w-0" aria-hidden="true">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="#e2e8f0" />
-                  <XAxis
-                    dataKey="year"
-                    tick={{ fill: "#475569", fontSize: 11 }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tickFormatter={(v: number) => formatRevenueOnScale(v, scale, { compact: true })}
-                    tick={{ fill: "#64748b", fontSize: 10 }}
-                    axisLine={false}
-                    tickLine={false}
-                    width={64}
-                    domain={[0, "auto"]}
-                  />
-                  <Tooltip
-                    formatter={(value) => [
-                      formatRevenueEuro(
-                        typeof value === "number" ? value : Number(value ?? NaN),
-                      ),
-                      `Umsatz (${seriesLabel})`,
-                    ]}
-                    labelFormatter={(label) => `Jahr ${label}`}
-                    contentStyle={{
-                      borderRadius: 8,
-                      borderColor: "#e2e8f0",
-                      fontSize: 12,
-                    }}
-                  />
-                  <Bar dataKey="umsatz" radius={[6, 6, 0, 0]} maxBarSize={40} isAnimationActive={false}>
-                    {chartData.map((entry) => (
-                      <Cell
-                        key={entry.year}
-                        fill={entry.isLatest ? "#1d4ed8" : "#3b82f6"}
-                        fillOpacity={entry.isLatest ? 1 : 0.82}
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <RevenueBarHost option={option} />
 
             <aside className="hidden rounded-lg border border-slate-100 bg-slate-50/80 p-3 lg:block">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
