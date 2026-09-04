@@ -62,12 +62,21 @@ describe("Business Case dashboard charts UI", () => {
 
   it("shows above-scale note only for values over 25 % and keeps accessibility label", () => {
     expect(gaugeSrc).toMatch(/state\.isAboveScale/);
-    expect(gaugeSrc).toMatch(/Skala bis \{state\.scaleMax\}/);
+    expect(gaugeSrc).toMatch(/Der Zeiger ist am oberen Skalenende begrenzt/);
     expect(gaugeSrc).toMatch(/aria-label=\{ariaLabel\}/);
     expect(gaugeSrc).toMatch(/Status \$\{state\.zoneLabel\}/);
     expect(gaugeSrc).toMatch(/gauge-scale-labels/);
-    expect(gaugeSrc).toMatch(/state\.scaleMarks/);
+    expect(gaugeSrc).toMatch(/GAUGE_SCALE_MARKS/);
     expect(gaugeSrc).toMatch(/aspect-\[2\/1\]/);
+  });
+
+  it("omits kritisch/beobachten/positiv wording from the color legend", () => {
+    expect(gaugeSrc).toMatch(/0–5&nbsp;%/);
+    expect(gaugeSrc).toMatch(/5–9&nbsp;%/);
+    expect(gaugeSrc).toMatch(/9–25&nbsp;%/);
+    expect(gaugeSrc).not.toMatch(/0–5&nbsp;% kritisch/);
+    expect(gaugeSrc).not.toMatch(/beobachten/);
+    expect(gaugeSrc).not.toMatch(/9–25&nbsp;% positiv/);
   });
 
   it("matches full page width like Details/Baugruppen sections", () => {
@@ -81,7 +90,7 @@ describe("Business Case dashboard charts UI", () => {
     expect(gaugeSrc).toMatch(/profitability-card/);
     expect(gaugeSrc).toMatch(/h-full/);
     expect(gaugeSrc).toMatch(/gauge-legend/);
-    expect(gaugeSrc).toMatch(/sm:grid-cols-3/);
+    expect(gaugeSrc).toMatch(/grid-cols-3/);
     expect(pageSrc).toMatch(/items-stretch/);
     expect(pageSrc).toMatch(/grid-cols-1[\s\S]*lg:grid-cols-2/);
   });

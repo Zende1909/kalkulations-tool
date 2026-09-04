@@ -7,6 +7,8 @@ import {
   GAUGE_COLOR_POSITIVE,
   GAUGE_COLOR_WATCH,
   GAUGE_SCALE_LABEL_INSET_PERCENT,
+  GAUGE_SCALE_MARKS,
+  GAUGE_SCALE_MAX,
   gaugeScaleMarkLeftPercent,
   getGaugeState,
 } from "../../utils/businessCaseGauge";
@@ -21,14 +23,9 @@ function GaugeChartGeometry({ option }: { option: EChartsCoreOption }) {
   return <div {...containerProps} />;
 }
 
-function GaugeScaleLabels({
-  marks,
-  scaleMax,
-}: {
-  marks: number[];
-  scaleMax: number;
-}) {
+function GaugeScaleLabels() {
   const inset = GAUGE_SCALE_LABEL_INSET_PERCENT;
+  const marks = [...GAUGE_SCALE_MARKS];
 
   return (
     <div
@@ -37,10 +34,10 @@ function GaugeScaleLabels({
       data-testid="gauge-scale-labels"
     >
       {marks.map((mark) => {
-        const alongArc = gaugeScaleMarkLeftPercent(mark, scaleMax);
+        const alongArc = gaugeScaleMarkLeftPercent(mark);
         const left = inset + (alongArc / 100) * (100 - 2 * inset);
-        const isStart = mark === marks[0];
-        const isEnd = mark === marks[marks.length - 1];
+        const isStart = mark === 0;
+        const isEnd = mark === GAUGE_SCALE_MAX;
         return (
           <span
             key={mark}
@@ -148,7 +145,7 @@ export function EchartsProfitabilityGauge({
             aria-label={ariaLabel}
           >
             <GaugeChartGeometry option={option} />
-            <GaugeScaleLabels marks={state.scaleMarks} scaleMax={state.scaleMax} />
+            <GaugeScaleLabels />
           </div>
 
           <div className="gauge-value-area mt-3 flex min-w-0 flex-col items-center gap-0.5 text-center">
@@ -174,13 +171,12 @@ export function EchartsProfitabilityGauge({
               className="gauge-note mt-2 text-center text-xs leading-snug text-slate-500"
               data-testid="gauge-above-scale-note"
             >
-              Referenzzonen 0–25&nbsp;%. Skala bis {state.scaleMax}&nbsp;% erweitert, damit der
-              Zeiger den Wert {displayValue} zeigt.
+              Der Zeiger ist am oberen Skalenende begrenzt.
             </p>
           ) : null}
 
           <div
-            className="gauge-legend mt-auto grid min-w-0 grid-cols-1 gap-2 border-t border-slate-100 pt-3 sm:grid-cols-3"
+            className="gauge-legend mt-auto grid min-w-0 grid-cols-3 gap-2 border-t border-slate-100 pt-3"
             data-testid="gauge-legend"
           >
             <div className="inline-flex min-w-0 items-center gap-1.5 text-xs text-slate-600">
@@ -189,23 +185,23 @@ export function EchartsProfitabilityGauge({
                 style={{ background: GAUGE_COLOR_CRITICAL }}
                 aria-hidden="true"
               />
-              <span>0–5&nbsp;% kritisch</span>
+              <span>0–5&nbsp;%</span>
             </div>
-            <div className="inline-flex min-w-0 items-center gap-1.5 text-xs text-slate-600 sm:justify-center">
+            <div className="inline-flex min-w-0 items-center justify-center gap-1.5 text-xs text-slate-600">
               <span
                 className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
                 style={{ background: GAUGE_COLOR_WATCH }}
                 aria-hidden="true"
               />
-              <span>5–9&nbsp;% beobachten</span>
+              <span>5–9&nbsp;%</span>
             </div>
-            <div className="inline-flex min-w-0 items-center gap-1.5 text-xs text-slate-600 sm:justify-end">
+            <div className="inline-flex min-w-0 items-center justify-end gap-1.5 text-xs text-slate-600">
               <span
                 className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
                 style={{ background: GAUGE_COLOR_POSITIVE }}
                 aria-hidden="true"
               />
-              <span>9–25&nbsp;% positiv</span>
+              <span>9–25&nbsp;%</span>
             </div>
           </div>
         </>

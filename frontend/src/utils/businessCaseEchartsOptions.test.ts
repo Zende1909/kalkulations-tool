@@ -20,13 +20,13 @@ describe("businessCaseEchartsOptions", () => {
     expect(series.startAngle).toBe(180);
     expect(series.endAngle).toBe(0);
     expect(series.min).toBe(0);
-    expect(series.max).toBe(35);
+    expect(series.max).toBe(25);
     expect(series.detail).toEqual({ show: false });
     expect(series.title).toEqual({ show: false });
     expect(series.axisLabel).toEqual({ show: false });
     expect(series.axisTick).toEqual({ show: false });
     expect(series.splitLine).toEqual({ show: false });
-    expect((series.data as Array<{ value: number }>)[0].value).toBe(31);
+    expect((series.data as Array<{ value: number }>)[0].value).toBe(25);
   });
 
   it("clamps negative values to 0 for the needle without changing geometry validity", () => {
@@ -38,11 +38,12 @@ describe("businessCaseEchartsOptions", () => {
     expect(value).not.toBe(Number.NaN);
   });
 
-  it("uses orange band start at 5 % and green at 9 % on the base scale", () => {
+  it("uses orange band start at 5 % and green at 9 %", () => {
     const option = buildProfitabilityGaugeOption(5);
     const series = gaugeSeries(option!);
     const colors = (series.axisLine as { lineStyle: { color: Array<[number, string]> } }).lineStyle
       .color;
+    expect(colors).toHaveLength(3);
     expect(colors[0][0]).toBeCloseTo(5 / 25);
     expect(colors[0][1]).toBe("#DC2626");
     expect(colors[1][0]).toBeCloseTo(9 / 25);
@@ -50,16 +51,11 @@ describe("businessCaseEchartsOptions", () => {
     expect(colors[2][1]).toBe("#16A34A");
   });
 
-  it("adds an extended grey band when scale grows above 25 %", () => {
+  it("clamps needle to 25 % for values above the fixed scale", () => {
     const option = buildProfitabilityGaugeOption(37.26);
     const series = gaugeSeries(option!);
-    expect(series.max).toBe(40);
-    expect((series.data as Array<{ value: number }>)[0].value).toBe(37.26);
-    const colors = (series.axisLine as { lineStyle: { color: Array<[number, string]> } }).lineStyle
-      .color;
-    expect(colors).toHaveLength(4);
-    expect(colors[2][0]).toBeCloseTo(25 / 40);
-    expect(colors[3][1]).toBe("#64748b");
+    expect(series.max).toBe(25);
+    expect((series.data as Array<{ value: number }>)[0].value).toBe(25);
   });
 
   it("returns null for unavailable values and never emits Infinity/NaN needle data", () => {
@@ -71,10 +67,9 @@ describe("businessCaseEchartsOptions", () => {
       const option = buildProfitabilityGaugeOption(value);
       const series = gaugeSeries(option!);
       const needle = (series.data as Array<{ value: number }>)[0].value;
-      const max = series.max as number;
       expect(Number.isFinite(needle)).toBe(true);
       expect(needle).toBeGreaterThanOrEqual(0);
-      expect(needle).toBeLessThanOrEqual(max);
+      expect(needle).toBeLessThanOrEqual(25);
     }
   });
 

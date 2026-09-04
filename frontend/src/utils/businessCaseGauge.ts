@@ -1,7 +1,6 @@
-/** Gauge-Zustandslogik für EBIT-/ROI-Tachometer. */
+/** Gauge-Zustandslogik für EBIT-/ROI-Tachometer (feste Skala 0–25 %). */
 
 export const GAUGE_SCALE_MIN = 0;
-/** Untere Referenzskala / Zonenende „positiv“. */
 export const GAUGE_SCALE_MAX = 25;
 export const GAUGE_ZONE_CRITICAL_MAX = 5;
 export const GAUGE_ZONE_WATCH_MAX = 9;
@@ -14,13 +13,20 @@ export const GAUGE_COLOR_POSITIVE = "#16A34A";
 /** Inset der HTML-Skalenmarken relativ zur Chartbreite (passend zu ECharts radius). */
 export const GAUGE_SCALE_LABEL_INSET_PERCENT = 8;
 
+/** Sichtbare Skalenmarken unterhalb der Gauge-Geometrie. */
+export const GAUGE_SCALE_MARKS = [
+  GAUGE_SCALE_MIN,
+  GAUGE_ZONE_CRITICAL_MAX,
+  GAUGE_ZONE_WATCH_MAX,
+  GAUGE_SCALE_MAX,
+] as const;
+
 export type GaugeZone = "critical" | "watch" | "positive" | "unavailable";
 
 export interface GaugeState {
   actualValue: number | null;
-  /** Zeigerwert auf der dargestellten Skala (0 … scaleMax). */
+  /** Zeigerwert auf der Skala 0–25 (geclampte Darstellung). */
   clampedValue: number;
-  /** Obere Skalengrenze der Darstellung (≥ 25, bei hohen Werten erweitert). */
   scaleMax: number;
   scaleMarks: number[];
   needleAngle: number;
@@ -28,45 +34,21 @@ export interface GaugeState {
   zoneLabel: string;
   zoneColor: string;
   isBelowScale: boolean;
-  /** Wert liegt über der 25-%-Referenzzone (nicht zwingend über scaleMax). */
   isAboveScale: boolean;
   isAvailable: boolean;
 }
 
-/** Obere Skalengrenze: mindestens 25 %, sonst aufgerundet damit der Zeiger den echten Wert zeigt. */
-export function niceGaugeScaleMax(actualValue: number): number {
-  if (!Number.isFinite(actualValue) || actualValue <= GAUGE_SCALE_MAX) {
-    return GAUGE_SCALE_MAX;
-  }
-  const step = actualValue <= 50 ? 5 : 10;
-  return Math.max(GAUGE_SCALE_MAX, Math.ceil(actualValue / step) * step);
+/** Horizontale Position einer Skalenmarke entlang der Halbkreis-Basis (0–100 %). */
+export function gaugeScaleMarkLeftPercent(mark: number): number {
+  const clamped = Math.min(Math.max(mark, GAUGE_SCALE_MIN), GAUGE_SCALE_MAX);
+  return (clamped / GAUGE_SCALE_MAX) * 100;
 }
 
-export function buildGaugeScaleMarks(scaleMax: number): number[] {
-  const marks = [
-    GAUGE_SCALE_MIN,
-    GAUGE_ZONE_CRITICAL_MAX,
-    GAUGE_ZONE_WATCH_MAX,
-    GAUGE_SCALE_MAX,
-  ];
-  if (scaleMax > GAUGE_SCALE_MAX) {
-    marks.push(scaleMax);
-  }
-  return marks;
-}
-
-/** Horizontale Position einer Skalenmarke entlang der Halbkreis-Basis (0–100 % der Arc-Breite). */
-export function gaugeScaleMarkLeftPercent(mark: number, scaleMax = GAUGE_SCALE_MAX): number {
-  const max = scaleMax > 0 ? scaleMax : GAUGE_SCALE_MAX;
-  const clamped = Math.min(Math.max(mark, GAUGE_SCALE_MIN), max);
-  return (clamped / max) * 100;
-}
-
-/** Halbkreis: 180° (links, 0 %) → 0° (rechts, scaleMax). */
-export function valueToNeedleAngle(clampedPercent: number, scaleMax = GAUGE_SCALE_MAX): number {
-  const max = scaleMax > 0 ? scaleMax : GAUGE_SCALE_MAX;
+/** Halbkreis: 180° (links, 0 %) → 0° (rechts, 25 %). */
+export function valueToNeedleAngle(clampedPercent: number): number {
   const ratio =
-    Math.min(Math.max(clampedPercent, GAUGE_SCALE_MIN), max) / max;
+    Math.min(Math.max(clampedPercent, GAUGE_SCALE_MIN), GAUGE_SCALE_MAX) /
+    GAUGE_SCALE_MAX;
   const angle = 180 - ratio * 180;
   return Number.isFinite(angle) ? angle : 180;
 }
@@ -77,7 +59,7 @@ export function getGaugeState(valuePercent: number | null | undefined): GaugeSta
       actualValue: null,
       clampedValue: GAUGE_SCALE_MIN,
       scaleMax: GAUGE_SCALE_MAX,
-      scaleMarks: buildGaugeScaleMarks(GAUGE_SCALE_MAX),
+      scaleMarks: [...GAUGE_SCALE_MARKS],
       needleAngle: 180,
       zone: "unavailable",
       zoneLabel: "nicht verfügbar",
@@ -89,10 +71,12 @@ export function getGaugeState(valuePercent: number | null | undefined): GaugeSta
   }
 
   const actualValue = valuePercent;
-  const scaleMax = niceGaugeScaleMax(actualValue);
   const isBelowScale = actualValue < GAUGE_SCALE_MIN;
   const isAboveScale = actualValue > GAUGE_SCALE_MAX;
-  const clampedValue = Math.min(Math.max(actualValue, GAUGE_SCALE_MIN), scaleMax);
+  const clampedValue = Math.min(
+    Math.max(actualValue, GAUGE_SCALE_MIN),
+    GAUGE_SCALE_MAX,
+  );
 
   let zone: GaugeZone;
   let zoneLabel: string;
@@ -123,9 +107,9 @@ export function getGaugeState(valuePercent: number | null | undefined): GaugeSta
   return {
     actualValue,
     clampedValue,
-    scaleMax,
-    scaleMarks: buildGaugeScaleMarks(scaleMax),
-    needleAngle: valueToNeedleAngle(clampedValue, scaleMax),
+    scaleMax: GAUGE_SCALE_MAX,
+    scaleMarks: [...GAUGE_SCALE_MARKS],
+    needleAngle: valueToNeedleAngle(clampedValue),
     zone,
     zoneLabel,
     zoneColor,
