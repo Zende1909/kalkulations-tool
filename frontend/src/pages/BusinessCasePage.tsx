@@ -12,6 +12,8 @@ import {
   HierarchySelector,
   type HierarchySelection,
 } from "../components/hierarchy/HierarchySelector";
+import { ProfitabilityGauge } from "../components/businessCase/ProfitabilityGauge";
+import { RevenueDevelopmentChart } from "../components/businessCase/RevenueDevelopmentChart";
 import { DecimalInputField } from "../components/DecimalInputField";
 import { useAuth } from "../context/AuthContext";
 import { EINMALZAHLUNG_HINWEIS } from "../types/investition";
@@ -746,6 +748,24 @@ export function BusinessCasePage() {
                   >
                     PDF
                   </button>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-4">
+                <RevenueDevelopmentChart rows={data.revenue_by_year ?? []} />
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <ProfitabilityGauge
+                    label="EBIT"
+                    valuePercent={data.kpis.ebit_actual_total_pct}
+                    description="EBIT % zum tatsächlichen Umsatz (bestehende Business-Case-Berechnung, CAPEX nicht enthalten)."
+                    data-testid="gauge-ebit"
+                  />
+                  <ProfitabilityGauge
+                    label="ROI"
+                    valuePercent={data.kpis.roi_incl_capex_actual_pct}
+                    description="ROI % inkl. CAPEX zum tatsächlichen Preis (bestehende Business-Case-Berechnung)."
+                    data-testid="gauge-roi"
+                  />
                 </div>
               </div>
 

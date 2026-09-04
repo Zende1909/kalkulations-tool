@@ -184,3 +184,37 @@ def aggregate_sales_totals(positions: list[dict[str, Any]]) -> dict[str, Any]:
         "project_volume_total": project_volume,
         "position_count": len(positions),
     }
+
+
+def build_revenue_by_year(
+    positions: list[dict[str, Any]],
+    volume_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Jahresumsatz aus bestehenden Stückpreisen × Jahres-Projektstückzahl.
+
+    Dieselbe Multiplikation wie in ``build_position_pricing``, nur je Jahr
+    aus dem Projektmengenprofil. Keine neue Finanzformel.
+    Einmalige Investitionserlöse sind hier nicht enthalten.
+    """
+    rows: list[dict[str, Any]] = []
+    for volume_row in volume_rows:
+        year = int(volume_row["calendar_year"])
+        year_volume = float(volume_row.get("project_volume") or 0)
+        bottom_sum: float | None = None
+        actual_sum: float | None = None
+        for position in positions:
+            bottom_price = position.get("bottom_price_per_piece")
+            actual_price = position.get("actual_price_per_piece")
+            if bottom_price is not None:
+                bottom_sum = (bottom_sum or 0.0) + float(bottom_price) * year_volume
+            if actual_price is not None:
+                actual_sum = (actual_sum or 0.0) + float(actual_price) * year_volume
+        rows.append(
+            {
+                "calendar_year": year,
+                "project_volume": year_volume,
+                "bottom_price_revenue": None if bottom_sum is None else round(bottom_sum, 2),
+                "actual_revenue": None if actual_sum is None else round(actual_sum, 2),
+            }
+        )
+    return rows

@@ -266,6 +266,14 @@ export interface BusinessCaseResponse {
     hinweis: string;
     excluded_einzelteile_in_baugruppen: number;
   };
+  revenue_by_year: BusinessCaseRevenueYearRow[];
+}
+
+export interface BusinessCaseRevenueYearRow {
+  calendar_year: number;
+  project_volume: number;
+  bottom_price_revenue: number | null;
+  actual_revenue: number | null;
 }
 
 export interface InvestmentFinancialBlock {

@@ -171,6 +171,13 @@ class BusinessCaseFilter(BaseModel):
     project: str = ""
 
 
+class BusinessCaseRevenueYearRow(BaseModel):
+    calendar_year: int
+    project_volume: float = 0
+    bottom_price_revenue: float | None = None
+    actual_revenue: float | None = None
+
+
 class BusinessCaseResponse(BaseModel):
     filter: BusinessCaseFilter
     project: str
@@ -191,6 +198,7 @@ class BusinessCaseResponse(BaseModel):
     investment_financial_summary: dict = Field(default_factory=dict)
     kpi_summary: dict = Field(default_factory=dict)
     revenue_summary: dict = Field(default_factory=dict)
+    revenue_by_year: list[BusinessCaseRevenueYearRow] = Field(default_factory=list)
 
 
 class ManualPriceUpsert(BaseModel):

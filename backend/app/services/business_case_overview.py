@@ -21,6 +21,7 @@ from app.services.business_case_kpis import build_business_case_kpis
 from app.services.business_case_pricing import (
     aggregate_sales_totals,
     build_position_pricing,
+    build_revenue_by_year,
     kosten_aus_baugruppe,
     kosten_aus_spritzguss,
     load_manual_prices_map,
@@ -397,6 +398,13 @@ def build_project_business_case(
 
     excluded_in_baugruppe_count = len(linked_sg_ids & {r.id for r in sg_rows})
 
+    try:
+        volume_profile = build_project_volume_profile(db, linked_project_id)
+        volume_rows = list(volume_profile.get("rows") or [])
+    except Exception:
+        volume_rows = []
+    revenue_by_year = build_revenue_by_year(parts + assemblies, volume_rows)
+
     return {
         "filter": {
             "customer_id": customer_id,
@@ -515,4 +523,5 @@ def build_project_business_case(
             ),
             "excluded_einzelteile_in_baugruppen": excluded_in_baugruppe_count,
         },
+        "revenue_by_year": revenue_by_year,
     }

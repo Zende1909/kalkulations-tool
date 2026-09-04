@@ -37,6 +37,7 @@ from app.models import (  # noqa: F401
 from app.services.business_case_overview import build_project_business_case
 from app.services.business_case_pricing import (
     build_position_pricing,
+    build_revenue_by_year,
     kalkulatorischer_richtpreis,
     margin_percent_on_price,
     revenue_margin_percent,
@@ -429,6 +430,49 @@ def test_margin_percent_calculation():
     )
     assert pricing["margin_bottom_price_pct"] == pytest.approx(16.666666, rel=1e-4)
     assert pricing["margin_actual_price_pct"] == pytest.approx(23.076923, rel=1e-4)
+
+
+def test_build_revenue_by_year_chronological_and_proportional():
+    positions = [
+        {"bottom_price_per_piece": 2.0, "actual_price_per_piece": 3.0},
+        {"bottom_price_per_piece": 1.0, "actual_price_per_piece": None},
+    ]
+    rows = build_revenue_by_year(
+        positions,
+        [
+            {"calendar_year": 2027, "project_volume": 200},
+            {"calendar_year": 2026, "project_volume": 100},
+        ],
+    )
+    assert [r["calendar_year"] for r in rows] == [2027, 2026]
+    assert rows[1]["bottom_price_revenue"] == pytest.approx(300.0)
+    assert rows[1]["actual_revenue"] == pytest.approx(300.0)
+    assert rows[0]["bottom_price_revenue"] == pytest.approx(600.0)
+    assert rows[0]["actual_revenue"] == pytest.approx(600.0)
+
+
+def test_business_case_includes_revenue_by_year(seeded: Session):
+    seeded.add(
+        BusinessCaseManualPrice(
+            customer_id=1,
+            program_id=10,
+            linked_project_id=100,
+            assignment_type="baugruppe",
+            object_id=3,
+            bottom_price_per_piece=10.0,
+            actual_price_per_piece=12.0,
+        )
+    )
+    seeded.commit()
+    result = build_project_business_case(
+        seeded, customer_id=1, program_id=10, linked_project_id=100
+    )
+    assert "revenue_by_year" in result
+    assert len(result["revenue_by_year"]) >= 1
+    year_row = result["revenue_by_year"][0]
+    assert year_row["calendar_year"] == 2026
+    assert year_row["actual_revenue"] is not None
+    assert year_row["actual_revenue"] > 0
 
 
 def test_margin_percent_division_by_zero():
