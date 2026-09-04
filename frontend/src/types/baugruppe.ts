@@ -145,6 +145,8 @@ export interface BaugruppeListItem {
 
 export interface Baugruppe extends BaugruppeFormData {
   id: number;
+  family_id?: number | null;
+  variant_share_pct?: number | null;
   ergebnis: BaugruppeErgebnis | null;
   ergebnis_bloecke: BaugruppeBloecke | null;
   created_at: string;

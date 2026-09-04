@@ -45,6 +45,7 @@ EXPECTED_POST_BASELINE_TABLES = {
 }
 
 EXPECTED_CURRENT_ORM_TABLES = EXPECTED_BASELINE_TABLES | EXPECTED_POST_BASELINE_TABLES | {
+    "assembly_families",
     "business_case_manual_prices",
     "materialgruppen",
 }
@@ -115,10 +116,13 @@ def test_baseline_revision_is_discoverable():
 def test_alembic_head_is_plant_costing_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0022_zykluszeit_entnahmeart"]
-    rev = scripts.get_revision("e1a0022_zykluszeit_entnahmeart")
+    assert scripts.get_heads() == ["e1a0023_assembly_variant_mix"]
+    rev = scripts.get_revision("e1a0023_assembly_variant_mix")
     assert rev is not None
-    assert rev.down_revision == "e1a0021_zykluszeit_prozessaufwand"
+    assert rev.down_revision == "e1a0022_zykluszeit_entnahmeart"
+    rev22 = scripts.get_revision("e1a0022_zykluszeit_entnahmeart")
+    assert rev22 is not None
+    assert rev22.down_revision == "e1a0021_zykluszeit_prozessaufwand"
     rev21 = scripts.get_revision("e1a0021_zykluszeit_prozessaufwand")
     assert rev21 is not None
     assert rev21.down_revision == "e1a0020_spritzguss_teilbild"

@@ -26,6 +26,10 @@ class Baugruppe(Base, TimestampMixin):
             "pricing_status IN ('NOT_APPLICABLE', 'CALCULATED', 'STALE')",
             name="chk_baugruppen_pricing_status",
         ),
+        CheckConstraint(
+            "variant_share_pct IS NULL OR (variant_share_pct >= 0 AND variant_share_pct <= 100)",
+            name="chk_baugruppen_variant_share_pct",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -62,12 +66,23 @@ class Baugruppe(Base, TimestampMixin):
     pricing_status: Mapped[str] = mapped_column(
         String(32), nullable=False, default="NOT_APPLICABLE"
     )
+    family_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assembly_families.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    variant_share_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     assembly_positions: Mapped[list["AssemblyPosition"]] = relationship(
         "AssemblyPosition",
         back_populates="parent_assembly",
         foreign_keys="AssemblyPosition.parent_assembly_id",
         cascade="all, delete-orphan",
+    )
+    assembly_family: Mapped["AssemblyFamily | None"] = relationship(
+        "AssemblyFamily",
+        back_populates="variants",
+        foreign_keys=[family_id],
     )
 
 

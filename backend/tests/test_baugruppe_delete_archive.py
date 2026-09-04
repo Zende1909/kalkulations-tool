@@ -43,6 +43,8 @@ def _create_schema(engine) -> None:
                 structure_version INTEGER NOT NULL DEFAULT 1,
                 legacy_mode BOOLEAN NOT NULL DEFAULT 1,
                 pricing_status VARCHAR(32) NOT NULL DEFAULT 'NOT_APPLICABLE',
+                family_id INTEGER,
+                variant_share_pct FLOAT,
                 ergebnis TEXT,
                 ergebnis_bloecke TEXT,
                 snapshots_captured_at TIMESTAMP,

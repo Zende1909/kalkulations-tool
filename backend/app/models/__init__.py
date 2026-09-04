@@ -1,3 +1,4 @@
+from app.models.assembly_family import AssemblyFamily
 from app.models.assembly_position import AssemblyPosition, POSITION_TYPES, PRICE_BASES
 from app.models.baugruppe import (
     ASSEMBLY_TYPES,
@@ -47,6 +48,7 @@ __all__ = [
     "SpritzgussVeredelungZuordnung",
     "Kaufteil",
     "AssemblyPosition",
+    "AssemblyFamily",
     "POSITION_TYPES",
     "PRICE_BASES",
     "ASSEMBLY_TYPES",

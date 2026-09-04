@@ -115,7 +115,9 @@ def _create_schema(engine) -> None:
                 id INTEGER PRIMARY KEY,
                 name VARCHAR(255) NOT NULL DEFAULT '',
                 aktiv BOOLEAN NOT NULL DEFAULT 1,
-                werk_id INTEGER
+                werk_id INTEGER,
+                family_id INTEGER,
+                variant_share_pct FLOAT
             )
             """,
             """
