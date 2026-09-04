@@ -69,7 +69,7 @@ describe("getGaugeState", () => {
     expect(state.needleAngle).toBe(0);
     expect(state.isAboveScale).toBe(true);
     expect(state.zoneLabel).toBe("über Skala");
-    expect(state.zoneColor).toBe(GAUGE_COLOR_POSITIVE);
+    expect(state.zoneColor).toBe("#334155");
   });
 
   it("returns unavailable for null/NaN/Infinity without invalid angles", () => {

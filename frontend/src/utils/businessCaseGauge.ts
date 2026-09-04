@@ -67,7 +67,8 @@ export function getGaugeState(valuePercent: number | null | undefined): GaugeSta
   } else if (isAboveScale) {
     zone = "positive";
     zoneLabel = "über Skala";
-    zoneColor = GAUGE_COLOR_POSITIVE;
+    // Wert über Skala nicht pauschal grün färben – Status bleibt textlich klar.
+    zoneColor = "#334155";
   } else if (actualValue < GAUGE_ZONE_CRITICAL_MAX) {
     zone = "critical";
     zoneLabel = "kritisch";

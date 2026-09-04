@@ -30,140 +30,195 @@ export function ProfitabilityGauge({
   label,
   valuePercent,
   description,
+  subtitle,
   formatValue = formatPercentOrDash,
   "data-testid": dataTestId,
 }: {
   label: string;
   valuePercent: number | null | undefined;
   description?: string;
+  subtitle?: string;
   formatValue?: (value: number | null | undefined) => string;
   "data-testid"?: string;
 }) {
   const state = getGaugeState(valuePercent);
-  const cx = 100;
-  const cy = 100;
-  const radius = 78;
-  const stroke = 14;
+  const cx = 160;
+  const cy = 150;
+  const radius = 118;
+  const stroke = 22;
 
-  const criticalStart = percentToAngle(0);
-  const criticalEnd = percentToAngle(GAUGE_ZONE_CRITICAL_MAX);
-  const watchEnd = percentToAngle(GAUGE_ZONE_WATCH_MAX);
-  const positiveEnd = percentToAngle(GAUGE_SCALE_MAX);
-
-  const needle = polar(cx, cy, radius - 10, state.needleAngle);
+  const marks = [0, GAUGE_ZONE_CRITICAL_MAX, GAUGE_ZONE_WATCH_MAX, GAUGE_SCALE_MAX];
+  const needleTip = polar(cx, cy, radius - 18, state.needleAngle);
   const displayValue = formatValue(state.actualValue);
   const ariaLabel = state.isAvailable
     ? `${label} ${displayValue}, Bereich ${state.zoneLabel}.`
     : `${label} nicht verfügbar.`;
 
+  const badgeClass =
+    state.zoneLabel === "über Skala"
+      ? "border-slate-300 bg-slate-100 text-slate-800"
+      : state.zone === "critical"
+        ? "border-red-200 bg-red-50 text-red-800"
+        : state.zone === "watch"
+          ? "border-amber-200 bg-amber-50 text-amber-900"
+          : state.zone === "positive"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+            : "border-slate-200 bg-slate-50 text-slate-700";
+
   return (
     <div
-      className="rounded-lg border border-gray-200 bg-white p-4"
+      className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-5"
       data-testid={dataTestId}
-      role="img"
-      aria-label={ariaLabel}
     >
-      <h4 className="text-sm font-semibold text-gray-900">{label}</h4>
-      {description ? <p className="mt-1 text-xs text-gray-600">{description}</p> : null}
+      <div className="mb-1 flex items-start justify-between gap-3">
+        <div>
+          <h4 className="text-base font-semibold text-slate-900">{label}</h4>
+          {subtitle ? <p className="text-xs font-medium text-slate-500">{subtitle}</p> : null}
+        </div>
+        {state.isAvailable ? (
+          <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
+            {state.zoneLabel}
+          </span>
+        ) : null}
+      </div>
+      {description ? <p className="mb-3 text-xs leading-relaxed text-slate-600">{description}</p> : null}
 
       {!state.isAvailable ? (
-        <div className="mt-6 rounded-md border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center">
-          <p className="text-lg font-semibold text-gray-700">nicht verfügbar</p>
-          <p className="mt-1 text-xs text-gray-500">
-            Kein berechenbarer Prozentwert im aktuellen Business Case.
-          </p>
+        <div className="mt-4 flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-12 text-center">
+          <div>
+            <p className="text-lg font-semibold text-slate-700">nicht verfügbar</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Kein berechenbarer Prozentwert im aktuellen Business Case.
+            </p>
+          </div>
         </div>
       ) : (
         <>
-          <div className="relative mx-auto mt-2 w-full max-w-[240px]">
-            <svg viewBox="0 0 200 130" className="h-auto w-full" aria-hidden="true">
+          <div
+            className="relative mx-auto w-full max-w-[320px]"
+            role="img"
+            aria-label={ariaLabel}
+          >
+            <svg viewBox="0 0 320 200" className="h-auto w-full" aria-hidden="true">
               <path
-                d={arcPath(cx, cy, radius, criticalStart, criticalEnd)}
+                d={arcPath(cx, cy, radius, percentToAngle(0), percentToAngle(GAUGE_ZONE_CRITICAL_MAX))}
                 fill="none"
                 stroke={GAUGE_COLOR_CRITICAL}
                 strokeWidth={stroke}
                 strokeLinecap="butt"
               />
               <path
-                d={arcPath(cx, cy, radius, criticalEnd, watchEnd)}
+                d={arcPath(
+                  cx,
+                  cy,
+                  radius,
+                  percentToAngle(GAUGE_ZONE_CRITICAL_MAX),
+                  percentToAngle(GAUGE_ZONE_WATCH_MAX),
+                )}
                 fill="none"
                 stroke={GAUGE_COLOR_WATCH}
                 strokeWidth={stroke}
                 strokeLinecap="butt"
               />
               <path
-                d={arcPath(cx, cy, radius, watchEnd, positiveEnd)}
+                d={arcPath(
+                  cx,
+                  cy,
+                  radius,
+                  percentToAngle(GAUGE_ZONE_WATCH_MAX),
+                  percentToAngle(GAUGE_SCALE_MAX),
+                )}
                 fill="none"
                 stroke={GAUGE_COLOR_POSITIVE}
                 strokeWidth={stroke}
                 strokeLinecap="butt"
               />
-              {/* Markierungen bei 5 % und 9 % */}
-              {[GAUGE_ZONE_CRITICAL_MAX, GAUGE_ZONE_WATCH_MAX].map((mark) => {
+              {marks.map((mark) => {
                 const angle = percentToAngle(mark);
-                const outer = polar(cx, cy, radius + 4, angle);
-                const inner = polar(cx, cy, radius - stroke / 2 - 2, angle);
+                const outer = polar(cx, cy, radius + 8, angle);
+                const inner = polar(cx, cy, radius - stroke / 2 - 4, angle);
+                const labelPos = polar(cx, cy, radius + 22, angle);
                 return (
-                  <line
-                    key={mark}
-                    x1={inner.x}
-                    y1={inner.y}
-                    x2={outer.x}
-                    y2={outer.y}
-                    stroke="#334155"
-                    strokeWidth={2}
-                  />
+                  <g key={mark}>
+                    <line
+                      x1={inner.x}
+                      y1={inner.y}
+                      x2={outer.x}
+                      y2={outer.y}
+                      stroke="#1e293b"
+                      strokeWidth={2}
+                    />
+                    <text
+                      x={labelPos.x}
+                      y={labelPos.y}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      className="fill-slate-500"
+                      fontSize="11"
+                    >
+                      {mark}%
+                    </text>
+                  </g>
                 );
               })}
               <line
                 x1={cx}
                 y1={cy}
-                x2={needle.x}
-                y2={needle.y}
+                x2={needleTip.x}
+                y2={needleTip.y}
                 stroke="#0f172a"
-                strokeWidth={3}
+                strokeWidth={4}
                 strokeLinecap="round"
-                className="motion-safe:transition-[x2,y2] motion-safe:duration-300"
+                className="motion-reduce:transition-none motion-safe:transition-[x2,y2] motion-safe:duration-300"
               />
-              <circle cx={cx} cy={cy} r={5} fill="#0f172a" />
+              <circle cx={cx} cy={cy} r={8} fill="#0f172a" />
+              <circle cx={cx} cy={cy} r={3.5} fill="#f8fafc" />
             </svg>
-            <div className="pointer-events-none absolute inset-x-0 bottom-1 text-center">
+
+            <div className="pointer-events-none absolute inset-x-0 bottom-2 text-center">
               <div
-                className="text-2xl font-bold tabular-nums text-gray-900"
+                className="text-3xl font-bold tabular-nums tracking-tight text-slate-900 sm:text-4xl"
                 style={{ color: state.zoneColor }}
               >
                 {displayValue}
               </div>
-              <div className="text-xs font-medium uppercase tracking-wide text-gray-600">
+              <div className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 {label}
-              </div>
-              <div className="text-xs font-medium" style={{ color: state.zoneColor }}>
-                {state.zoneLabel}
               </div>
             </div>
           </div>
 
-          <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+          {(state.isBelowScale || state.isAboveScale) && (
+            <p className="mt-2 text-center text-xs text-slate-600">
+              {state.isBelowScale
+                ? "Der Zeiger ist am linken Skalenanfang begrenzt."
+                : "Der Zeiger ist am oberen Skalenende begrenzt."}
+            </p>
+          )}
+
+          <ul className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-1 border-t border-slate-100 pt-3 text-xs text-slate-600">
             <li className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: GAUGE_COLOR_CRITICAL }} />
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-sm"
+                style={{ background: GAUGE_COLOR_CRITICAL }}
+              />
               0–5 % kritisch
             </li>
             <li className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: GAUGE_COLOR_WATCH }} />
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-sm"
+                style={{ background: GAUGE_COLOR_WATCH }}
+              />
               5–9 % beobachten
             </li>
             <li className="inline-flex items-center gap-1.5">
-              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: GAUGE_COLOR_POSITIVE }} />
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-sm"
+                style={{ background: GAUGE_COLOR_POSITIVE }}
+              />
               9–25 % positiv
             </li>
           </ul>
-          {(state.isBelowScale || state.isAboveScale) && (
-            <p className="mt-2 text-xs text-gray-500">
-              {state.isBelowScale
-                ? "Wert unter 0 %: Zeiger am linken Skalenanfang begrenzt."
-                : "Wert über 25 %: Zeiger am rechten Skalenende begrenzt."}
-            </p>
-          )}
         </>
       )}
     </div>

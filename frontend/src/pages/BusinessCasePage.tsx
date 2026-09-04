@@ -13,6 +13,7 @@ import {
   type HierarchySelection,
 } from "../components/hierarchy/HierarchySelector";
 import { ProfitabilityGauge } from "../components/businessCase/ProfitabilityGauge";
+import { BusinessCaseKpiStrip } from "../components/businessCase/BusinessCaseKpiStrip";
 import { RevenueDevelopmentChart } from "../components/businessCase/RevenueDevelopmentChart";
 import { DecimalInputField } from "../components/DecimalInputField";
 import { useAuth } from "../context/AuthContext";
@@ -722,57 +723,69 @@ export function BusinessCasePage() {
 
       {data && (
         <>
-          <section className="space-y-4">
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold">Business-Case-Dashboard</h3>
-                  <p className="mt-1 text-sm text-gray-600">
-                    {data.customer} / {data.program} / {data.project}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={exportBusy}
-                    onClick={() => void exportExcel()}
-                    className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Excel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={exportBusy}
-                    onClick={() => void exportPdf()}
-                    className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    PDF
-                  </button>
-                </div>
+          <section className="mx-auto w-full max-w-6xl space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">
+                  Business Case
+                </p>
+                <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+                  Business-Case-Dashboard
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {data.customer} / {data.program} / {data.project}
+                </p>
               </div>
-
-              <div className="mt-6 space-y-4">
-                <RevenueDevelopmentChart rows={data.revenue_by_year ?? []} />
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <ProfitabilityGauge
-                    label="EBIT"
-                    valuePercent={data.kpis.ebit_actual_total_pct}
-                    description="EBIT % zum tatsächlichen Umsatz (bestehende Business-Case-Berechnung, CAPEX nicht enthalten)."
-                    data-testid="gauge-ebit"
-                  />
-                  <ProfitabilityGauge
-                    label="ROI"
-                    valuePercent={data.kpis.roi_incl_capex_actual_pct}
-                    description="ROI % inkl. CAPEX zum tatsächlichen Preis (bestehende Business-Case-Berechnung)."
-                    data-testid="gauge-roi"
-                  />
-                </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={exportBusy}
+                  onClick={() => void exportExcel()}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
+                >
+                  Excel
+                </button>
+                <button
+                  type="button"
+                  disabled={exportBusy}
+                  onClick={() => void exportPdf()}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
+                >
+                  PDF
+                </button>
               </div>
+            </div>
 
+            <BusinessCaseKpiStrip
+              revenueByYear={data.revenue_by_year ?? []}
+              ebitPct={data.kpis.ebit_actual_total_pct}
+              roiPct={data.kpis.roi_incl_capex_actual_pct}
+            />
+
+            <RevenueDevelopmentChart rows={data.revenue_by_year ?? []} />
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <ProfitabilityGauge
+                label="EBIT"
+                subtitle="Profitabilität"
+                valuePercent={data.kpis.ebit_actual_total_pct}
+                description="EBIT % zum tatsächlichen Umsatz (bestehende Business-Case-Berechnung, CAPEX nicht enthalten)."
+                data-testid="gauge-ebit"
+              />
+              <ProfitabilityGauge
+                label="ROI"
+                subtitle="Kapitalrendite"
+                valuePercent={data.kpis.roi_incl_capex_actual_pct}
+                description="ROI % inkl. CAPEX zum tatsächlichen Preis (bestehende Business-Case-Berechnung)."
+                data-testid="gauge-roi"
+              />
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
               {data.kpi_summary && (
                 <>
-                  <div className="mt-6">
-                    <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+                  <div>
+                    <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
                       Operative Wirtschaftlichkeit
                     </h4>
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -979,7 +992,7 @@ export function BusinessCasePage() {
                   </div>
                 </>
               )}
-              <p className="mt-4 text-xs text-gray-500">{data.revenue_summary.hinweis}</p>
+              <p className="mt-4 text-xs text-slate-500">{data.revenue_summary.hinweis}</p>
             </div>
           </section>
 

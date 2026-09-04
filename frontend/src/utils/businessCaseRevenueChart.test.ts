@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildRevenueChartPoints,
+  chooseRevenueScale,
   formatChartCurrency,
+  formatRevenueOnScale,
   hasDisplayableRevenue,
+  revenuePeriodLabel,
+  sumDisplayRevenue,
 } from "./businessCaseRevenueChart";
 
 describe("businessCaseRevenueChart", () => {
@@ -47,6 +51,33 @@ describe("businessCaseRevenueChart", () => {
     expect(points[0].series).toBe("bottom");
   });
 
+  it("sums yearly revenues and formats the period", () => {
+    const points = buildRevenueChartPoints([
+      {
+        calendar_year: 2028,
+        project_volume: 1,
+        bottom_price_revenue: null,
+        actual_revenue: 200,
+      },
+      {
+        calendar_year: 2026,
+        project_volume: 1,
+        bottom_price_revenue: null,
+        actual_revenue: 100,
+      },
+    ]);
+    expect(sumDisplayRevenue(points)).toBe(300);
+    expect(revenuePeriodLabel(points)).toBe("2026–2028");
+  });
+
+  it("uses one shared currency scale for all chart values", () => {
+    expect(chooseRevenueScale([2_500_000, 750_000, 0])).toBe("meur");
+    expect(formatRevenueOnScale(2_500_000, "meur")).toMatch(/Mio\. €/);
+    expect(formatRevenueOnScale(750_000, "meur")).toMatch(/Mio\. €/);
+    expect(formatRevenueOnScale(0, "meur")).toMatch(/Mio\. €/);
+    expect(chooseRevenueScale([28000, 12000])).toBe("keur");
+  });
+
   it("detects empty revenue data", () => {
     expect(hasDisplayableRevenue([])).toBe(false);
     expect(
@@ -75,9 +106,9 @@ describe("businessCaseRevenueChart", () => {
     ).toBe(true);
   });
 
-  it("formats currency by magnitude", () => {
-    expect(formatChartCurrency(28000)).toBe("28 kEUR");
-    expect(formatChartCurrency(2_500_000)).toMatch(/MEUR/);
+  it("keeps legacy formatChartCurrency helper working", () => {
+    expect(formatChartCurrency(28000)).toMatch(/k€/);
+    expect(formatChartCurrency(2_500_000)).toMatch(/Mio/);
     expect(formatChartCurrency(850)).toBe("850 €");
   });
 });
