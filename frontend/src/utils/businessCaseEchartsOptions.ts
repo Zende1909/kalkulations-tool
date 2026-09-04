@@ -93,14 +93,18 @@ export function buildRevenueBarOption(
   points: RevenueChartPoint[],
   scale: RevenueCurrencyScale,
   seriesLabel: string,
+  opts: { compact?: boolean } = {},
 ): EChartsCoreOption {
   const years = points.map((p) => String(p.calendar_year));
   const values = points.map((p) => sanitizeChartNumber(p.display_revenue, 0));
   const lastIndex = values.length - 1;
+  const compact = opts.compact === true;
 
   return {
     animationDuration: 280,
-    grid: { left: 52, right: 8, top: 12, bottom: 24 },
+    grid: compact
+      ? { left: 44, right: 6, top: 8, bottom: 8 }
+      : { left: 52, right: 8, top: 12, bottom: 24 },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
@@ -123,7 +127,13 @@ export function buildRevenueBarOption(
       data: years,
       axisTick: { show: false },
       axisLine: { show: false },
-      axisLabel: { color: "#475569", fontSize: 11 },
+      axisLabel: compact
+        ? { show: false }
+        : {
+            color: "#475569",
+            fontSize: 11,
+            hideOverlap: true,
+          },
     },
     yAxis: {
       type: "value",
@@ -133,7 +143,7 @@ export function buildRevenueBarOption(
       splitLine: { lineStyle: { type: "dashed", color: "#e2e8f0" } },
       axisLabel: {
         color: "#64748b",
-        fontSize: 10,
+        fontSize: compact ? 9 : 10,
         formatter: (value: number) =>
           formatRevenueOnScale(sanitizeChartNumber(value), scale, { compact: true }),
       },
@@ -149,7 +159,7 @@ export function buildRevenueBarOption(
             borderRadius: [4, 4, 0, 0],
           },
         })),
-        barMaxWidth: 36,
+        barMaxWidth: compact ? 28 : 36,
       },
     ],
   };

@@ -57,21 +57,28 @@ describe("Business Case dashboard charts UI", () => {
     expect(optionsSrc).toMatch(/axisLabel:\s*\{\s*show:\s*false\s*\}/);
     expect(gaugeSrc).toMatch(/data-testid="gauge-value"/);
     expect(gaugeSrc).toMatch(/state\.zoneColor/);
-    expect(gaugeSrc).toMatch(/gaugeArcLabelPosition/);
+    expect(gaugeSrc).not.toMatch(/gaugeArcLabelPosition/);
+    expect(gaugeSrc).not.toMatch(/gauge-scale-labels/);
   });
 
-  it("renders scale marks on the arc and value color from the needle zone", () => {
-    expect(gaugeSrc).toMatch(/gauge-scale-labels/);
-    expect(gaugeSrc).toMatch(/absolute inset-0/);
-    expect(gaugeSrc).toMatch(/style=\{\{ color: state\.zoneColor \}\}/);
+  it("keeps scale ranges only in the bottom legend, not on the arc", () => {
+    expect(gaugeSrc).toMatch(/gauge-legend/);
+    expect(gaugeSrc).toMatch(/0–5&nbsp;%/);
     expect(gaugeSrc).toMatch(/gauge-value-area/);
+    expect(gaugeSrc).toMatch(/style=\{\{ color: state\.zoneColor \}\}/);
   });
 
   it("shows above-scale note only for values over 25 % and keeps accessibility label", () => {
     expect(gaugeSrc).toMatch(/state\.isAboveScale/);
     expect(gaugeSrc).toMatch(/Der Zeiger ist am oberen Skalenende begrenzt/);
     expect(gaugeSrc).toMatch(/aria-label=\{ariaLabel\}/);
-    expect(gaugeSrc).toMatch(/GAUGE_SCALE_MARKS/);
+  });
+
+  it("uses a compact revenue layout that fills the shared row cleanly", () => {
+    expect(chartSrc).toMatch(/variant\?: "default" \| "compact"/);
+    expect(chartSrc).toMatch(/gridTemplateColumns/);
+    expect(chartSrc).toMatch(/min-h-\[10rem\]/);
+    expect(chartSrc).not.toMatch(/grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-3/);
   });
 
   it("omits kritisch/beobachten/positiv wording from the color legend", () => {

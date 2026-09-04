@@ -6,8 +6,6 @@ import {
   GAUGE_COLOR_CRITICAL,
   GAUGE_COLOR_POSITIVE,
   GAUGE_COLOR_WATCH,
-  GAUGE_SCALE_MARKS,
-  gaugeArcLabelPosition,
   getGaugeState,
 } from "../../utils/businessCaseGauge";
 import { buildProfitabilityGaugeOption } from "../../utils/businessCaseEchartsOptions";
@@ -19,35 +17,6 @@ function GaugeChartGeometry({ option }: { option: EChartsCoreOption }) {
     "aria-hidden": true,
   });
   return <div {...containerProps} />;
-}
-
-/** Skalenwerte am Bogen (nicht als Zeile darunter). */
-function GaugeScaleLabels() {
-  return (
-    <div
-      className="gauge-scale-labels pointer-events-none absolute inset-0"
-      aria-hidden="true"
-      data-testid="gauge-scale-labels"
-    >
-      {[...GAUGE_SCALE_MARKS].map((mark) => {
-        const { leftPercent, topPercent } = gaugeArcLabelPosition(mark);
-        return (
-          <span
-            key={mark}
-            className="absolute whitespace-nowrap text-[10px] tabular-nums leading-none text-slate-500"
-            style={{
-              left: `${leftPercent}%`,
-              top: `${topPercent}%`,
-              transform: "translate(-50%, -50%)",
-            }}
-            data-scale-mark={mark}
-          >
-            {mark}&nbsp;%
-          </span>
-        );
-      })}
-    </div>
-  );
 }
 
 function statusBadgeClass(zoneLabel: string, zone: string): string {
@@ -63,6 +32,7 @@ function statusBadgeClass(zoneLabel: string, zone: string): string {
 /**
  * Wiederverwendbare EBIT-/ROI-Karte:
  * ECharts nur Geometrie; Wert, Label und Status als separates HTML.
+ * Skalenwerte nur in der unteren Legende (nicht am Bogen).
  */
 export function EchartsProfitabilityGauge({
   label,
@@ -104,7 +74,7 @@ export function EchartsProfitabilityGauge({
         </div>
         {state.isAvailable ? (
           <span
-            className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClass(state.zoneLabel, state.zone)}`}
+            className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClass(state.zoneLabel, state.zone)}`}
             data-testid="gauge-header-status"
           >
             {state.zoneLabel}
@@ -130,12 +100,11 @@ export function EchartsProfitabilityGauge({
       ) : (
         <>
           <div
-            className="gauge-chart-area relative mx-auto mt-3 w-full min-w-0 max-w-[22rem] overflow-visible"
+            className="gauge-chart-area mx-auto mt-3 w-full min-w-0 max-w-[22rem] overflow-visible"
             role="img"
             aria-label={ariaLabel}
           >
             <GaugeChartGeometry option={option} />
-            <GaugeScaleLabels />
           </div>
 
           <div className="gauge-value-area mt-3 flex min-w-0 flex-col items-center gap-0.5 text-center">
