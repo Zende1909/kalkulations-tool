@@ -894,7 +894,9 @@ export function SpritzgussPage() {
     setError(null);
     setSuccess(null);
     try {
+      // Dezimalfelder leben in decimalRaw; form kann noch null sein (Vorschau liest Raw).
       const parsedForm = resolveParsedForm();
+      setForm(parsedForm);
       const result = await berechnen({
         ...calcPayloadBase,
         teilegewicht_netto_g: parsedForm.teilegewicht_netto_g,
@@ -906,9 +908,25 @@ export function SpritzgussPage() {
         kavitaeten: parsedForm.kavitaeten,
         lohnstundensatz: parsedForm.lohnstundensatz,
         setup_zeit_min: parsedForm.setup_zeit_min,
-        setup_maschinenstundensatz: parsedForm.setup_maschinenstundensatz,
+        setup_maschinenstundensatz:
+          parsedForm.setup_maschinenstundensatz || parsedForm.maschinenstundensatz,
         setup_lohnstundensatz: parsedForm.setup_lohnstundensatz,
         setup_mitarbeiter: parsedForm.setup_mitarbeiter,
+        setup_aktiv: parsedForm.setup_aktiv || parsedForm.setup_zeit_min > 0,
+        losgroesse_modus: parsedForm.losgroesse_modus,
+        losgroesse_manuell:
+          parsedForm.losgroesse_modus === "manuell" ? parsedForm.losgroesse_manuell : null,
+        maschinen_groesse_modus: parsedForm.maschinen_groesse_modus,
+        maschinen_groesse_breite_mm: parsedForm.maschinen_groesse_breite_mm,
+        maschinen_groesse_laenge_mm: parsedForm.maschinen_groesse_laenge_mm,
+        maschinen_groesse_oeffnungen_pct: parsedForm.maschinen_groesse_oeffnungen_pct,
+        maschinen_groesse_proj_flaeche_mm2: parsedForm.maschinen_groesse_proj_flaeche_mm2,
+        zykluszeit_quelle: parsedForm.zykluszeit_quelle,
+        zykluszeit_wandstaerke_mm: parsedForm.zykluszeit_wandstaerke_mm,
+        zykluszeit_groessenklasse: parsedForm.zykluszeit_groessenklasse,
+        zykluszeit_prozessaufwand: parsedForm.zykluszeit_prozessaufwand,
+        zykluszeit_entnahmeart: parsedForm.zykluszeit_entnahmeart,
+        zykluszeit_nebenzeiten_gesamt_s: parsedForm.zykluszeit_nebenzeiten_gesamt_s,
       });
       setBloecke(result.bloecke);
       applyMaschinenGroesseResponse(result.maschinen_groesse);

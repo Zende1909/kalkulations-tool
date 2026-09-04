@@ -29,4 +29,18 @@ describe("Maschinengröße UI", () => {
     expect(pageSrc).toMatch(/effectiveKavitaeten/);
     expect(pageSrc).not.toMatch(/handleMaschineChange\(String\(maschine\.id\)\)/);
   });
+
+  it("sendet beim Berechnen die geparsten Maschinengröße-Felder aus decimalRaw", () => {
+    // Regression: Vorschau las decimalRaw, Berechnen schickte form (oft null) →
+    // „Im Modus Maße sind Breite, Länge und Öffnungen erforderlich.“
+    expect(pageSrc).toMatch(/const parsedForm = resolveParsedForm\(\)/);
+    expect(pageSrc).toMatch(/maschinen_groesse_breite_mm:\s*parsedForm\.maschinen_groesse_breite_mm/);
+    expect(pageSrc).toMatch(/maschinen_groesse_laenge_mm:\s*parsedForm\.maschinen_groesse_laenge_mm/);
+    expect(pageSrc).toMatch(
+      /maschinen_groesse_oeffnungen_pct:\s*parsedForm\.maschinen_groesse_oeffnungen_pct/,
+    );
+    expect(pageSrc).toMatch(
+      /maschinen_groesse_proj_flaeche_mm2:\s*parsedForm\.maschinen_groesse_proj_flaeche_mm2/,
+    );
+  });
 });

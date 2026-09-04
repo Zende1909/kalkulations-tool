@@ -30,6 +30,28 @@ describe("maschinenGroessePreview", () => {
     expect(payload?.maschinen_groesse_breite_mm).toBe(100);
   });
 
+  it("liest Maße auch wenn form-Felder noch null sind (nur decimalRaw befüllt)", () => {
+    const form = {
+      ...emptySpritzgussForm(),
+      maschinen_groesse_modus: "masse" as const,
+      material_id: 1,
+      // bewusst null – typischer Zustand vor dem Parsen beim Berechnen
+      maschinen_groesse_breite_mm: null,
+      maschinen_groesse_laenge_mm: null,
+      maschinen_groesse_oeffnungen_pct: null,
+    };
+    const payload = buildMaschinenGroessePreviewPayload(form, {
+      maschinen_groesse_breite_mm: "100",
+      maschinen_groesse_laenge_mm: "200",
+      maschinen_groesse_oeffnungen_pct: "20",
+      kavitaeten: "2",
+    });
+    expect(payload).not.toBeNull();
+    expect(payload?.maschinen_groesse_breite_mm).toBe(100);
+    expect(payload?.maschinen_groesse_laenge_mm).toBe(200);
+    expect(payload?.maschinen_groesse_oeffnungen_pct).toBe(20);
+  });
+
   it("baut Flächen-Payload nur bei vollständigen Eingaben", () => {
     const form = {
       ...emptySpritzgussForm(),
