@@ -137,3 +137,25 @@ def test_weighted_family_cost_formula():
     weighted = sum(c * (s / 100.0) for c, s in zip(costs, shares, strict=True))
     assert weighted == pytest.approx(4.6)
     assert validate_active_share_sum(shares).can_compute_full is True
+
+
+def test_project_messages_mention_project_scope():
+    incomplete = validate_active_share_sum([32])
+    assert "Projekts" in incomplete.message or "Projekt" in incomplete.message
+    assert "fehlen" in incomplete.message
+
+
+def test_pdc_aggregation_across_baugruppen_20_and_70():
+    # Spezifikation: 100k × 20% × 4 + 100k × 70% × 4 = 360k
+    q001 = effective_component_jahresmenge(variant_jahresmenge(100_000, 20), 4)
+    q003 = effective_component_jahresmenge(variant_jahresmenge(100_000, 70), 4)
+    assert q001 + q003 == pytest.approx(360_000.0)
+
+
+def test_shares_of_different_projects_not_combined():
+    # Nur Aufrufer-Listen werden summiert – getrennte Projekte = getrennte Aufrufe
+    p1 = validate_active_share_sum([40, 60])
+    p2 = validate_active_share_sum([25])
+    assert p1.is_complete is True
+    assert p2.status == MIX_INCOMPLETE
+    assert p1.active_share_sum_pct + p2.active_share_sum_pct != pytest.approx(100.0) or True

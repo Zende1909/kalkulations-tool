@@ -116,10 +116,13 @@ def test_baseline_revision_is_discoverable():
 def test_alembic_head_is_plant_costing_revision():
     cfg = _alembic_config()
     scripts = ScriptDirectory.from_config(cfg)
-    assert scripts.get_heads() == ["e1a0023_assembly_variant_mix"]
-    rev = scripts.get_revision("e1a0023_assembly_variant_mix")
+    assert scripts.get_heads() == ["e1a0024_project_assembly_shares"]
+    rev = scripts.get_revision("e1a0024_project_assembly_shares")
     assert rev is not None
-    assert rev.down_revision == "e1a0022_zykluszeit_entnahmeart"
+    assert rev.down_revision == "e1a0023_assembly_variant_mix"
+    rev23 = scripts.get_revision("e1a0023_assembly_variant_mix")
+    assert rev23 is not None
+    assert rev23.down_revision == "e1a0022_zykluszeit_entnahmeart"
     rev22 = scripts.get_revision("e1a0022_zykluszeit_entnahmeart")
     assert rev22 is not None
     assert rev22.down_revision == "e1a0021_zykluszeit_prozessaufwand"

@@ -124,6 +124,7 @@ export interface BaugruppeFormData {
   program_id: number | null;
   werk_id: number | null;
   jahresstueckzahl: number;
+  variant_share_pct: number | null;
   beschreibung: string;
   status: string;
   aktiv: boolean;
@@ -137,6 +138,7 @@ export interface BaugruppeListItem {
   projekt: string;
   project_id: number | null;
   jahresstueckzahl: number;
+  variant_share_pct: number | null;
   status: string;
   baugruppenpreis_je_stueck: number | null;
   updated_at: string;
@@ -146,7 +148,6 @@ export interface BaugruppeListItem {
 export interface Baugruppe extends BaugruppeFormData {
   id: number;
   family_id?: number | null;
-  variant_share_pct?: number | null;
   ergebnis: BaugruppeErgebnis | null;
   ergebnis_bloecke: BaugruppeBloecke | null;
   created_at: string;
@@ -209,6 +210,7 @@ export function emptyBaugruppeForm(): BaugruppeFormData {
     program_id: null,
     werk_id: null,
     jahresstueckzahl: 0,
+    variant_share_pct: null,
     beschreibung: "",
     status: "entwurf",
     aktiv: true,

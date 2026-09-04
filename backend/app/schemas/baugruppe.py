@@ -215,9 +215,18 @@ class BaugruppeBase(BaseModel):
     project_id: int | None = None
     werk_id: int | None = None
     jahresstueckzahl: int = Field(ge=0, default=0)
+    # Intern: variant_share_pct – UI-Bezeichnung „Anteil am Projekt (%)“
+    variant_share_pct: float | None = Field(default=None, ge=0, le=100)
     beschreibung: str = ""
     status: str = "entwurf"
     aktiv: bool = True
+
+    @field_validator("variant_share_pct", mode="before")
+    @classmethod
+    def coerce_variant_share(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        return parse_de_float(value, field_label="Anteil am Projekt", allow_none=True)
 
 
 class BaugruppeCreate(BaugruppeBase):
@@ -235,12 +244,21 @@ class BaugruppeUpdate(BaseModel):
     clear_project_link: bool | None = None
     werk_id: int | None = None
     jahresstueckzahl: int | None = Field(default=None, ge=0)
+    variant_share_pct: float | None = Field(default=None, ge=0, le=100)
+    clear_variant_share: bool | None = None
     beschreibung: str | None = None
     status: str | None = None
     aktiv: bool | None = None
     spritzguss_zuordnungen: list[SpritzgussZuordnungInput] | None = None
     kaufteil_zuordnungen: list[KaufteilZuordnungInput] | None = None
     veredelung_zuordnungen: list[VeredelungZuordnungInput] | None = None
+
+    @field_validator("variant_share_pct", mode="before")
+    @classmethod
+    def coerce_variant_share_update(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        return parse_de_float(value, field_label="Anteil am Projekt", allow_none=True)
 
 
 class BaugruppeListItem(BaseModel):
@@ -253,6 +271,7 @@ class BaugruppeListItem(BaseModel):
     projekt: str
     project_id: int | None = None
     jahresstueckzahl: int
+    variant_share_pct: float | None = None
     status: str
     baugruppenpreis_je_stueck: float | None = None
     updated_at: datetime

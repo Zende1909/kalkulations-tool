@@ -8,6 +8,7 @@ import type {
   SpritzgussZuordnungInput,
   VeredelungZuordnungInput,
 } from "../types/baugruppe";
+import type { ProjectAssemblyMix } from "../types/projectAssemblyMix";
 
 export type CalcPayload = BaugruppeFormData & {
   spritzguss_zuordnungen: SpritzgussZuordnungInput[];
@@ -18,6 +19,8 @@ export type CalcPayload = BaugruppeFormData & {
 export type SavePayload = CalcPayload & {
   /** Nur bei bestätigtem „Verknüpfung entfernen“ true senden. */
   clear_project_link?: boolean;
+  /** Bei Update: leeres Anteilsfeld → Anteil am Projekt entfernen. */
+  clear_variant_share?: boolean;
 };
 
 export function berechnen(payload: CalcPayload) {
@@ -36,8 +39,13 @@ export function getBaugruppe(id: number) {
   return api.get<Baugruppe>(`/baugruppen/${id}`);
 }
 
+export function getProjectAssemblyMix(projectId: number) {
+  const search = new URLSearchParams({ project_id: String(projectId) });
+  return api.get<ProjectAssemblyMix>(`/baugruppen/project-mix?${search}`);
+}
+
 export function createBaugruppe(data: SavePayload) {
-  const { clear_project_link: _clear, ...createBody } = data;
+  const { clear_project_link: _clear, clear_variant_share: _clearShare, ...createBody } = data;
   return api.post<Baugruppe>("/baugruppen", createBody);
 }
 

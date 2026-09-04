@@ -255,7 +255,7 @@ def test_ensure_investition_schema_contains_no_dml():
 
 def test_alembic_head_revision_is_plant_costing():
     heads = get_alembic_head_revisions()
-    assert heads == ("e1a0023_assembly_variant_mix",)
+    assert heads == ("e1a0024_project_assembly_shares",)
 
 
 def test_warn_if_database_behind_alembic_head_logs(caplog, tmp_path: Path):

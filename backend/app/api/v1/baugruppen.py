@@ -39,6 +39,8 @@ from app.schemas.baugruppe import (
     VeredelungZuordnungInput,
     VeredelungZuordnungRead,
 )
+from app.schemas.assembly_family import AssemblyFamilyMixRead
+from app.services.assembly_variant_mix import build_project_mix_result, validate_share_pct
 from app.services.baugruppe_kalkulation import (
     BaugruppeMarkupError,
     BaugruppeValidationError,
@@ -781,40 +783,51 @@ def _apply_jahresstueckzahl_from_project(
     *,
     existing_project_id: int | None = None,
     existing_jahresstueckzahl: int | None = None,
+    existing_share_pct: float | None = None,
     project_changed: bool,
     clear_project_link: bool = False,
+    share_changed: bool = False,
 ) -> dict[str, Any]:
-    """Setzt jahresstueckzahl aus dem Projekt-Durchschnitt (ceil), wenn fachlich nötig.
+    """Setzt jahresstueckzahl aus Projektstückzahl und optionalem Anteil am Projekt.
 
-    Entscheidung (keine Migration bestehender Daten ungefragt):
-    - Create/Update mit Projektwechsel + Volumen: Wert aus Durchschnitt speichern.
-    - Create mit Projekt ohne Volumen: 0 speichern (FE zeigt Hinweis).
-    - Update bei Projektwechsel ohne Volumen: bestehenden Wert behalten.
-    - Update ohne Projektwechsel: Client-jahresstueckzahl ignorieren (kein Override).
-    - Verknüpfung entfernt: gespeicherten Wert belassen.
-    - Legacy ohne Projekt: Client-jahresstueckzahl unverändert (Maske ist read-only;
-      API bleibt für Bestandswerte speicherbar).
+    - Mit ``variant_share_pct``: Projektstückzahl × Anteil / 100
+    - Ohne Anteil (Legacy): volle Projektstückzahl (bisheriges Verhalten)
+    - Client darf jahresstueckzahl bei Projektbezug nicht überschreiben
     """
+    from app.services.assembly_variant_mix import apply_share_to_jahresstueckzahl, project_jahresstueckzahl
+
     if clear_project_link:
         payload.pop("jahresstueckzahl", None)
         return payload
 
-    project_id = payload.get("project_id")
+    project_id = payload.get("project_id", existing_project_id)
     if project_id is None:
-        # Kein Projektbezug in diesem Payload → keine serverseitige Ableitung
         return payload
 
     # Mit Projekt: Client darf den Wert nicht überschreiben
     payload.pop("jahresstueckzahl", None)
 
-    if not project_changed and existing_project_id is not None:
+    share = payload.get("variant_share_pct", existing_share_pct)
+    if "variant_share_pct" in payload and payload["variant_share_pct"] is None:
+        share = None
+
+    needs_recompute = project_changed or share_changed or existing_project_id is None
+    if not needs_recompute:
         return payload
 
-    avg = average_jahresstueckzahl_for_project(db, int(project_id))
-    if avg.jahresstueckzahl is not None:
-        payload["jahresstueckzahl"] = avg.jahresstueckzahl
-    elif existing_jahresstueckzahl is None:
-        payload["jahresstueckzahl"] = 0
+    project_qty = project_jahresstueckzahl(db, int(project_id))
+    if share is not None:
+        payload["jahresstueckzahl"] = apply_share_to_jahresstueckzahl(
+            project_qty=project_qty,
+            share_pct=float(share),
+        )
+    else:
+        # Legacy: volle Projektstückzahl
+        if project_qty > 0:
+            payload["jahresstueckzahl"] = project_qty
+        elif existing_jahresstueckzahl is None:
+            payload["jahresstueckzahl"] = 0
+        # sonst bestehenden Wert belassen (nicht in payload → kein setattr)
     return payload
 
 
@@ -1025,6 +1038,7 @@ def list_baugruppen(
                 projekt=row.projekt,
                 project_id=row.project_id or row.linked_project_id,
                 jahresstueckzahl=row.jahresstueckzahl,
+                variant_share_pct=row.variant_share_pct,
                 status=row.status,
                 baugruppenpreis_je_stueck=preis,
                 updated_at=row.updated_at,
@@ -1032,6 +1046,22 @@ def list_baugruppen(
             )
         )
     return result
+
+
+@router.get("/project-mix", response_model=AssemblyFamilyMixRead)
+def get_project_assembly_mix(
+    project_id: int = Query(..., description="Projekt-ID für den Baugruppen-Variantenmix"),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_viewer),
+):
+    """Projektbezogener Variantenmix (Anteile am Projekt, ohne Baugruppenfamilie)."""
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Projekt nicht gefunden")
+    try:
+        return build_project_mix_result(db, project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/{item_id}", response_model=BaugruppeRead)
@@ -1055,6 +1085,11 @@ def create_baugruppe(
     payload = body.model_dump(
         exclude={"spritzguss_zuordnungen", "kaufteil_zuordnungen", "veredelung_zuordnungen"}
     )
+    if payload.get("variant_share_pct") is not None:
+        try:
+            payload["variant_share_pct"] = validate_share_pct(payload["variant_share_pct"])
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     payload = _apply_project_to_baugruppe_payload(db, payload)
     project_id = payload.get("project_id")
     payload = _apply_jahresstueckzahl_from_project(
@@ -1062,8 +1097,10 @@ def create_baugruppe(
         payload,
         existing_project_id=None,
         existing_jahresstueckzahl=None,
+        existing_share_pct=None,
         project_changed=project_id is not None,
         clear_project_link=False,
+        share_changed=payload.get("variant_share_pct") is not None,
     )
     # Status → aktiv konsistent
     if payload.get("status") == "archiviert":
@@ -1101,7 +1138,17 @@ def update_baugruppe(
     kt_z = updates.pop("kaufteil_zuordnungen", None)
     vd_z = updates.pop("veredelung_zuordnungen", None)
     clear_project_link = bool(updates.pop("clear_project_link", False))
+    clear_variant_share = bool(updates.pop("clear_variant_share", False))
+    if clear_variant_share:
+        updates["variant_share_pct"] = None
+    elif "variant_share_pct" in updates and updates["variant_share_pct"] is not None:
+        try:
+            updates["variant_share_pct"] = validate_share_pct(updates["variant_share_pct"])
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
     existing_pid = _effective_project_id(obj)
+    existing_share = obj.variant_share_pct
     updates = _apply_project_to_baugruppe_payload(
         db,
         updates,
@@ -1113,13 +1160,16 @@ def update_baugruppe(
         "project_id" in body.model_dump(exclude_unset=True)
         and new_pid != existing_pid
     )
+    share_changed = clear_variant_share or "variant_share_pct" in updates
     updates = _apply_jahresstueckzahl_from_project(
         db,
         updates,
         existing_project_id=existing_pid,
         existing_jahresstueckzahl=obj.jahresstueckzahl,
+        existing_share_pct=existing_share,
         project_changed=project_changed,
         clear_project_link=clear_project_link,
+        share_changed=share_changed,
     )
 
     # Bewusste Reaktivierung / Archivierung über Status

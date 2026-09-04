@@ -1,4 +1,8 @@
-"""Assembly variant mix: Familien, Anteile, Mengen- und Kostenaggregation."""
+"""Projektbezogene Baugruppenanteile (Variantenmix) – Mengen- und Kostenaggregation.
+
+Fachlich: Ausführungen = normale Baugruppen mit ``variant_share_pct`` („Anteil am Projekt (%)“)
+innerhalb desselben ``project_id``. ``assembly_families`` / ``family_id`` sind Legacy.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.baugruppe import (
@@ -39,14 +43,14 @@ class ShareValidation:
 
 def validate_share_pct(value: float | int | Decimal | None) -> float:
     if value is None:
-        raise ValueError("Variantenanteil ist erforderlich.")
+        raise ValueError("Anteil am Projekt ist erforderlich.")
     pct = float(value)
     if not math.isfinite(pct):
-        raise ValueError("Variantenanteil ist ungültig.")
+        raise ValueError("Anteil am Projekt ist ungültig.")
     if pct < 0:
-        raise ValueError("Variantenanteil darf nicht unter 0 % liegen.")
+        raise ValueError("Anteil am Projekt darf nicht unter 0 % liegen.")
     if pct > 100:
-        raise ValueError("Variantenanteil darf nicht über 100 % liegen.")
+        raise ValueError("Anteil am Projekt darf nicht über 100 % liegen.")
     return pct
 
 
@@ -59,7 +63,7 @@ def validate_active_share_sum(active_shares: list[float]) -> ShareValidation:
             active_share_sum_pct=0.0,
             missing_pct=100.0,
             overflow_pct=0.0,
-            message="Es sind noch keine aktiven Varianten erfasst.",
+            message="Es sind noch keine aktiven Baugruppenanteile im Projektmix erfasst.",
             is_complete=False,
             can_compute_full=False,
         )
@@ -70,7 +74,7 @@ def validate_active_share_sum(active_shares: list[float]) -> ShareValidation:
             active_share_sum_pct=total_f,
             missing_pct=0.0,
             overflow_pct=0.0,
-            message="Die aktiven Variantenanteile ergeben zusammen 100 %.",
+            message="Die aktiven Baugruppenanteile ergeben innerhalb dieses Projekts zusammen 100 %.",
             is_complete=True,
             can_compute_full=True,
         )
@@ -82,7 +86,7 @@ def validate_active_share_sum(active_shares: list[float]) -> ShareValidation:
             missing_pct=missing,
             overflow_pct=0.0,
             message=(
-                "Die aktiven Variantenanteile müssen zusammen 100 % ergeben. "
+                "Die aktiven Baugruppenanteile müssen innerhalb dieses Projekts zusammen 100 % ergeben. "
                 f"Aktuell sind {total_f:g} % erfasst. Es fehlen {missing:g} %. "
                 "Der Variantenmix ist für eine vollständige Baugruppenberechnung noch nicht vollständig."
             ),
@@ -96,7 +100,7 @@ def validate_active_share_sum(active_shares: list[float]) -> ShareValidation:
         missing_pct=0.0,
         overflow_pct=overflow,
         message=(
-            "Die aktiven Variantenanteile überschreiten zusammen 100 %. "
+            "Die aktiven Baugruppenanteile überschreiten zusammen 100 %. "
             f"Aktuell sind {total_f:g} % erfasst (überschüssig {overflow:g} %)."
         ),
         is_complete=False,
@@ -135,174 +139,155 @@ def project_jahresstueckzahl(db: Session, project_id: int) -> int:
     return 0
 
 
-def active_variants(variants: list[Baugruppe]) -> list[Baugruppe]:
-    return [v for v in variants if v.aktiv and v.assembly_type == "TOP_LEVEL"]
+def participates_in_project_mix(baugruppe: Baugruppe) -> bool:
+    """Baugruppe nimmt am Variantenmix teil, wenn ein Projektanteil gesetzt ist."""
+    return baugruppe.variant_share_pct is not None
 
 
-def assert_unique_teilenummer(
-    db: Session,
-    family_id: int,
-    teilenummer: str,
-    *,
-    exclude_variant_id: int | None = None,
-) -> None:
-    tn = (teilenummer or "").strip()
-    if not tn:
-        raise ValueError("Teilenummer ist erforderlich.")
-    stmt = select(Baugruppe).where(
-        Baugruppe.family_id == family_id,
-        func.lower(Baugruppe.teilenummer) == tn.lower(),
-    )
-    if exclude_variant_id is not None:
-        stmt = stmt.where(Baugruppe.id != exclude_variant_id)
-    existing = db.scalars(stmt).first()
-    if existing is not None:
-        raise ValueError("Die Teilenummer ist innerhalb dieser Baugruppenfamilie bereits vergeben.")
+def active_mix_participants(baugruppen: list[Baugruppe]) -> list[Baugruppe]:
+    return [
+        b
+        for b in baugruppen
+        if b.aktiv
+        and b.assembly_type == "TOP_LEVEL"
+        and participates_in_project_mix(b)
+    ]
 
 
-def build_family_mix_result(db: Session, family_id: int) -> dict[str, Any]:
-    from app.models.assembly_family import AssemblyFamily
-
-    family = db.get(AssemblyFamily, family_id)
-    if family is None:
-        raise ValueError("Baugruppenfamilie nicht gefunden.")
-
-    variants = list(
+def list_project_baugruppen(db: Session, project_id: int) -> list[Baugruppe]:
+    return list(
         db.scalars(
             select(Baugruppe)
-            .where(Baugruppe.family_id == family_id)
-            .options(
-                selectinload(Baugruppe.assembly_positions),
+            .where(
+                or_(
+                    Baugruppe.project_id == project_id,
+                    Baugruppe.linked_project_id == project_id,
+                )
             )
+            .options(selectinload(Baugruppe.assembly_positions))
             .order_by(Baugruppe.id)
         ).all()
     )
 
-    project_qty = project_jahresstueckzahl(db, int(family.project_id))
-    active = active_variants(variants)
-    shares = [float(v.variant_share_pct or 0) for v in active]
-    validation = validate_active_share_sum(shares)
 
-    variant_rows: list[dict[str, Any]] = []
-    component_totals: dict[tuple[str, int], dict[str, Any]] = {}
-    weighted_cost_sum = 0.0
+def apply_share_to_jahresstueckzahl(
+    *,
+    project_qty: int,
+    share_pct: float | None,
+    legacy_full_project_qty: int | None = None,
+) -> int:
+    """Ableitung der Baugruppen-Jahresmenge.
 
-    for v in variants:
-        share = float(v.variant_share_pct or 0) if v.aktiv else 0.0
-        v_qty = variant_jahresmenge(project_qty, share) if v.aktiv else 0
-        ergebnis = v.ergebnis if isinstance(v.ergebnis, dict) else {}
-        unit_cost = float(ergebnis.get("baugruppenpreis_je_stueck") or 0)
-        # Gewichteter Beitrag nur bei vollständiger Berechnung fachlich bindend
-        weighted_contrib = unit_cost * (share / 100.0) if v.aktiv else 0.0
-        if v.aktiv and validation.can_compute_full:
-            weighted_cost_sum += weighted_contrib
+    Mit Anteil: Projektstückzahl × Anteil/100.
+    Ohne Anteil (Legacy): volle Projektstückzahl bzw. bestehender Fallback.
+    """
+    if share_pct is not None:
+        return variant_jahresmenge(project_qty, float(share_pct))
+    if legacy_full_project_qty is not None:
+        return int(legacy_full_project_qty)
+    return int(project_qty)
 
-        sg_rows = list(
-            db.scalars(
-                select(BaugruppeSpritzgussZuordnung).where(
-                    BaugruppeSpritzgussZuordnung.baugruppe_id == v.id
-                )
-            ).all()
-        )
-        kt_rows = list(
-            db.scalars(
-                select(BaugruppeKaufteilZuordnung).where(
-                    BaugruppeKaufteilZuordnung.baugruppe_id == v.id
-                )
-            ).all()
-        )
-        ve_rows = list(
-            db.scalars(
-                select(BaugruppeVeredelungZuordnung).where(
-                    BaugruppeVeredelungZuordnung.baugruppe_id == v.id
-                )
-            ).all()
-        )
 
-        components: list[dict[str, Any]] = []
-        for row in sg_rows:
-            eff = effective_component_jahresmenge(v_qty, float(row.menge))
-            components.append(
-                {
-                    "component_type": "PART",
-                    "component_id": row.spritzguss_kalkulation_id,
-                    "bezeichnung": row.snapshot_bezeichnung,
-                    "teilenummer": row.snapshot_teilenummer,
-                    "menge_je_variante": float(row.menge),
-                    "effektive_jahresmenge": eff,
-                }
+def _component_rows_for_baugruppe(
+    db: Session,
+    baugruppe: Baugruppe,
+    v_qty: int,
+    component_totals: dict[tuple[str, int], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    components: list[dict[str, Any]] = []
+
+    sg_rows = list(
+        db.scalars(
+            select(BaugruppeSpritzgussZuordnung).where(
+                BaugruppeSpritzgussZuordnung.baugruppe_id == baugruppe.id
             )
-            key = ("PART", int(row.spritzguss_kalkulation_id))
-            agg = component_totals.setdefault(
-                key,
-                {
-                    "component_type": "PART",
-                    "component_id": int(row.spritzguss_kalkulation_id),
-                    "bezeichnung": row.snapshot_bezeichnung,
-                    "teilenummer": row.snapshot_teilenummer,
-                    "effektive_jahresmenge": 0.0,
-                    "losgroesse": None,
-                    "anzahl_lose": None,
-                },
+        ).all()
+    )
+    kt_rows = list(
+        db.scalars(
+            select(BaugruppeKaufteilZuordnung).where(
+                BaugruppeKaufteilZuordnung.baugruppe_id == baugruppe.id
             )
-            agg["effektive_jahresmenge"] = float(agg["effektive_jahresmenge"]) + eff
+        ).all()
+    )
+    ve_rows = list(
+        db.scalars(
+            select(BaugruppeVeredelungZuordnung).where(
+                BaugruppeVeredelungZuordnung.baugruppe_id == baugruppe.id
+            )
+        ).all()
+    )
 
-        for row in kt_rows:
-            eff = effective_component_jahresmenge(v_qty, float(row.menge))
-            components.append(
-                {
-                    "component_type": "PURCHASED_PART",
-                    "component_id": row.kaufteil_id,
-                    "bezeichnung": row.snapshot_bezeichnung,
-                    "teilenummer": "",
-                    "menge_je_variante": float(row.menge),
-                    "effektive_jahresmenge": eff,
-                }
-            )
-            key = ("PURCHASED_PART", int(row.kaufteil_id))
-            agg = component_totals.setdefault(
-                key,
-                {
-                    "component_type": "PURCHASED_PART",
-                    "component_id": int(row.kaufteil_id),
-                    "bezeichnung": row.snapshot_bezeichnung,
-                    "teilenummer": "",
-                    "effektive_jahresmenge": 0.0,
-                },
-            )
-            agg["effektive_jahresmenge"] = float(agg["effektive_jahresmenge"]) + eff
-
-        for row in ve_rows:
-            components.append(
-                {
-                    "component_type": "PROCESS",
-                    "component_id": row.veredelungsschritt_id,
-                    "bezeichnung": row.snapshot_bezeichnung,
-                    "teilenummer": "",
-                    "menge_je_variante": float(row.mengenfaktor),
-                    "effektive_jahresmenge": effective_component_jahresmenge(
-                        v_qty, float(row.mengenfaktor)
-                    ),
-                }
-            )
-
-        variant_rows.append(
+    for row in sg_rows:
+        eff = effective_component_jahresmenge(v_qty, float(row.menge))
+        components.append(
             {
-                "id": v.id,
-                "teilenummer": v.teilenummer,
-                "bezeichnung": v.name,
-                "anteil_prozent": float(v.variant_share_pct or 0),
-                "aktiv": bool(v.aktiv),
-                "jahresmenge": v_qty,
-                "komponenten_anzahl": len(components),
-                "kosten_je_stueck": unit_cost,
-                "gewichteter_kostenbeitrag": weighted_contrib if validation.can_compute_full else None,
-                "komponenten": components,
-                "legacy_standalone": False,
+                "component_type": "PART",
+                "component_id": row.spritzguss_kalkulation_id,
+                "bezeichnung": row.snapshot_bezeichnung,
+                "teilenummer": row.snapshot_teilenummer,
+                "menge_je_variante": float(row.menge),
+                "effektive_jahresmenge": eff,
+            }
+        )
+        key = ("PART", int(row.spritzguss_kalkulation_id))
+        agg = component_totals.setdefault(
+            key,
+            {
+                "component_type": "PART",
+                "component_id": int(row.spritzguss_kalkulation_id),
+                "bezeichnung": row.snapshot_bezeichnung,
+                "teilenummer": row.snapshot_teilenummer,
+                "effektive_jahresmenge": 0.0,
+                "losgroesse": None,
+                "anzahl_lose": None,
+            },
+        )
+        agg["effektive_jahresmenge"] = float(agg["effektive_jahresmenge"]) + eff
+
+    for row in kt_rows:
+        eff = effective_component_jahresmenge(v_qty, float(row.menge))
+        components.append(
+            {
+                "component_type": "PURCHASED_PART",
+                "component_id": row.kaufteil_id,
+                "bezeichnung": row.snapshot_bezeichnung,
+                "teilenummer": "",
+                "menge_je_variante": float(row.menge),
+                "effektive_jahresmenge": eff,
+            }
+        )
+        key = ("PURCHASED_PART", int(row.kaufteil_id))
+        agg = component_totals.setdefault(
+            key,
+            {
+                "component_type": "PURCHASED_PART",
+                "component_id": int(row.kaufteil_id),
+                "bezeichnung": row.snapshot_bezeichnung,
+                "teilenummer": "",
+                "effektive_jahresmenge": 0.0,
+            },
+        )
+        agg["effektive_jahresmenge"] = float(agg["effektive_jahresmenge"]) + eff
+
+    for row in ve_rows:
+        components.append(
+            {
+                "component_type": "PROCESS",
+                "component_id": row.veredelungsschritt_id,
+                "bezeichnung": row.snapshot_bezeichnung,
+                "teilenummer": "",
+                "menge_je_variante": float(row.mengenfaktor),
+                "effektive_jahresmenge": effective_component_jahresmenge(
+                    v_qty, float(row.mengenfaktor)
+                ),
             }
         )
 
-    # Losgröße aus bestehender Einzelteil-Kalkulation (nur Info, keine Überschreibung)
+    return components
+
+
+def _enrich_part_lot_sizes(db: Session, component_totals: dict[tuple[str, int], dict[str, Any]]) -> None:
     for key, agg in component_totals.items():
         if key[0] != "PART":
             continue
@@ -316,12 +301,65 @@ def build_family_mix_result(db: Session, family_id: int) -> dict[str, Any]:
             los if los > 0 else None,
         )
 
+
+def _build_mix_from_baugruppen(
+    db: Session,
+    *,
+    project_id: int,
+    baugruppen: list[Baugruppe],
+    meta: dict[str, Any],
+) -> dict[str, Any]:
+    project_qty = project_jahresstueckzahl(db, project_id)
+    participants = active_mix_participants(baugruppen)
+    shares = [float(b.variant_share_pct or 0) for b in participants]
+    validation = validate_active_share_sum(shares)
+
+    rows: list[dict[str, Any]] = []
+    component_totals: dict[tuple[str, int], dict[str, Any]] = {}
+    weighted_cost_sum = 0.0
+
+    for b in baugruppen:
+        in_mix = participates_in_project_mix(b)
+        share = float(b.variant_share_pct or 0) if (b.aktiv and in_mix) else 0.0
+        if b.aktiv and in_mix:
+            v_qty = variant_jahresmenge(project_qty, share)
+        elif b.aktiv and not in_mix:
+            # Legacy ohne Mix: volle Projektstückzahl (bestehendes Verhalten)
+            v_qty = int(b.jahresstueckzahl or project_qty)
+        else:
+            v_qty = 0
+
+        ergebnis = b.ergebnis if isinstance(b.ergebnis, dict) else {}
+        unit_cost = float(ergebnis.get("baugruppenpreis_je_stueck") or 0)
+        weighted_contrib = unit_cost * (share / 100.0) if (b.aktiv and in_mix) else 0.0
+        if b.aktiv and in_mix and validation.can_compute_full:
+            weighted_cost_sum += weighted_contrib
+
+        components = _component_rows_for_baugruppe(db, b, v_qty, component_totals)
+        rows.append(
+            {
+                "id": b.id,
+                "teilenummer": b.teilenummer,
+                "bezeichnung": b.name,
+                "anteil_prozent": float(b.variant_share_pct) if b.variant_share_pct is not None else None,
+                "aktiv": bool(b.aktiv),
+                "jahresmenge": v_qty,
+                "komponenten_anzahl": len(components),
+                "kosten_je_stueck": unit_cost,
+                "gewichteter_kostenbeitrag": (
+                    weighted_contrib if (in_mix and validation.can_compute_full) else None
+                ),
+                "komponenten": components,
+                "legacy_standalone": not in_mix,
+                "in_project_mix": in_mix,
+            }
+        )
+
+    _enrich_part_lot_sizes(db, component_totals)
+
     return {
-        "family_id": family.id,
-        "name": family.name,
-        "project_id": family.project_id,
-        "status": family.status,
-        "aktiv": family.aktiv,
+        **meta,
+        "project_id": project_id,
         "project_jahresstueckzahl": project_qty,
         "mix_status": validation.status,
         "mix_message": validation.message,
@@ -330,9 +368,90 @@ def build_family_mix_result(db: Session, family_id: int) -> dict[str, Any]:
         "active_share_sum_pct": validation.active_share_sum_pct,
         "missing_pct": validation.missing_pct,
         "overflow_pct": validation.overflow_pct,
-        "variants": variant_rows,
+        "baugruppen": rows,
+        # Alias für Legacy-Familien-API
+        "variants": rows,
         "aggregated_components": list(component_totals.values()),
         "gewichtete_kosten_pro_projektstueck": (
             round(weighted_cost_sum, 6) if validation.can_compute_full else None
         ),
     }
+
+
+def build_project_mix_result(db: Session, project_id: int) -> dict[str, Any]:
+    """Aktiver Variantenmix: alle Baugruppen eines Projekts mit optionalem Anteil."""
+    from app.models.project import Project
+
+    project = db.get(Project, project_id)
+    if project is None:
+        raise ValueError("Projekt nicht gefunden.")
+
+    baugruppen = list_project_baugruppen(db, project_id)
+    return _build_mix_from_baugruppen(
+        db,
+        project_id=project_id,
+        baugruppen=baugruppen,
+        meta={
+            "name": project.name,
+            "status": "aktiv" if project.active else "inaktiv",
+            "aktiv": bool(project.active),
+            "family_id": None,
+        },
+    )
+
+
+def build_family_mix_result(db: Session, family_id: int) -> dict[str, Any]:
+    """Legacy: Mix über family_id – fachlich abgelöst durch build_project_mix_result."""
+    from app.models.assembly_family import AssemblyFamily
+
+    family = db.get(AssemblyFamily, family_id)
+    if family is None:
+        raise ValueError("Baugruppenfamilie nicht gefunden.")
+
+    variants = list(
+        db.scalars(
+            select(Baugruppe)
+            .where(Baugruppe.family_id == family_id)
+            .options(selectinload(Baugruppe.assembly_positions))
+            .order_by(Baugruppe.id)
+        ).all()
+    )
+    return _build_mix_from_baugruppen(
+        db,
+        project_id=int(family.project_id),
+        baugruppen=variants,
+        meta={
+            "family_id": family.id,
+            "name": family.name,
+            "status": family.status,
+            "aktiv": family.aktiv,
+        },
+    )
+
+
+# Rückwärtskompatible Aliase
+active_variants = active_mix_participants
+
+
+def assert_unique_teilenummer(
+    db: Session,
+    family_id: int,
+    teilenummer: str,
+    *,
+    exclude_variant_id: int | None = None,
+) -> None:
+    """Legacy-Familien-API: Eindeutigkeit innerhalb einer Familie."""
+    from sqlalchemy import func
+
+    tn = (teilenummer or "").strip()
+    if not tn:
+        raise ValueError("Teilenummer ist erforderlich.")
+    stmt = select(Baugruppe).where(
+        Baugruppe.family_id == family_id,
+        func.lower(Baugruppe.teilenummer) == tn.lower(),
+    )
+    if exclude_variant_id is not None:
+        stmt = stmt.where(Baugruppe.id != exclude_variant_id)
+    existing = db.scalars(stmt).first()
+    if existing is not None:
+        raise ValueError("Die Teilenummer ist innerhalb dieser Baugruppenfamilie bereits vergeben.")

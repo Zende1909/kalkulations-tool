@@ -6,7 +6,6 @@ import { AuthProvider } from "./context/AuthContext";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import {
-  AssemblyFamilyPage,
   BaugruppenPage,
   BusinessCasePage,
   InvestitionenPage,
@@ -47,7 +46,7 @@ export default function App() {
               <Route path="spritzguss" element={<SpritzgussPage />} />
               <Route path="veredelung" element={<VeredelungPage />} />
               <Route path="baugruppen" element={<BaugruppenPage />} />
-              <Route path="baugruppen/familien" element={<AssemblyFamilyPage />} />
+              <Route path="baugruppen/familien" element={<Navigate to="/baugruppen" replace />} />
               <Route path="maschinenauslastung" element={<MaschinenauslastungPage />} />
               <Route path="investitionen" element={<InvestitionenPage />} />
               <Route path="business-case" element={<BusinessCasePage />} />

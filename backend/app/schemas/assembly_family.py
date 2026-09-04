@@ -88,13 +88,15 @@ class AssemblyVariantSummary(BaseModel):
     id: int
     teilenummer: str
     bezeichnung: str
-    anteil_prozent: float
+    anteil_prozent: float | None = None
     aktiv: bool
     jahresmenge: int
     komponenten_anzahl: int
     kosten_je_stueck: float
     gewichteter_kostenbeitrag: float | None = None
     komponenten: list[AssemblyVariantComponentRead] = Field(default_factory=list)
+    legacy_standalone: bool = False
+    in_project_mix: bool = True
 
 
 class AggregatedComponentRead(BaseModel):
@@ -108,7 +110,7 @@ class AggregatedComponentRead(BaseModel):
 
 
 class AssemblyFamilyMixRead(BaseModel):
-    family_id: int
+    family_id: int | None = None
     name: str
     project_id: int
     status: str
@@ -121,6 +123,7 @@ class AssemblyFamilyMixRead(BaseModel):
     active_share_sum_pct: float
     missing_pct: float
     overflow_pct: float
-    variants: list[AssemblyVariantSummary]
-    aggregated_components: list[AggregatedComponentRead]
+    variants: list[AssemblyVariantSummary] = Field(default_factory=list)
+    baugruppen: list[AssemblyVariantSummary] = Field(default_factory=list)
+    aggregated_components: list[AggregatedComponentRead] = Field(default_factory=list)
     gewichtete_kosten_pro_projektstueck: float | None = None

@@ -6,6 +6,7 @@ import {
   createBaugruppe,
   deleteBaugruppe,
   getBaugruppe,
+  getProjectAssemblyMix,
   listBaugruppen,
   updateBaugruppe,
 } from "../api/baugruppen";
@@ -45,6 +46,10 @@ import {
   type SelectedSpritzguss,
   type SelectedVeredelung,
 } from "../types/baugruppe";
+import {
+  mixStatusLabel,
+  type ProjectAssemblyMix,
+} from "../types/projectAssemblyMix";
 import { coerceFormDecimal, formatDecimalForInputDe } from "../utils/decimalInput";
 
 function euro(value: number | undefined | null): string {
@@ -142,6 +147,9 @@ export function BaugruppenPage() {
   const [laender, setLaender] = useState<Land[]>([]);
   const [werke, setWerke] = useState<Werk[]>([]);
   const [selectedLandId, setSelectedLandId] = useState<number | null>(null);
+  const [projectMix, setProjectMix] = useState<ProjectAssemblyMix | null>(null);
+  const [projectMixError, setProjectMixError] = useState<string | null>(null);
+  const [projectMixLoading, setProjectMixLoading] = useState(false);
 
   const formHierarchy = useMemo(
     (): CustomerProjectSelection => ({
@@ -378,6 +386,44 @@ export function BaugruppenPage() {
     };
   }, [form.project_id, form.customer_id, form.program_id, editId, loadedHierarchy.project_id]);
 
+  const computedShareJahresmenge = useMemo(() => {
+    if (form.variant_share_pct == null || form.jahresstueckzahl <= 0) return null;
+    const qty = form.jahresstueckzahl * form.variant_share_pct / 100;
+    if (!Number.isFinite(qty) || qty <= 0) return 0;
+    return Math.round(qty);
+  }, [form.variant_share_pct, form.jahresstueckzahl]);
+
+  const mixProjectId = form.project_id;
+
+  useEffect(() => {
+    if (mixProjectId == null) {
+      setProjectMix(null);
+      setProjectMixError(null);
+      setProjectMixLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setProjectMixLoading(true);
+    setProjectMixError(null);
+    getProjectAssemblyMix(mixProjectId)
+      .then((data) => {
+        if (!cancelled) setProjectMix(data);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setProjectMix(null);
+          setProjectMixError(err instanceof Error ? err.message : "Variantenmix konnte nicht geladen werden");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setProjectMixLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mixProjectId, list, editId]);
+
+
   const handleNew = () => {
     setEditId(null);
     setForm(emptyBaugruppeForm());
@@ -517,7 +563,9 @@ export function BaugruppenPage() {
       const wasNew = editId == null;
       // aktiv nie blind mitsenden – Reaktivierung nur über status=aktiv
       const { aktiv: _omitAktiv, ...saveBody } = calcPayload;
-      let updatePayload: Partial<typeof calcPayload> = saveBody;
+      let updatePayload: Partial<typeof calcPayload> & { clear_variant_share?: boolean } = {
+        ...saveBody,
+      };
       if (wasArchived && !reactivating) {
         // Archiviert bleibt archiviert, solange Status nicht auf Aktiv gesetzt wird
         const { status: _omitStatus, ...rest } = saveBody;
@@ -525,6 +573,9 @@ export function BaugruppenPage() {
       }
       if (reactivating) {
         updatePayload = { ...saveBody, status: "aktiv", aktiv: true };
+      }
+      if (editId != null && form.variant_share_pct == null) {
+        updatePayload = { ...updatePayload, clear_variant_share: true };
       }
       const saved =
         editId == null
@@ -546,6 +597,7 @@ export function BaugruppenPage() {
         program_id: nextHierarchy.program_id,
         werk_id: saved.werk_id ?? null,
         jahresstueckzahl: saved.jahresstueckzahl,
+        variant_share_pct: saved.variant_share_pct ?? null,
         beschreibung: saved.beschreibung,
         status: saved.status,
         aktiv: saved.aktiv,
@@ -645,6 +697,7 @@ export function BaugruppenPage() {
         program_id: nextHierarchy.program_id,
         werk_id: item.werk_id ?? null,
         jahresstueckzahl: item.jahresstueckzahl,
+        variant_share_pct: item.variant_share_pct ?? null,
         beschreibung: item.beschreibung,
         status: item.status,
         aktiv: item.aktiv,
@@ -962,6 +1015,33 @@ export function BaugruppenPage() {
                 )}
               </label>
               <label className="block text-sm">
+                <span className="text-gray-600">Anteil am Projekt (%)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="any"
+                  data-testid="baugruppe-variant-share"
+                  className="mt-1 w-full rounded border px-2 py-1.5"
+                  value={form.variant_share_pct ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setField("variant_share_pct", raw === "" ? null : Number(raw));
+                  }}
+                  placeholder="optional"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Leer = ohne Variantenmix (Legacy). Mit Wert nimmt die Baugruppe am Projektmix teil.
+                </p>
+                {computedShareJahresmenge != null && (
+                  <p className="mt-1 text-xs text-slate-700">
+                    Baugruppen-Jahresmenge:{" "}
+                    {computedShareJahresmenge.toLocaleString("de-DE")} Stück
+                    {" "}(= Projektstückzahl × Anteil / 100)
+                  </p>
+                )}
+              </label>
+              <label className="block text-sm">
                 <span className="text-gray-600">Status</span>
                 <select
                   className="mt-1 w-full rounded border px-2 py-1.5"
@@ -1186,6 +1266,126 @@ export function BaugruppenPage() {
         </div>
 
         <aside className="space-y-4">
+          {form.project_id != null && (
+            <section className="rounded-lg border border-gray-200 bg-white p-4">
+              <h3 className="mb-2 font-semibold text-gray-900">Projekt-Variantenmix</h3>
+              {projectMixLoading && (
+                <p className="text-sm text-gray-500">Mix wird geladen…</p>
+              )}
+              {projectMixError && (
+                <p className="text-sm text-red-700">{projectMixError}</p>
+              )}
+              {projectMix && !projectMixLoading && (
+                <div className="space-y-3 text-sm">
+                  <p className="text-gray-700">
+                    Anteile gesamt:{" "}
+                    <strong>
+                      {projectMix.active_share_sum_pct.toLocaleString("de-DE", {
+                        maximumFractionDigits: 2,
+                      })}{" "}
+                      %
+                    </strong>
+                  </p>
+                  <div
+                    className={`rounded-md border px-3 py-2 ${
+                      projectMix.mix_status === "complete"
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                        : projectMix.mix_status === "overflow"
+                          ? "border-red-200 bg-red-50 text-red-900"
+                          : "border-amber-200 bg-amber-50 text-amber-950"
+                    }`}
+                  >
+                    <p className="font-medium">
+                      Status: {mixStatusLabel(projectMix.mix_status)}
+                    </p>
+                    <p className="mt-1">{projectMix.mix_message}</p>
+                  </div>
+                  {projectMix.gewichtete_kosten_pro_projektstueck != null && (
+                    <p className="text-gray-800">
+                      Gewichtete Kosten / Projektstück:{" "}
+                      <strong>
+                        {euro(projectMix.gewichtete_kosten_pro_projektstueck)} €
+                      </strong>
+                    </p>
+                  )}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-xs">
+                      <thead className="border-b text-gray-500">
+                        <tr>
+                          <th className="py-1 pr-2 font-medium">Teilenr</th>
+                          <th className="py-1 pr-2 font-medium">Ausführung</th>
+                          <th className="py-1 pr-2 font-medium">Anteil</th>
+                          <th className="py-1 pr-2 font-medium">Jahresmenge</th>
+                          <th className="py-1 pr-2 font-medium">Aktiv</th>
+                          <th className="py-1 font-medium">Kosten</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(projectMix.baugruppen?.length
+                          ? projectMix.baugruppen
+                          : projectMix.variants
+                        ).map((row) => (
+                          <tr key={row.id} className="border-b border-gray-50">
+                            <td className="py-1.5 pr-2">
+                              <button
+                                type="button"
+                                className="text-left text-slate-800 hover:underline"
+                                onClick={() => void handleLoad(row.id)}
+                              >
+                                {row.teilenummer || "–"}
+                              </button>
+                            </td>
+                            <td className="py-1.5 pr-2">
+                              <button
+                                type="button"
+                                className="text-left hover:underline"
+                                onClick={() => void handleLoad(row.id)}
+                              >
+                                {row.bezeichnung}
+                                {row.legacy_standalone && (
+                                  <span className="ml-1 text-[10px] text-amber-800">
+                                    ohne Variantenmix
+                                  </span>
+                                )}
+                              </button>
+                            </td>
+                            <td className="py-1.5 pr-2 tabular-nums">
+                              {row.anteil_prozent == null
+                                ? "–"
+                                : `${row.anteil_prozent.toLocaleString("de-DE")} %`}
+                            </td>
+                            <td className="py-1.5 pr-2 tabular-nums">
+                              {row.jahresmenge.toLocaleString("de-DE")}
+                            </td>
+                            <td className="py-1.5 pr-2">{row.aktiv ? "ja" : "nein"}</td>
+                            <td className="py-1.5 tabular-nums">{euro(row.kosten_je_stueck)} €</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {projectMix.aggregated_components?.length > 0 && (
+                    <div>
+                      <p className="mb-1 font-medium text-gray-800">Aggregierte Komponenten</p>
+                      <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-gray-600">
+                        {projectMix.aggregated_components.slice(0, 12).map((c) => (
+                          <li key={`${c.component_type}-${c.component_id}`}>
+                            {c.bezeichnung || c.teilenummer || `#${c.component_id}`}:{" "}
+                            {c.effektive_jahresmenge.toLocaleString("de-DE")} / Jahr
+                            {c.losgroesse != null ? ` (Los ${c.losgroesse}` : ""}
+                            {c.anzahl_lose != null ? `, ${c.anzahl_lose} Lose)` : c.losgroesse != null ? ")" : ""}
+                          </li>
+                        ))}
+                        {projectMix.aggregated_components.length > 12 && (
+                          <li>… und {projectMix.aggregated_components.length - 12} weitere</li>
+                        )}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-semibold text-gray-900">Gespeicherte Baugruppen</h3>
@@ -1233,6 +1433,11 @@ export function BaugruppenPage() {
                       <span className="ml-2 text-gray-500">
                         {euro(item.baugruppenpreis_je_stueck)} €
                       </span>
+                      {item.variant_share_pct != null && (
+                        <span className="ml-2 text-xs text-slate-600">
+                          Anteil {item.variant_share_pct.toLocaleString("de-DE")} %
+                        </span>
+                      )}
                     </button>
                     {canWrite && (
                       <div className="flex shrink-0 gap-2">
