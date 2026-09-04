@@ -53,6 +53,10 @@ export function useEcharts(
       },
       { notMerge: true },
     );
+    // Nach Layout (z. B. aspect-ratio) einmal nachziehen.
+    requestAnimationFrame(() => {
+      chart.resize();
+    });
   }, [option]);
 
   return {

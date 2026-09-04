@@ -4,10 +4,11 @@ import {
   GAUGE_COLOR_CRITICAL,
   GAUGE_COLOR_POSITIVE,
   GAUGE_COLOR_WATCH,
-  GAUGE_SCALE_MARKS,
   GAUGE_SCALE_MAX,
+  buildGaugeScaleMarks,
   gaugeScaleMarkLeftPercent,
   getGaugeState,
+  niceGaugeScaleMax,
   valueToNeedleAngle,
 } from "../utils/businessCaseGauge";
 import { formatPercentOrDash } from "../pages/businessCaseFormatting";
@@ -19,6 +20,7 @@ describe("getGaugeState", () => {
     expect(state.zoneLabel).toBe("negativ");
     expect(state.zoneColor).toBe(GAUGE_COLOR_CRITICAL);
     expect(state.clampedValue).toBe(0);
+    expect(state.scaleMax).toBe(25);
     expect(state.needleAngle).toBe(180);
     expect(state.isBelowScale).toBe(true);
     expect(state.actualValue).toBe(-3.2);
@@ -58,35 +60,41 @@ describe("getGaugeState", () => {
     expect(state.zoneLabel).toBe("positiv");
   });
 
-  it("places 25 % at the right end of the scale", () => {
+  it("places 25 % at the right end of the base scale", () => {
     const state = getGaugeState(25);
     expect(state.zone).toBe("positive");
     expect(state.clampedValue).toBe(25);
+    expect(state.scaleMax).toBe(25);
     expect(state.needleAngle).toBe(0);
     expect(state.isAboveScale).toBe(false);
   });
 
-  it("keeps values above 25 % visible but clamps the needle", () => {
+  it("extends the scale above 25 % so the needle shows the real value", () => {
     const state = getGaugeState(31);
     expect(state.actualValue).toBe(31);
-    expect(state.clampedValue).toBe(25);
-    expect(state.needleAngle).toBe(0);
+    expect(state.scaleMax).toBe(35);
+    expect(state.clampedValue).toBe(31);
     expect(state.isAboveScale).toBe(true);
     expect(state.zoneLabel).toBe("über Skala");
-    expect(state.zoneColor).toBe("#334155");
+    expect(state.scaleMarks).toEqual([0, 5, 9, 25, 35]);
   });
 
-  it("keeps distinct actual values for 37.26 % and 59.19 % while clamping needles", () => {
+  it("keeps distinct actual values for 37.26 % and 59.19 % with matching needles", () => {
     const ebit = getGaugeState(37.26);
     const roi = getGaugeState(59.19);
     expect(ebit.actualValue).toBe(37.26);
     expect(roi.actualValue).toBe(59.19);
     expect(formatPercentOrDash(ebit.actualValue)).toBe("37,26 %");
     expect(formatPercentOrDash(roi.actualValue)).toBe("59,19 %");
-    expect(ebit.clampedValue).toBe(GAUGE_SCALE_MAX);
-    expect(roi.clampedValue).toBe(GAUGE_SCALE_MAX);
+    expect(ebit.scaleMax).toBe(40);
+    expect(roi.scaleMax).toBe(60);
+    expect(ebit.clampedValue).toBe(37.26);
+    expect(roi.clampedValue).toBe(59.19);
     expect(ebit.zoneLabel).toBe("über Skala");
     expect(roi.zoneLabel).toBe("über Skala");
+    expect(ebit.needleAngle).toBeGreaterThan(0);
+    expect(roi.needleAngle).toBeGreaterThan(0);
+    expect(ebit.needleAngle).not.toBe(roi.needleAngle);
   });
 
   it("returns unavailable for null/NaN/Infinity without invalid angles", () => {
@@ -103,20 +111,18 @@ describe("getGaugeState", () => {
     expect(valueToNeedleAngle(0)).toBe(180);
     expect(valueToNeedleAngle(12.5)).toBe(90);
     expect(valueToNeedleAngle(25)).toBe(0);
+    expect(valueToNeedleAngle(20, 40)).toBe(90);
     expect(Number.isFinite(valueToNeedleAngle(Number.NaN))).toBe(true);
   });
 
-  it("exposes scale marks 0 / 5 / 9 / 25 with finite left percentages", () => {
-    expect([...GAUGE_SCALE_MARKS]).toEqual([0, 5, 9, 25]);
-    for (const mark of GAUGE_SCALE_MARKS) {
-      const left = gaugeScaleMarkLeftPercent(mark);
-      expect(Number.isFinite(left)).toBe(true);
-      expect(left).toBeGreaterThanOrEqual(0);
-      expect(left).toBeLessThanOrEqual(100);
-    }
-    expect(gaugeScaleMarkLeftPercent(0)).toBe(0);
-    expect(gaugeScaleMarkLeftPercent(25)).toBe(100);
-    expect(gaugeScaleMarkLeftPercent(5)).toBeCloseTo(20);
-    expect(gaugeScaleMarkLeftPercent(9)).toBeCloseTo(36);
+  it("builds scale marks and nice upper bounds", () => {
+    expect(niceGaugeScaleMax(12)).toBe(GAUGE_SCALE_MAX);
+    expect(niceGaugeScaleMax(37.26)).toBe(40);
+    expect(niceGaugeScaleMax(59.19)).toBe(60);
+    expect(buildGaugeScaleMarks(25)).toEqual([0, 5, 9, 25]);
+    expect(buildGaugeScaleMarks(40)).toEqual([0, 5, 9, 25, 40]);
+    expect(gaugeScaleMarkLeftPercent(0, 40)).toBe(0);
+    expect(gaugeScaleMarkLeftPercent(40, 40)).toBe(100);
+    expect(gaugeScaleMarkLeftPercent(20, 40)).toBeCloseTo(50);
   });
 });

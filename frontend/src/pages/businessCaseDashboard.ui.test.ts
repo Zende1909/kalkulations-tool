@@ -62,11 +62,19 @@ describe("Business Case dashboard charts UI", () => {
 
   it("shows above-scale note only for values over 25 % and keeps accessibility label", () => {
     expect(gaugeSrc).toMatch(/state\.isAboveScale/);
-    expect(gaugeSrc).toMatch(/Der Zeiger ist am oberen Skalenende begrenzt/);
+    expect(gaugeSrc).toMatch(/Skala bis \{state\.scaleMax\}/);
     expect(gaugeSrc).toMatch(/aria-label=\{ariaLabel\}/);
     expect(gaugeSrc).toMatch(/Status \$\{state\.zoneLabel\}/);
     expect(gaugeSrc).toMatch(/gauge-scale-labels/);
-    expect(gaugeSrc).toMatch(/GAUGE_SCALE_MARKS/);
+    expect(gaugeSrc).toMatch(/state\.scaleMarks/);
+    expect(gaugeSrc).toMatch(/aspect-\[2\/1\]/);
+  });
+
+  it("matches full page width like Details/Baugruppen sections", () => {
+    expect(pageSrc).toMatch(
+      /section className="w-full space-y-3 rounded-lg border border-slate-200/,
+    );
+    expect(pageSrc).not.toMatch(/max-w-6xl/);
   });
 
   it("uses equal-height card layout with responsive legend and stacked mobile gauges", () => {

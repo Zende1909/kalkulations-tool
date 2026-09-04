@@ -20,9 +20,9 @@ function sanitizeNumber(value: number): number {
 }
 
 /**
- * ECharts-Option nur für Gauge-Geometrie:
- * Farbzonen, Zeiger, Anker. Kein title/detail/axisLabel.
- * Prozentwert, Label und Status liegen außerhalb als HTML.
+ * ECharts nur Gauge-Geometrie (Zonen, Zeiger, Anker).
+ * Kein title/detail/axisLabel – Werte liegen im HTML.
+ * Skala: mindestens 0–25 %, bei höheren Werten dynamisch erweitert.
  */
 export function buildProfitabilityGaugeOption(
   valuePercent: number | null | undefined,
@@ -31,8 +31,24 @@ export function buildProfitabilityGaugeOption(
   if (!state.isAvailable) return null;
 
   const clamped = sanitizeNumber(state.clampedValue);
-  const criticalRatio = GAUGE_ZONE_CRITICAL_MAX / GAUGE_SCALE_MAX;
-  const watchRatio = GAUGE_ZONE_WATCH_MAX / GAUGE_SCALE_MAX;
+  const scaleMax = state.scaleMax;
+  const criticalRatio = GAUGE_ZONE_CRITICAL_MAX / scaleMax;
+  const watchRatio = GAUGE_ZONE_WATCH_MAX / scaleMax;
+  const positiveRatio = GAUGE_SCALE_MAX / scaleMax;
+
+  const axisColors: Array<[number, string]> =
+    scaleMax > GAUGE_SCALE_MAX
+      ? [
+          [criticalRatio, GAUGE_COLOR_CRITICAL],
+          [watchRatio, GAUGE_COLOR_WATCH],
+          [positiveRatio, GAUGE_COLOR_POSITIVE],
+          [1, "#64748b"],
+        ]
+      : [
+          [criticalRatio, GAUGE_COLOR_CRITICAL],
+          [watchRatio, GAUGE_COLOR_WATCH],
+          [1, GAUGE_COLOR_POSITIVE],
+        ];
 
   return {
     animationDuration: 280,
@@ -41,26 +57,20 @@ export function buildProfitabilityGaugeOption(
         type: "gauge",
         startAngle: 180,
         endAngle: 0,
-        // Halbkreis sitzt unten im Container; Text liegt darunter im HTML.
-        center: ["50%", "100%"],
-        radius: "100%",
+        center: ["50%", "88%"],
+        radius: "84%",
         min: 0,
-        max: GAUGE_SCALE_MAX,
+        max: scaleMax,
         splitNumber: 1,
         axisLine: {
           roundCap: true,
           lineStyle: {
-            width: 14,
-            color: [
-              [criticalRatio, GAUGE_COLOR_CRITICAL],
-              [watchRatio, GAUGE_COLOR_WATCH],
-              [1, GAUGE_COLOR_POSITIVE],
-            ],
+            width: 18,
+            color: axisColors,
           },
         },
         pointer: {
-          icon: "path://M2.9,0.7L2.9,0.7c1.4,0,2.6,1.2,2.6,2.6v19.8c0,1.4-1.2,2.6-2.6,2.6l0,0c-1.4,0-2.6-1.2-2.6-2.6V3.3C0.3,1.9,1.4,0.7,2.9,0.7z",
-          length: "68%",
+          length: "62%",
           width: 5,
           offsetCenter: [0, 0],
           itemStyle: { color: "#0f172a" },
@@ -69,7 +79,11 @@ export function buildProfitabilityGaugeOption(
           show: true,
           showAbove: true,
           size: 10,
-          itemStyle: { color: "#0f172a", borderWidth: 2, borderColor: "#ffffff" },
+          itemStyle: {
+            color: "#0f172a",
+            borderWidth: 2,
+            borderColor: "#ffffff",
+          },
         },
         axisTick: { show: false },
         splitLine: { show: false },

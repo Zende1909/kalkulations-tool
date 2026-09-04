@@ -6,43 +6,56 @@ import {
   GAUGE_COLOR_CRITICAL,
   GAUGE_COLOR_POSITIVE,
   GAUGE_COLOR_WATCH,
-  GAUGE_SCALE_MARKS,
+  GAUGE_SCALE_LABEL_INSET_PERCENT,
   gaugeScaleMarkLeftPercent,
   getGaugeState,
 } from "../../utils/businessCaseGauge";
 import { buildProfitabilityGaugeOption } from "../../utils/businessCaseEchartsOptions";
 
+/** Halbkreis-Container 2:1 – Radius bezieht sich auf die Höhe. */
 function GaugeChartGeometry({ option }: { option: EChartsCoreOption }) {
   const { containerProps } = useEcharts(option, {
-    className: "h-[7.5rem] w-full min-w-0 sm:h-[8.25rem]",
+    className: "aspect-[2/1] h-auto w-full min-w-0",
     "aria-hidden": true,
   });
   return <div {...containerProps} />;
 }
 
-function GaugeScaleLabels() {
+function GaugeScaleLabels({
+  marks,
+  scaleMax,
+}: {
+  marks: number[];
+  scaleMax: number;
+}) {
+  const inset = GAUGE_SCALE_LABEL_INSET_PERCENT;
+
   return (
     <div
       className="gauge-scale-labels relative mt-1 h-4 w-full min-w-0"
       aria-hidden="true"
       data-testid="gauge-scale-labels"
     >
-      {GAUGE_SCALE_MARKS.map((mark) => {
-        const left = gaugeScaleMarkLeftPercent(mark);
-        const align =
-          mark === GAUGE_SCALE_MARKS[0]
-            ? "translateX(0)"
-            : mark === GAUGE_SCALE_MARKS[GAUGE_SCALE_MARKS.length - 1]
-              ? "translateX(-100%)"
-              : "translateX(-50%)";
+      {marks.map((mark) => {
+        const alongArc = gaugeScaleMarkLeftPercent(mark, scaleMax);
+        const left = inset + (alongArc / 100) * (100 - 2 * inset);
+        const isStart = mark === marks[0];
+        const isEnd = mark === marks[marks.length - 1];
         return (
           <span
             key={mark}
-            className="absolute top-0 text-[10px] tabular-nums leading-none text-slate-500"
-            style={{ left: `${left}%`, transform: align }}
+            className="absolute top-0 whitespace-nowrap text-[10px] tabular-nums leading-none text-slate-500"
+            style={{
+              left: `${left}%`,
+              transform: isStart
+                ? "translateX(0)"
+                : isEnd
+                  ? "translateX(-100%)"
+                  : "translateX(-50%)",
+            }}
             data-scale-mark={mark}
           >
-            {mark} %
+            {mark}&nbsp;%
           </span>
         );
       })}
@@ -130,42 +143,39 @@ export function EchartsProfitabilityGauge({
       ) : (
         <>
           <div
-            className="gauge-chart-area mt-3 min-w-0 overflow-visible"
+            className="gauge-chart-area mx-auto mt-3 w-full min-w-0 max-w-[22rem] overflow-visible"
             role="img"
             aria-label={ariaLabel}
           >
             <GaugeChartGeometry option={option} />
-            <GaugeScaleLabels />
+            <GaugeScaleLabels marks={state.scaleMarks} scaleMax={state.scaleMax} />
           </div>
 
-          <div className="gauge-value-area mt-3 flex min-w-0 flex-col items-center text-center">
+          <div className="gauge-value-area mt-3 flex min-w-0 flex-col items-center gap-0.5 text-center">
             <strong
-              className="gauge-value text-[2rem] font-bold leading-none tabular-nums tracking-tight sm:text-[2.125rem]"
-              style={{ color: state.zoneColor }}
+              className="gauge-value text-[2rem] font-bold leading-none tabular-nums tracking-tight text-slate-900 sm:text-[2.25rem]"
               data-testid="gauge-value"
             >
               {displayValue}
             </strong>
             <span
-              className="gauge-label mt-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500"
+              className="gauge-label text-xs font-semibold uppercase tracking-wide text-slate-500"
               data-testid="gauge-label"
             >
               {label}
             </span>
-            <span
-              className={`gauge-status mt-1 text-xs font-semibold ${statusBadgeClass(state.zoneLabel, state.zone)} rounded-md border px-2 py-0.5`}
-              data-testid="gauge-status"
-            >
+            <span className="sr-only" data-testid="gauge-status">
               {state.zoneLabel}
             </span>
           </div>
 
           {state.isAboveScale ? (
             <p
-              className="gauge-note mt-2 text-center text-xs leading-snug text-slate-600"
+              className="gauge-note mt-2 text-center text-xs leading-snug text-slate-500"
               data-testid="gauge-above-scale-note"
             >
-              Der Zeiger ist am oberen Skalenende begrenzt.
+              Referenzzonen 0–25&nbsp;%. Skala bis {state.scaleMax}&nbsp;% erweitert, damit der
+              Zeiger den Wert {displayValue} zeigt.
             </p>
           ) : null}
 
@@ -179,7 +189,7 @@ export function EchartsProfitabilityGauge({
                 style={{ background: GAUGE_COLOR_CRITICAL }}
                 aria-hidden="true"
               />
-              <span>0–5 % kritisch</span>
+              <span>0–5&nbsp;% kritisch</span>
             </div>
             <div className="inline-flex min-w-0 items-center gap-1.5 text-xs text-slate-600 sm:justify-center">
               <span
@@ -187,7 +197,7 @@ export function EchartsProfitabilityGauge({
                 style={{ background: GAUGE_COLOR_WATCH }}
                 aria-hidden="true"
               />
-              <span>5–9 % beobachten</span>
+              <span>5–9&nbsp;% beobachten</span>
             </div>
             <div className="inline-flex min-w-0 items-center gap-1.5 text-xs text-slate-600 sm:justify-end">
               <span
@@ -195,7 +205,7 @@ export function EchartsProfitabilityGauge({
                 style={{ background: GAUGE_COLOR_POSITIVE }}
                 aria-hidden="true"
               />
-              <span>9–25 % positiv</span>
+              <span>9–25&nbsp;% positiv</span>
             </div>
           </div>
         </>

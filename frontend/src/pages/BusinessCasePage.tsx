@@ -723,7 +723,7 @@ export function BusinessCasePage() {
 
       {data && (
         <>
-          <section className="mx-auto w-full max-w-6xl space-y-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 sm:space-y-4 sm:p-4">
+          <section className="w-full space-y-3 rounded-lg border border-slate-200 bg-slate-50/80 p-4 sm:space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <h3 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
