@@ -18,7 +18,7 @@ function KpiTile({
   hint?: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm ring-1 ring-slate-900/5">
       <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
       <div className="mt-1 text-xl font-bold tabular-nums tracking-tight text-slate-900 sm:text-2xl">
         {value}
@@ -44,7 +44,7 @@ export function BusinessCaseKpiStrip({
 
   return (
     <div
-      className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+      className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4"
       data-testid="business-case-kpi-strip"
     >
       <KpiTile

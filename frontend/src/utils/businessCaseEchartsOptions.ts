@@ -19,7 +19,11 @@ function sanitizeNumber(value: number): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-/** ECharts-Option für den Profitabilitäts-Gauge. Wert/Label/Status liegen außerhalb als HTML. */
+/**
+ * ECharts-Option nur für Gauge-Geometrie:
+ * Farbzonen, Zeiger, Anker. Kein title/detail/axisLabel.
+ * Prozentwert, Label und Status liegen außerhalb als HTML.
+ */
 export function buildProfitabilityGaugeOption(
   valuePercent: number | null | undefined,
 ): EChartsCoreOption | null {
@@ -31,20 +35,22 @@ export function buildProfitabilityGaugeOption(
   const watchRatio = GAUGE_ZONE_WATCH_MAX / GAUGE_SCALE_MAX;
 
   return {
-    animationDuration: 300,
+    animationDuration: 280,
     series: [
       {
         type: "gauge",
         startAngle: 180,
         endAngle: 0,
-        center: ["50%", "72%"],
-        radius: "95%",
+        // Halbkreis sitzt unten im Container; Text liegt darunter im HTML.
+        center: ["50%", "100%"],
+        radius: "100%",
         min: 0,
         max: GAUGE_SCALE_MAX,
-        splitNumber: 5,
+        splitNumber: 1,
         axisLine: {
+          roundCap: true,
           lineStyle: {
-            width: 18,
+            width: 14,
             color: [
               [criticalRatio, GAUGE_COLOR_CRITICAL],
               [watchRatio, GAUGE_COLOR_WATCH],
@@ -54,32 +60,20 @@ export function buildProfitabilityGaugeOption(
         },
         pointer: {
           icon: "path://M2.9,0.7L2.9,0.7c1.4,0,2.6,1.2,2.6,2.6v19.8c0,1.4-1.2,2.6-2.6,2.6l0,0c-1.4,0-2.6-1.2-2.6-2.6V3.3C0.3,1.9,1.4,0.7,2.9,0.7z",
-          length: "62%",
-          width: 6,
+          length: "68%",
+          width: 5,
           offsetCenter: [0, 0],
           itemStyle: { color: "#0f172a" },
         },
         anchor: {
           show: true,
           showAbove: true,
-          size: 12,
-          itemStyle: { color: "#0f172a", borderWidth: 2, borderColor: "#f8fafc" },
+          size: 10,
+          itemStyle: { color: "#0f172a", borderWidth: 2, borderColor: "#ffffff" },
         },
         axisTick: { show: false },
-        splitLine: {
-          length: 10,
-          distance: -22,
-          lineStyle: { width: 2, color: "#1e293b" },
-        },
-        axisLabel: {
-          distance: -36,
-          color: "#64748b",
-          fontSize: 11,
-          formatter: (value: number) => {
-            const marks = [0, GAUGE_ZONE_CRITICAL_MAX, GAUGE_ZONE_WATCH_MAX, GAUGE_SCALE_MAX];
-            return marks.includes(value) ? `${value}` : "";
-          },
-        },
+        splitLine: { show: false },
+        axisLabel: { show: false },
         title: { show: false },
         detail: { show: false },
         data: [{ value: clamped }],
@@ -103,11 +97,13 @@ export function buildRevenueBarOption(
   const lastIndex = values.length - 1;
 
   return {
-    animationDuration: 300,
-    grid: { left: 56, right: 12, top: 16, bottom: 28 },
+    animationDuration: 280,
+    grid: { left: 52, right: 8, top: 12, bottom: 24 },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
+      show: true,
+      alwaysShowContent: false,
       formatter: (params: unknown) => {
         const item = Array.isArray(params) ? params[0] : params;
         if (!item || typeof item !== "object") return "";
@@ -148,10 +144,10 @@ export function buildRevenueBarOption(
           value: v,
           itemStyle: {
             color: index === lastIndex ? "#1d4ed8" : "#3b82f6",
-            borderRadius: [6, 6, 0, 0],
+            borderRadius: [4, 4, 0, 0],
           },
         })),
-        barMaxWidth: 40,
+        barMaxWidth: 36,
       },
     ],
   };

@@ -723,16 +723,13 @@ export function BusinessCasePage() {
 
       {data && (
         <>
-          <section className="mx-auto w-full max-w-6xl space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700">
-                  Business Case
-                </p>
-                <h3 className="mt-1 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+          <section className="mx-auto w-full max-w-6xl space-y-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 sm:space-y-4 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
                   Business-Case-Dashboard
                 </h3>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-0.5 truncate text-sm text-slate-600">
                   {data.customer} / {data.program} / {data.project}
                 </p>
               </div>
@@ -764,7 +761,7 @@ export function BusinessCasePage() {
 
             <RevenueDevelopmentChart rows={data.revenue_by_year ?? []} />
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 md:gap-4 lg:grid-cols-2">
               <ProfitabilityGauge
                 label="EBIT"
                 subtitle="Profitabilität"

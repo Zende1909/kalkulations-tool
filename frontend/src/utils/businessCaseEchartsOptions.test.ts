@@ -7,28 +7,40 @@ import {
 } from "./businessCaseEchartsOptions";
 import { buildRevenueChartPoints } from "./businessCaseRevenueChart";
 
+function gaugeSeries(option: NonNullable<ReturnType<typeof buildProfitabilityGaugeOption>>) {
+  return (option.series as Array<Record<string, unknown>>)[0];
+}
+
 describe("businessCaseEchartsOptions", () => {
-  it("builds an EBIT/ROI gauge option with clamped pointer value", () => {
+  it("builds gauge geometry without title/detail/axisLabel text overlays", () => {
     const option = buildProfitabilityGaugeOption(31);
     expect(option).not.toBeNull();
-    const series = (option?.series as Array<Record<string, unknown>>)[0];
+    const series = gaugeSeries(option!);
     expect(series.type).toBe("gauge");
+    expect(series.startAngle).toBe(180);
+    expect(series.endAngle).toBe(0);
     expect(series.min).toBe(0);
     expect(series.max).toBe(25);
     expect(series.detail).toEqual({ show: false });
     expect(series.title).toEqual({ show: false });
+    expect(series.axisLabel).toEqual({ show: false });
+    expect(series.axisTick).toEqual({ show: false });
+    expect(series.splitLine).toEqual({ show: false });
     expect((series.data as Array<{ value: number }>)[0].value).toBe(25);
   });
 
-  it("clamps negative values to 0 for the needle", () => {
+  it("clamps negative values to 0 for the needle without changing geometry validity", () => {
     const option = buildProfitabilityGaugeOption(-4);
-    const series = (option?.series as Array<Record<string, unknown>>)[0];
-    expect((series.data as Array<{ value: number }>)[0].value).toBe(0);
+    const series = gaugeSeries(option!);
+    const value = (series.data as Array<{ value: number }>)[0].value;
+    expect(value).toBe(0);
+    expect(Number.isFinite(value)).toBe(true);
+    expect(value).not.toBe(Number.NaN);
   });
 
   it("uses orange band start at 5 % and green at 9 %", () => {
     const option = buildProfitabilityGaugeOption(5);
-    const series = (option?.series as Array<Record<string, unknown>>)[0];
+    const series = gaugeSeries(option!);
     const colors = (series.axisLine as { lineStyle: { color: Array<[number, string]> } }).lineStyle
       .color;
     expect(colors[0][0]).toBeCloseTo(5 / 25);
@@ -38,10 +50,19 @@ describe("businessCaseEchartsOptions", () => {
     expect(colors[2][1]).toBe("#16A34A");
   });
 
-  it("returns null for unavailable values", () => {
+  it("returns null for unavailable values and never emits Infinity/NaN needle data", () => {
     expect(buildProfitabilityGaugeOption(null)).toBeNull();
     expect(buildProfitabilityGaugeOption(Number.NaN)).toBeNull();
     expect(buildProfitabilityGaugeOption(Number.POSITIVE_INFINITY)).toBeNull();
+
+    for (const value of [0, 5, 9, 12.5, 25, 37.26, 59.19, -1]) {
+      const option = buildProfitabilityGaugeOption(value);
+      const series = gaugeSeries(option!);
+      const needle = (series.data as Array<{ value: number }>)[0].value;
+      expect(Number.isFinite(needle)).toBe(true);
+      expect(needle).toBeGreaterThanOrEqual(0);
+      expect(needle).toBeLessThanOrEqual(25);
+    }
   });
 
   it("sanitizes NaN/Infinity before chart use", () => {
@@ -50,7 +71,7 @@ describe("businessCaseEchartsOptions", () => {
     expect(sanitizeChartNumber(12.5)).toBe(12.5);
   });
 
-  it("builds one bar per chronological year", () => {
+  it("builds one bar per chronological year with hover-only tooltip", () => {
     const points = buildRevenueChartPoints([
       {
         calendar_year: 2028,
@@ -68,7 +89,10 @@ describe("businessCaseEchartsOptions", () => {
     const option = buildRevenueBarOption(points, "eur", "tatsächlich");
     const xAxis = option.xAxis as { data: string[] };
     const series = (option.series as Array<{ data: Array<{ value: number }> }>)[0];
+    const tooltip = option.tooltip as { alwaysShowContent?: boolean; show?: boolean };
     expect(xAxis.data).toEqual(["2026", "2028"]);
     expect(series.data.map((d) => d.value)).toEqual([100, 300]);
+    expect(tooltip.alwaysShowContent).toBe(false);
+    expect(tooltip.show).toBe(true);
   });
 });

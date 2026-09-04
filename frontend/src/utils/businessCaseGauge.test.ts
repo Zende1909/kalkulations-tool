@@ -4,9 +4,13 @@ import {
   GAUGE_COLOR_CRITICAL,
   GAUGE_COLOR_POSITIVE,
   GAUGE_COLOR_WATCH,
+  GAUGE_SCALE_MARKS,
+  GAUGE_SCALE_MAX,
+  gaugeScaleMarkLeftPercent,
   getGaugeState,
   valueToNeedleAngle,
 } from "../utils/businessCaseGauge";
+import { formatPercentOrDash } from "../pages/businessCaseFormatting";
 
 describe("getGaugeState", () => {
   it("marks values below 0 % as negativ and clamps needle to 0 %", () => {
@@ -72,6 +76,19 @@ describe("getGaugeState", () => {
     expect(state.zoneColor).toBe("#334155");
   });
 
+  it("keeps distinct actual values for 37.26 % and 59.19 % while clamping needles", () => {
+    const ebit = getGaugeState(37.26);
+    const roi = getGaugeState(59.19);
+    expect(ebit.actualValue).toBe(37.26);
+    expect(roi.actualValue).toBe(59.19);
+    expect(formatPercentOrDash(ebit.actualValue)).toBe("37,26 %");
+    expect(formatPercentOrDash(roi.actualValue)).toBe("59,19 %");
+    expect(ebit.clampedValue).toBe(GAUGE_SCALE_MAX);
+    expect(roi.clampedValue).toBe(GAUGE_SCALE_MAX);
+    expect(ebit.zoneLabel).toBe("über Skala");
+    expect(roi.zoneLabel).toBe("über Skala");
+  });
+
   it("returns unavailable for null/NaN/Infinity without invalid angles", () => {
     for (const value of [null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
       const state = getGaugeState(value as number | null | undefined);
@@ -87,5 +104,19 @@ describe("getGaugeState", () => {
     expect(valueToNeedleAngle(12.5)).toBe(90);
     expect(valueToNeedleAngle(25)).toBe(0);
     expect(Number.isFinite(valueToNeedleAngle(Number.NaN))).toBe(true);
+  });
+
+  it("exposes scale marks 0 / 5 / 9 / 25 with finite left percentages", () => {
+    expect([...GAUGE_SCALE_MARKS]).toEqual([0, 5, 9, 25]);
+    for (const mark of GAUGE_SCALE_MARKS) {
+      const left = gaugeScaleMarkLeftPercent(mark);
+      expect(Number.isFinite(left)).toBe(true);
+      expect(left).toBeGreaterThanOrEqual(0);
+      expect(left).toBeLessThanOrEqual(100);
+    }
+    expect(gaugeScaleMarkLeftPercent(0)).toBe(0);
+    expect(gaugeScaleMarkLeftPercent(25)).toBe(100);
+    expect(gaugeScaleMarkLeftPercent(5)).toBeCloseTo(20);
+    expect(gaugeScaleMarkLeftPercent(9)).toBeCloseTo(36);
   });
 });

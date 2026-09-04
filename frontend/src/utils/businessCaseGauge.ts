@@ -5,9 +5,23 @@ export const GAUGE_SCALE_MAX = 25;
 export const GAUGE_ZONE_CRITICAL_MAX = 5;
 export const GAUGE_ZONE_WATCH_MAX = 9;
 
+/** Sichtbare Skalenmarken unterhalb der Gauge-Geometrie (HTML, nicht ECharts). */
+export const GAUGE_SCALE_MARKS = [
+  GAUGE_SCALE_MIN,
+  GAUGE_ZONE_CRITICAL_MAX,
+  GAUGE_ZONE_WATCH_MAX,
+  GAUGE_SCALE_MAX,
+] as const;
+
 export const GAUGE_COLOR_CRITICAL = "#DC2626";
 export const GAUGE_COLOR_WATCH = "#D97706";
 export const GAUGE_COLOR_POSITIVE = "#16A34A";
+
+/** Horizontale Position einer Skalenmarke entlang der Halbkreis-Basis (0–100 %). */
+export function gaugeScaleMarkLeftPercent(mark: number): number {
+  const clamped = Math.min(Math.max(mark, GAUGE_SCALE_MIN), GAUGE_SCALE_MAX);
+  return (clamped / GAUGE_SCALE_MAX) * 100;
+}
 
 export type GaugeZone = "critical" | "watch" | "positive" | "unavailable";
 

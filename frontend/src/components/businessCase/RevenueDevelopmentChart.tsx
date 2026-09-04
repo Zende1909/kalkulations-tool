@@ -12,9 +12,17 @@ import {
   sumDisplayRevenue,
 } from "../../utils/businessCaseRevenueChart";
 
-function RevenueBarHost({ option }: { option: EChartsCoreOption }) {
+function RevenueBarHost({
+  option,
+  compact,
+}: {
+  option: EChartsCoreOption;
+  compact: boolean;
+}) {
   const { containerProps } = useEcharts(option, {
-    className: "h-48 w-full min-w-0",
+    className: compact
+      ? "h-36 w-full min-w-0 sm:h-40"
+      : "h-40 w-full min-w-0 sm:h-44",
     "aria-hidden": true,
   });
   return <div {...containerProps} />;
@@ -37,6 +45,7 @@ export function RevenueDevelopmentChart({
     points.find((p) => p.series !== "none")?.series === "bottom"
       ? "Bottom Price"
       : "tatsächlich";
+  const compact = points.length <= 4;
 
   const option = useMemo(
     () => (hasData ? buildRevenueBarOption(points, scale, seriesLabel) : null),
@@ -44,9 +53,9 @@ export function RevenueDevelopmentChart({
   );
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <h4 className="text-base font-semibold text-slate-900">Umsatzentwicklung</h4>
           <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
             Umsatz je Kalenderjahr aus Projektstückzahl × Stückpreis ({seriesLabel}). Einmalige
@@ -66,15 +75,17 @@ export function RevenueDevelopmentChart({
       </div>
 
       {!hasData || option == null ? (
-        <p className="mt-5 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
+        <p className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
           Für den ausgewählten Business Case liegen noch keine Umsatzwerte vor.
         </p>
       ) : (
         <>
-          <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(0,1fr)_180px]">
-            <RevenueBarHost option={option} />
+          <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_168px] lg:items-start">
+            <div className="min-w-0 overflow-visible">
+              <RevenueBarHost option={option} compact={compact} />
+            </div>
 
-            <aside className="hidden rounded-lg border border-slate-100 bg-slate-50/80 p-3 lg:block">
+            <aside className="hidden min-w-0 rounded-lg border border-slate-100 bg-slate-50/80 p-3 lg:block">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 Jahreswerte
               </p>
@@ -82,7 +93,7 @@ export function RevenueDevelopmentChart({
                 {points.map((p) => (
                   <li
                     key={p.calendar_year}
-                    className="flex items-baseline justify-between gap-2 text-xs"
+                    className="flex min-w-0 items-baseline justify-between gap-2 text-xs"
                   >
                     <span className="text-slate-600">{p.calendar_year}</span>
                     <span className="font-semibold tabular-nums text-slate-900">
