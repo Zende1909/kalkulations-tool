@@ -27,17 +27,28 @@ describe("Business Case dashboard charts UI", () => {
     expect(pageSrc).toMatch(/RevenueDevelopmentChart/);
     expect(pageSrc).toMatch(/ProfitabilityGauge/);
     expect(pageSrc).toMatch(/ebit_actual_total_pct/);
+    expect(pageSrc).toMatch(/ebit_bottom_total_pct/);
     expect(pageSrc).toMatch(/roi_incl_capex_actual_pct/);
     expect(pageSrc).toMatch(/revenue_by_year/);
     expect(pageSrc).toMatch(/businessCaseXlsxUrl|exportExcel/);
     expect(pageSrc).toMatch(/businessCasePdfUrl|exportPdf/);
   });
 
-  it("uses one reusable gauge component for EBIT and ROI", () => {
+  it("uses one reusable gauge for EBIT, EBIT Bottom Price and ROI", () => {
     expect(gaugeSrc).toMatch(/export function EchartsProfitabilityGauge/);
     expect(gaugeSrc).toMatch(/export const ProfitabilityGauge = EchartsProfitabilityGauge/);
     const gaugeUsages = pageSrc.match(/<ProfitabilityGauge/g) ?? [];
-    expect(gaugeUsages.length).toBe(2);
+    expect(gaugeUsages.length).toBe(3);
+    expect(pageSrc).toMatch(/data-testid="gauge-ebit"/);
+    expect(pageSrc).toMatch(/data-testid="gauge-ebit-bottom"/);
+    expect(pageSrc).toMatch(/data-testid="gauge-roi"/);
+  });
+
+  it("places EBIT gauges on one row and ROI with compact revenue on the next", () => {
+    expect(pageSrc).toMatch(/gauge-ebit[\s\S]*gauge-ebit-bottom/);
+    expect(pageSrc).toMatch(/gauge-roi[\s\S]*RevenueDevelopmentChart/);
+    expect(pageSrc).toMatch(/variant="compact"/);
+    expect(chartSrc).toMatch(/variant\?: "default" \| "compact"/);
   });
 
   it("keeps ECharts geometry free of duplicate percent/detail text", () => {
@@ -45,29 +56,22 @@ describe("Business Case dashboard charts UI", () => {
     expect(optionsSrc).toMatch(/title:\s*\{\s*show:\s*false\s*\}/);
     expect(optionsSrc).toMatch(/axisLabel:\s*\{\s*show:\s*false\s*\}/);
     expect(gaugeSrc).toMatch(/data-testid="gauge-value"/);
-    expect(gaugeSrc).toMatch(/data-testid="gauge-label"/);
-    expect(gaugeSrc).toMatch(/data-testid="gauge-status"/);
-    expect(gaugeSrc).toMatch(/className="gauge-value/);
-    expect(gaugeSrc).not.toMatch(/detail:\s*\{[^}]*formatter/);
+    expect(gaugeSrc).toMatch(/state\.zoneColor/);
+    expect(gaugeSrc).toMatch(/gaugeArcLabelPosition/);
   });
 
-  it("renders value, label and status as separate HTML outside the chart canvas", () => {
-    expect(gaugeSrc).toMatch(/gauge-chart-area/);
+  it("renders scale marks on the arc and value color from the needle zone", () => {
+    expect(gaugeSrc).toMatch(/gauge-scale-labels/);
+    expect(gaugeSrc).toMatch(/absolute inset-0/);
+    expect(gaugeSrc).toMatch(/style=\{\{ color: state\.zoneColor \}\}/);
     expect(gaugeSrc).toMatch(/gauge-value-area/);
-    expect(gaugeSrc).toMatch(/GaugeChartGeometry/);
-    expect(gaugeSrc).toMatch(/overflow-visible/);
-    expect(gaugeSrc).toMatch(/min-w-0/);
-    expect(gaugeSrc).not.toMatch(/-mt-|absolute.*(gauge-value|displayValue)/);
   });
 
   it("shows above-scale note only for values over 25 % and keeps accessibility label", () => {
     expect(gaugeSrc).toMatch(/state\.isAboveScale/);
     expect(gaugeSrc).toMatch(/Der Zeiger ist am oberen Skalenende begrenzt/);
     expect(gaugeSrc).toMatch(/aria-label=\{ariaLabel\}/);
-    expect(gaugeSrc).toMatch(/Status \$\{state\.zoneLabel\}/);
-    expect(gaugeSrc).toMatch(/gauge-scale-labels/);
     expect(gaugeSrc).toMatch(/GAUGE_SCALE_MARKS/);
-    expect(gaugeSrc).toMatch(/aspect-\[2\/1\]/);
   });
 
   it("omits kritisch/beobachten/positiv wording from the color legend", () => {
@@ -92,7 +96,7 @@ describe("Business Case dashboard charts UI", () => {
     expect(gaugeSrc).toMatch(/gauge-legend/);
     expect(gaugeSrc).toMatch(/grid-cols-3/);
     expect(pageSrc).toMatch(/items-stretch/);
-    expect(pageSrc).toMatch(/grid-cols-1[\s\S]*lg:grid-cols-2/);
+    expect(pageSrc).toMatch(/lg:grid-cols-2/);
   });
 
   it("keeps revenue chart accessible and updates from the same Business Case payload", () => {
@@ -100,7 +104,7 @@ describe("Business Case dashboard charts UI", () => {
     expect(chartSrc).not.toMatch(/recharts/);
     expect(chartSrc).toMatch(/sr-only/);
     expect(chartSrc).toMatch(/min-w-0/);
-    expect(pageSrc).toMatch(/RevenueDevelopmentChart rows=\{data\.revenue_by_year/);
+    expect(pageSrc).toMatch(/RevenueDevelopmentChart[\s\S]*revenue_by_year/);
     expect(pageSrc).toMatch(/BusinessCaseKpiStrip[\s\S]*revenueByYear=\{data\.revenue_by_year/);
   });
 

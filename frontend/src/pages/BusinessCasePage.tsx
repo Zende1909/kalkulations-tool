@@ -759,22 +759,34 @@ export function BusinessCasePage() {
               roiPct={data.kpis.roi_incl_capex_actual_pct}
             />
 
-            <RevenueDevelopmentChart rows={data.revenue_by_year ?? []} />
-
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 md:gap-4 lg:grid-cols-2">
               <ProfitabilityGauge
                 label="EBIT"
-                subtitle="Profitabilität"
+                subtitle="tatsächlicher Preis"
                 valuePercent={data.kpis.ebit_actual_total_pct}
                 description="EBIT % zum tatsächlichen Umsatz (bestehende Business-Case-Berechnung, CAPEX nicht enthalten)."
                 data-testid="gauge-ebit"
               />
+              <ProfitabilityGauge
+                label="EBIT Bottom Price"
+                subtitle="Bottom Price"
+                valuePercent={data.kpis.ebit_bottom_total_pct}
+                description="EBIT % zum Bottom-Price-Umsatz (bestehende Business-Case-Berechnung, CAPEX nicht enthalten)."
+                data-testid="gauge-ebit-bottom"
+              />
+            </div>
+
+            <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 md:gap-4 lg:grid-cols-2">
               <ProfitabilityGauge
                 label="ROI"
                 subtitle="Kapitalrendite"
                 valuePercent={data.kpis.roi_incl_capex_actual_pct}
                 description="ROI % inkl. CAPEX zum tatsächlichen Preis (bestehende Business-Case-Berechnung)."
                 data-testid="gauge-roi"
+              />
+              <RevenueDevelopmentChart
+                rows={data.revenue_by_year ?? []}
+                variant="compact"
               />
             </div>
 

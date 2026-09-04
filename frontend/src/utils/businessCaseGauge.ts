@@ -4,16 +4,18 @@ export const GAUGE_SCALE_MIN = 0;
 export const GAUGE_SCALE_MAX = 25;
 export const GAUGE_ZONE_CRITICAL_MAX = 5;
 export const GAUGE_ZONE_WATCH_MAX = 9;
-export const GAUGE_COLOR_OVER_SCALE = "#334155";
 
 export const GAUGE_COLOR_CRITICAL = "#DC2626";
 export const GAUGE_COLOR_WATCH = "#D97706";
 export const GAUGE_COLOR_POSITIVE = "#16A34A";
 
-/** Inset der HTML-Skalenmarken relativ zur Chartbreite (passend zu ECharts radius). */
-export const GAUGE_SCALE_LABEL_INSET_PERCENT = 8;
+/** Muss zu buildProfitabilityGaugeOption (center/radius) und aspect-[2/1] passen. */
+export const GAUGE_CHART_CENTER_X_PERCENT = 50;
+export const GAUGE_CHART_CENTER_Y_PERCENT = 88;
+export const GAUGE_CHART_RADIUS_PERCENT = 84;
+export const GAUGE_CHART_ASPECT_RATIO = 2;
 
-/** Sichtbare Skalenmarken unterhalb der Gauge-Geometrie. */
+/** Sichtbare Skalenmarken am Bogen. */
 export const GAUGE_SCALE_MARKS = [
   GAUGE_SCALE_MIN,
   GAUGE_ZONE_CRITICAL_MAX,
@@ -32,16 +34,16 @@ export interface GaugeState {
   needleAngle: number;
   zone: GaugeZone;
   zoneLabel: string;
+  /** Farbe der Nadelzone – auch für den großen Prozentwert. */
   zoneColor: string;
   isBelowScale: boolean;
   isAboveScale: boolean;
   isAvailable: boolean;
 }
 
-/** Horizontale Position einer Skalenmarke entlang der Halbkreis-Basis (0–100 %). */
-export function gaugeScaleMarkLeftPercent(mark: number): number {
-  const clamped = Math.min(Math.max(mark, GAUGE_SCALE_MIN), GAUGE_SCALE_MAX);
-  return (clamped / GAUGE_SCALE_MAX) * 100;
+export interface GaugeArcLabelPosition {
+  leftPercent: number;
+  topPercent: number;
 }
 
 /** Halbkreis: 180° (links, 0 %) → 0° (rechts, 25 %). */
@@ -51,6 +53,37 @@ export function valueToNeedleAngle(clampedPercent: number): number {
     GAUGE_SCALE_MAX;
   const angle = 180 - ratio * 180;
   return Number.isFinite(angle) ? angle : 180;
+}
+
+/**
+ * Position einer Skalenmarke auf dem Halbkreis (Prozent der Chart-Box).
+ * labelRadiusFactor > 1 setzt die Beschriftung knapp außerhalb des Bogens.
+ */
+export function gaugeArcLabelPosition(
+  mark: number,
+  labelRadiusFactor = 1.12,
+): GaugeArcLabelPosition {
+  const angleDeg = valueToNeedleAngle(mark);
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const rOfHeight = GAUGE_CHART_RADIUS_PERCENT * labelRadiusFactor;
+  const rOfWidth = rOfHeight / GAUGE_CHART_ASPECT_RATIO;
+  const leftPercent = GAUGE_CHART_CENTER_X_PERCENT + rOfWidth * Math.cos(angleRad);
+  const topPercent = GAUGE_CHART_CENTER_Y_PERCENT - rOfHeight * Math.sin(angleRad);
+  return {
+    leftPercent: Number.isFinite(leftPercent) ? leftPercent : 50,
+    topPercent: Number.isFinite(topPercent) ? topPercent : 50,
+  };
+}
+
+/** Farbe der Zone, in der der Zeiger steht (auch bei Werten über 25 %). */
+export function needleZoneColor(
+  clampedValue: number,
+  isBelowScale: boolean,
+): string {
+  if (isBelowScale) return GAUGE_COLOR_CRITICAL;
+  if (clampedValue < GAUGE_ZONE_CRITICAL_MAX) return GAUGE_COLOR_CRITICAL;
+  if (clampedValue < GAUGE_ZONE_WATCH_MAX) return GAUGE_COLOR_WATCH;
+  return GAUGE_COLOR_POSITIVE;
 }
 
 export function getGaugeState(valuePercent: number | null | undefined): GaugeState {
@@ -80,28 +113,22 @@ export function getGaugeState(valuePercent: number | null | undefined): GaugeSta
 
   let zone: GaugeZone;
   let zoneLabel: string;
-  let zoneColor: string;
 
   if (isBelowScale) {
     zone = "critical";
     zoneLabel = "negativ";
-    zoneColor = GAUGE_COLOR_CRITICAL;
   } else if (isAboveScale) {
     zone = "positive";
     zoneLabel = "über Skala";
-    zoneColor = GAUGE_COLOR_OVER_SCALE;
   } else if (actualValue < GAUGE_ZONE_CRITICAL_MAX) {
     zone = "critical";
     zoneLabel = "kritisch";
-    zoneColor = GAUGE_COLOR_CRITICAL;
   } else if (actualValue < GAUGE_ZONE_WATCH_MAX) {
     zone = "watch";
     zoneLabel = "beobachten";
-    zoneColor = GAUGE_COLOR_WATCH;
   } else {
     zone = "positive";
     zoneLabel = "positiv";
-    zoneColor = GAUGE_COLOR_POSITIVE;
   }
 
   return {
@@ -112,7 +139,7 @@ export function getGaugeState(valuePercent: number | null | undefined): GaugeSta
     needleAngle: valueToNeedleAngle(clampedValue),
     zone,
     zoneLabel,
-    zoneColor,
+    zoneColor: needleZoneColor(clampedValue, isBelowScale),
     isBelowScale,
     isAboveScale,
     isAvailable: true,

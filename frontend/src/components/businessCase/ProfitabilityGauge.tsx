@@ -6,10 +6,8 @@ import {
   GAUGE_COLOR_CRITICAL,
   GAUGE_COLOR_POSITIVE,
   GAUGE_COLOR_WATCH,
-  GAUGE_SCALE_LABEL_INSET_PERCENT,
   GAUGE_SCALE_MARKS,
-  GAUGE_SCALE_MAX,
-  gaugeScaleMarkLeftPercent,
+  gaugeArcLabelPosition,
   getGaugeState,
 } from "../../utils/businessCaseGauge";
 import { buildProfitabilityGaugeOption } from "../../utils/businessCaseEchartsOptions";
@@ -23,32 +21,24 @@ function GaugeChartGeometry({ option }: { option: EChartsCoreOption }) {
   return <div {...containerProps} />;
 }
 
+/** Skalenwerte am Bogen (nicht als Zeile darunter). */
 function GaugeScaleLabels() {
-  const inset = GAUGE_SCALE_LABEL_INSET_PERCENT;
-  const marks = [...GAUGE_SCALE_MARKS];
-
   return (
     <div
-      className="gauge-scale-labels relative mt-1 h-4 w-full min-w-0"
+      className="gauge-scale-labels pointer-events-none absolute inset-0"
       aria-hidden="true"
       data-testid="gauge-scale-labels"
     >
-      {marks.map((mark) => {
-        const alongArc = gaugeScaleMarkLeftPercent(mark);
-        const left = inset + (alongArc / 100) * (100 - 2 * inset);
-        const isStart = mark === 0;
-        const isEnd = mark === GAUGE_SCALE_MAX;
+      {[...GAUGE_SCALE_MARKS].map((mark) => {
+        const { leftPercent, topPercent } = gaugeArcLabelPosition(mark);
         return (
           <span
             key={mark}
-            className="absolute top-0 whitespace-nowrap text-[10px] tabular-nums leading-none text-slate-500"
+            className="absolute whitespace-nowrap text-[10px] tabular-nums leading-none text-slate-500"
             style={{
-              left: `${left}%`,
-              transform: isStart
-                ? "translateX(0)"
-                : isEnd
-                  ? "translateX(-100%)"
-                  : "translateX(-50%)",
+              left: `${leftPercent}%`,
+              top: `${topPercent}%`,
+              transform: "translate(-50%, -50%)",
             }}
             data-scale-mark={mark}
           >
@@ -140,7 +130,7 @@ export function EchartsProfitabilityGauge({
       ) : (
         <>
           <div
-            className="gauge-chart-area mx-auto mt-3 w-full min-w-0 max-w-[22rem] overflow-visible"
+            className="gauge-chart-area relative mx-auto mt-3 w-full min-w-0 max-w-[22rem] overflow-visible"
             role="img"
             aria-label={ariaLabel}
           >
@@ -150,7 +140,8 @@ export function EchartsProfitabilityGauge({
 
           <div className="gauge-value-area mt-3 flex min-w-0 flex-col items-center gap-0.5 text-center">
             <strong
-              className="gauge-value text-[2rem] font-bold leading-none tabular-nums tracking-tight text-slate-900 sm:text-[2.25rem]"
+              className="gauge-value text-[2rem] font-bold leading-none tabular-nums tracking-tight sm:text-[2.25rem]"
+              style={{ color: state.zoneColor }}
               data-testid="gauge-value"
             >
               {displayValue}

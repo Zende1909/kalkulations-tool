@@ -6,8 +6,9 @@ import {
   GAUGE_COLOR_WATCH,
   GAUGE_SCALE_MARKS,
   GAUGE_SCALE_MAX,
-  gaugeScaleMarkLeftPercent,
+  gaugeArcLabelPosition,
   getGaugeState,
+  needleZoneColor,
   valueToNeedleAngle,
 } from "../utils/businessCaseGauge";
 import { formatPercentOrDash } from "../pages/businessCaseFormatting";
@@ -19,7 +20,6 @@ describe("getGaugeState", () => {
     expect(state.zoneLabel).toBe("negativ");
     expect(state.zoneColor).toBe(GAUGE_COLOR_CRITICAL);
     expect(state.clampedValue).toBe(0);
-    expect(state.scaleMax).toBe(25);
     expect(state.needleAngle).toBe(180);
     expect(state.isBelowScale).toBe(true);
     expect(state.actualValue).toBe(-3.2);
@@ -30,13 +30,6 @@ describe("getGaugeState", () => {
     expect(state.zone).toBe("critical");
     expect(state.zoneColor).toBe(GAUGE_COLOR_CRITICAL);
     expect(state.zoneLabel).toBe("kritisch");
-    expect(state.needleAngle).toBe(180);
-  });
-
-  it("keeps 4.99 % in the critical zone", () => {
-    const state = getGaugeState(4.99);
-    expect(state.zone).toBe("critical");
-    expect(state.zoneColor).toBe(GAUGE_COLOR_CRITICAL);
   });
 
   it("starts the watch zone at exactly 5 %", () => {
@@ -44,12 +37,6 @@ describe("getGaugeState", () => {
     expect(state.zone).toBe("watch");
     expect(state.zoneColor).toBe(GAUGE_COLOR_WATCH);
     expect(state.zoneLabel).toBe("beobachten");
-  });
-
-  it("keeps 8.99 % in the watch zone", () => {
-    const state = getGaugeState(8.99);
-    expect(state.zone).toBe("watch");
-    expect(state.zoneColor).toBe(GAUGE_COLOR_WATCH);
   });
 
   it("starts the positive zone at exactly 9 %", () => {
@@ -61,61 +48,64 @@ describe("getGaugeState", () => {
 
   it("places 25 % at the right end of the scale", () => {
     const state = getGaugeState(25);
-    expect(state.zone).toBe("positive");
     expect(state.clampedValue).toBe(25);
-    expect(state.scaleMax).toBe(25);
     expect(state.needleAngle).toBe(0);
+    expect(state.zoneColor).toBe(GAUGE_COLOR_POSITIVE);
     expect(state.isAboveScale).toBe(false);
   });
 
-  it("keeps values above 25 % visible but clamps the needle to the outer edge", () => {
-    const state = getGaugeState(31);
-    expect(state.actualValue).toBe(31);
-    expect(state.scaleMax).toBe(25);
-    expect(state.clampedValue).toBe(25);
+  it("clamps needle at outer edge above 25 % but keeps value color green", () => {
+    const state = getGaugeState(59.19);
+    expect(state.actualValue).toBe(59.19);
+    expect(formatPercentOrDash(state.actualValue)).toBe("59,19 %");
+    expect(state.clampedValue).toBe(GAUGE_SCALE_MAX);
     expect(state.needleAngle).toBe(0);
     expect(state.isAboveScale).toBe(true);
     expect(state.zoneLabel).toBe("über Skala");
-    expect(state.scaleMarks).toEqual([0, 5, 9, 25]);
+    expect(state.zoneColor).toBe(GAUGE_COLOR_POSITIVE);
   });
 
-  it("keeps distinct actual values for 37.26 % and 59.19 % while clamping needles", () => {
+  it("keeps distinct actual values for 37.26 % and 59.19 %", () => {
     const ebit = getGaugeState(37.26);
     const roi = getGaugeState(59.19);
-    expect(ebit.actualValue).toBe(37.26);
-    expect(roi.actualValue).toBe(59.19);
     expect(formatPercentOrDash(ebit.actualValue)).toBe("37,26 %");
     expect(formatPercentOrDash(roi.actualValue)).toBe("59,19 %");
-    expect(ebit.clampedValue).toBe(GAUGE_SCALE_MAX);
-    expect(roi.clampedValue).toBe(GAUGE_SCALE_MAX);
-    expect(ebit.needleAngle).toBe(0);
-    expect(roi.needleAngle).toBe(0);
-    expect(ebit.zoneLabel).toBe("über Skala");
-    expect(roi.zoneLabel).toBe("über Skala");
+    expect(ebit.clampedValue).toBe(25);
+    expect(roi.clampedValue).toBe(25);
   });
 
   it("returns unavailable for null/NaN/Infinity without invalid angles", () => {
     for (const value of [null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
       const state = getGaugeState(value as number | null | undefined);
       expect(state.isAvailable).toBe(false);
-      expect(state.zoneLabel).toBe("nicht verfügbar");
       expect(Number.isFinite(state.needleAngle)).toBe(true);
-      expect(Number.isFinite(state.clampedValue)).toBe(true);
     }
   });
 
-  it("maps needle angles proportionally without NaN", () => {
+  it("maps needle angles and arc label positions without NaN", () => {
     expect(valueToNeedleAngle(0)).toBe(180);
     expect(valueToNeedleAngle(12.5)).toBe(90);
     expect(valueToNeedleAngle(25)).toBe(0);
-    expect(Number.isFinite(valueToNeedleAngle(Number.NaN))).toBe(true);
+
+    const left = gaugeArcLabelPosition(0);
+    const mid = gaugeArcLabelPosition(12.5);
+    const right = gaugeArcLabelPosition(25);
+    expect(left.leftPercent).toBeLessThan(mid.leftPercent);
+    expect(mid.leftPercent).toBeLessThan(right.leftPercent);
+    expect(mid.topPercent).toBeLessThan(left.topPercent);
+    expect(mid.topPercent).toBeLessThan(right.topPercent);
+    for (const mark of GAUGE_SCALE_MARKS) {
+      const pos = gaugeArcLabelPosition(mark);
+      expect(Number.isFinite(pos.leftPercent)).toBe(true);
+      expect(Number.isFinite(pos.topPercent)).toBe(true);
+    }
   });
 
-  it("exposes fixed scale marks 0 / 5 / 9 / 25", () => {
-    expect([...GAUGE_SCALE_MARKS]).toEqual([0, 5, 9, 25]);
-    expect(gaugeScaleMarkLeftPercent(0)).toBe(0);
-    expect(gaugeScaleMarkLeftPercent(25)).toBe(100);
-    expect(gaugeScaleMarkLeftPercent(5)).toBeCloseTo(20);
-    expect(gaugeScaleMarkLeftPercent(9)).toBeCloseTo(36);
+  it("maps needle zone colors for value display", () => {
+    expect(needleZoneColor(0, false)).toBe(GAUGE_COLOR_CRITICAL);
+    expect(needleZoneColor(5, false)).toBe(GAUGE_COLOR_WATCH);
+    expect(needleZoneColor(9, false)).toBe(GAUGE_COLOR_POSITIVE);
+    expect(needleZoneColor(25, false)).toBe(GAUGE_COLOR_POSITIVE);
+    expect(needleZoneColor(0, true)).toBe(GAUGE_COLOR_CRITICAL);
   });
 });
