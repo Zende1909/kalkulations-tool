@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ColDef } from "ag-grid-community";
 
 import { OptionalHierarchySelector } from "../../components/hierarchy/OptionalHierarchySelector";
 import type { HierarchySelection } from "../../components/hierarchy/HierarchySelector";
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
+import { useActiveProject } from "../../context/ActiveProjectContext";
 import type { Kaufteil } from "../../types/baugruppe";
 import {
   loadKaufteilFormValues,
@@ -97,7 +98,7 @@ const formFields: FormField[] = [
 
 const HIERARCHY_KEYS = ["customer_id", "program_id", "project_id"] as const;
 
-const emptyFormValues = {
+const baseEmptyFormValues = {
   artikelnummer: "",
   bezeichnung: "",
   beschreibung: "",
@@ -116,11 +117,30 @@ const emptyFormValues = {
 };
 
 export function KaufteilePage() {
-  const [hierarchy, setHierarchy] = useState<HierarchySelection>({
-    customer_id: null,
-    program_id: null,
-    project_id: null,
-  });
+  const { selection } = useActiveProject();
+  const [hierarchy, setHierarchy] = useState<HierarchySelection>(() => ({
+    customer_id: selection.customer_id,
+    program_id: selection.program_id,
+    project_id: selection.project_id,
+  }));
+
+  useEffect(() => {
+    setHierarchy({
+      customer_id: selection.customer_id,
+      program_id: selection.program_id,
+      project_id: selection.project_id,
+    });
+  }, [selection.customer_id, selection.program_id, selection.project_id]);
+
+  const emptyFormValues = useMemo(
+    () => ({
+      ...baseEmptyFormValues,
+      customer_id: hierarchy.customer_id,
+      program_id: hierarchy.program_id,
+      project_id: hierarchy.project_id,
+    }),
+    [hierarchy],
+  );
 
   const listQuery = useMemo(() => {
     const params = new URLSearchParams();

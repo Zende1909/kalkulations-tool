@@ -16,6 +16,7 @@ import { ProfitabilityGauge } from "../components/businessCase/ProfitabilityGaug
 import { BusinessCaseKpiStrip } from "../components/businessCase/BusinessCaseKpiStrip";
 import { RevenueDevelopmentChart } from "../components/businessCase/RevenueDevelopmentChart";
 import { DecimalInputField } from "../components/DecimalInputField";
+import { useActiveProject } from "../context/ActiveProjectContext";
 import { useAuth } from "../context/AuthContext";
 import { EINMALZAHLUNG_HINWEIS } from "../types/investition";
 import type {
@@ -510,7 +511,8 @@ function PriceEditDialog({
 
 export function BusinessCasePage() {
   const { canWrite } = useAuth();
-  const [filterHierarchy, setFilterHierarchy] = useState<HierarchySelection>(emptyHierarchy());
+  const { selection, isComplete, formDefaults } = useActiveProject();
+  const [filterHierarchy, setFilterHierarchy] = useState<HierarchySelection>(() => formDefaults());
   const [data, setData] = useState<BusinessCaseResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
@@ -521,6 +523,14 @@ export function BusinessCasePage() {
     filterHierarchy.customer_id != null &&
     filterHierarchy.program_id != null &&
     filterHierarchy.project_id != null;
+
+  useEffect(() => {
+    setFilterHierarchy({
+      customer_id: selection.customer_id,
+      program_id: selection.program_id,
+      project_id: selection.project_id,
+    });
+  }, [selection.customer_id, selection.program_id, selection.project_id]);
 
   const loadBusinessCase = useCallback(async () => {
     if (!filterReady) {
@@ -543,6 +553,19 @@ export function BusinessCasePage() {
       setLoading(false);
     }
   }, [filterHierarchy, filterReady]);
+
+  useEffect(() => {
+    if (!isComplete || !filterReady) return;
+    if (
+      filterHierarchy.customer_id !== selection.customer_id ||
+      filterHierarchy.program_id !== selection.program_id ||
+      filterHierarchy.project_id !== selection.project_id
+    ) {
+      return;
+    }
+    void loadBusinessCase();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- nur bei Context-Wechsel auto-laden
+  }, [isComplete, selection.customer_id, selection.program_id, selection.project_id]);
 
   const reload = () => void loadBusinessCase();
 

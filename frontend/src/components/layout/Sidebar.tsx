@@ -13,7 +13,10 @@ import {
   UsersThree,
 } from "@phosphor-icons/react";
 
+import { useActiveProject } from "../../context/ActiveProjectContext";
 import { cn } from "../../lib/utils";
+import { CustomerProjectSelector } from "../hierarchy/CustomerProjectSelector";
+import { Button } from "../ui/Button";
 import { isStammdatenSectionPath, navItems, type NavItem } from "./navConfig";
 
 export { isStammdatenSectionPath, navItems } from "./navConfig";
@@ -59,6 +62,7 @@ export function Sidebar() {
   const location = useLocation();
   const isStammdatenActive = isStammdatenSectionPath(location.pathname);
   const [stammdatenOpen, setStammdatenOpen] = useState(isStammdatenActive);
+  const { selection, isComplete, setSelection, clearSelection } = useActiveProject();
 
   useEffect(() => {
     if (isStammdatenActive) {
@@ -66,11 +70,46 @@ export function Sidebar() {
     }
   }, [isStammdatenActive]);
 
+  const hasAnySelection =
+    selection.customer_id != null || selection.program_id != null || selection.project_id != null;
+
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
-      <div className="border-b border-sidebar-border px-5 py-6">
+      <div className="border-b border-sidebar-border px-5 py-5">
         <h1 className="text-xl font-bold tracking-tight text-white">Kalkulations-Tool</h1>
         <p className="mt-1 text-sm text-sidebar-muted">Kunststoffmodule Automotive</p>
+
+        <div
+          className="mt-4 rounded-app border border-sidebar-border bg-black/20 p-3"
+          data-testid="active-project-bar"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
+              Aktives Projekt
+            </p>
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[10px] font-semibold",
+                isComplete
+                  ? "bg-emerald-500/20 text-emerald-200"
+                  : "bg-white/10 text-sidebar-muted",
+              )}
+            >
+              {isComplete ? "Filter aktiv" : "Alle Projekte"}
+            </span>
+          </div>
+          <CustomerProjectSelector compact value={selection} onChange={setSelection} />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="mt-2 w-full"
+            onClick={clearSelection}
+            disabled={!hasAnySelection}
+          >
+            Alle Projekte
+          </Button>
+        </div>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Hauptnavigation">

@@ -31,6 +31,7 @@ import {
 } from "../components/hierarchy/customerProjectSelection";
 import { getAverageJahresstueckzahl } from "../api/hierarchy";
 import { api } from "../api/client";
+import { useActiveProject } from "../context/ActiveProjectContext";
 import { useAuth } from "../context/AuthContext";
 import type { SpritzgussListItem } from "../types/spritzguss";
 import type { Land, Werk } from "../types/stammdaten";
@@ -112,13 +113,17 @@ const ZUSAMMENFASSUNG: Array<{ key: keyof BaugruppeErgebnis; label: string; high
 
 export function BaugruppenPage() {
   const { canWrite } = useAuth();
+  const { selection, formDefaults, listFilters } = useActiveProject();
   const [list, setList] = useState<BaugruppeListItem[]>([]);
   const [spritzgussList, setSpritzgussList] = useState<SpritzgussListItem[]>([]);
   const [kaufteileList, setKaufteileList] = useState<Kaufteil[]>([]);
   const [kaufteilMetaById, setKaufteilMetaById] = useState<Map<number, Kaufteil>>(new Map());
   const loadedKaufteilIdsRef = useRef<Set<number>>(new Set());
   const [veredelungList, setVeredelungList] = useState<Veredelungsschritt[]>([]);
-  const [form, setForm] = useState<BaugruppeFormData>(emptyBaugruppeForm());
+  const [form, setForm] = useState<BaugruppeFormData>(() => {
+    const defaults = formDefaults();
+    return { ...emptyBaugruppeForm(), ...defaults };
+  });
   const [selectedSpritzguss, setSelectedSpritzguss] = useState<SelectedSpritzguss[]>([]);
   const [selectedKaufteile, setSelectedKaufteile] = useState<SelectedKaufteil[]>([]);
   const [selectedVeredelung, setSelectedVeredelung] = useState<SelectedVeredelung[]>([]);
@@ -229,11 +234,13 @@ export function BaugruppenPage() {
   );
 
   const loadList = useCallback(async () => {
+    const filters = listFilters();
     const items = await listBaugruppen({
       aktiv: listFilter === "aktiv",
+      project_id: filters.projectId,
     });
     setList(items);
-  }, [listFilter]);
+  }, [listFilter, listFilters]);
 
   const loadReferences = useCallback(async (projectId: number | null) => {
     const [lands, plants] = await Promise.all([
@@ -262,6 +269,17 @@ export function BaugruppenPage() {
   useEffect(() => {
     loadList().catch(() => undefined);
   }, [loadList]);
+
+  // Globales Projekt auf neue Baugruppe übernehmen
+  useEffect(() => {
+    if (editId != null) return;
+    setForm((current) => ({
+      ...current,
+      customer_id: selection.customer_id,
+      program_id: selection.program_id,
+      project_id: selection.project_id,
+    }));
+  }, [selection.customer_id, selection.program_id, selection.project_id, editId]);
 
   useEffect(() => {
     loadReferences(form.project_id).catch(() => undefined);
@@ -425,11 +443,12 @@ export function BaugruppenPage() {
 
 
   const handleNew = () => {
+    const defaults = formDefaults();
     setEditId(null);
-    setForm(emptyBaugruppeForm());
+    setForm({ ...emptyBaugruppeForm(), ...defaults });
     setSelectedLandId(null);
     setLegacyFreitext(null);
-    setLoadedHierarchy({ customer_id: null, program_id: null, project_id: null });
+    setLoadedHierarchy(defaults);
     setUnlinkConfirmed(false);
     setJahresstueckzahlHint(null);
     setProjectFilterHint(null);

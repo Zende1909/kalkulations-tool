@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { listCustomers, listPrograms, listProjects } from "../../api/hierarchy";
 import { listKalkulationen } from "../../api/spritzguss";
+import { useActiveProject } from "../../context/ActiveProjectContext";
 import { Button } from "../ui/Button";
 import { SectionHeader } from "../ui/SectionHeader";
 import { ValidationMessage } from "../ui/ValidationMessage";
@@ -27,6 +28,7 @@ export function SpritzgussSavedList({
   onOpen: (id: number) => void;
   onDelete: (id: number) => void;
 }) {
+  const { selection } = useActiveProject();
   const [list, setList] = useState<SpritzgussListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -35,10 +37,16 @@ export function SpritzgussSavedList({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [customerId, setCustomerId] = useState<number | "">("");
-  const [programId, setProgramId] = useState<number | "">("");
-  const [projectId, setProjectId] = useState<number | "">("");
+  const [customerId, setCustomerId] = useState<number | "">(selection.customer_id ?? "");
+  const [programId, setProgramId] = useState<number | "">(selection.program_id ?? "");
+  const [projectId, setProjectId] = useState<number | "">(selection.project_id ?? "");
   const gridHeightMeasureRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setCustomerId(selection.customer_id ?? "");
+    setProgramId(selection.program_id ?? "");
+    setProjectId(selection.project_id ?? "");
+  }, [selection.customer_id, selection.program_id, selection.project_id]);
 
   useEffect(() => {
     listCustomers(undefined, true).then(setCustomers).catch(() => setCustomers([]));

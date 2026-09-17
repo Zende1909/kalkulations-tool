@@ -25,6 +25,7 @@ import {
   type HierarchySelection,
 } from "../components/hierarchy/HierarchySelector";
 import { useAuth } from "../context/AuthContext";
+import { useActiveProject } from "../context/ActiveProjectContext";
 import type { Lohnkosten, Land, Maschine, Material, Werk } from "../types/stammdaten";
 import type { Veredelungsschritt } from "../types/veredelung";
 import {
@@ -321,15 +322,12 @@ function formatSizingNumber(value: number | null | undefined, fractionDigits = 6
 
 export function SpritzgussPage() {
   const { canWrite } = useAuth();
+  const { selection, formDefaults } = useActiveProject();
   const [form, setForm] = useState<SpritzgussFormData>(emptySpritzgussForm());
   const [decimalRaw, setDecimalRaw] = useState<Record<string, string>>(() =>
     loadSpritzgussDecimalRaw(emptySpritzgussForm()),
   );
-  const [hierarchy, setHierarchy] = useState<HierarchySelection>({
-    customer_id: null,
-    program_id: null,
-    project_id: null,
-  });
+  const [hierarchy, setHierarchy] = useState<HierarchySelection>(() => formDefaults());
   const [legacyHierarchy, setLegacyHierarchy] = useState<{
     kunde: string;
     projekt: string;
@@ -359,6 +357,16 @@ export function SpritzgussPage() {
   const [zykluszeitVorschlag, setZykluszeitVorschlag] = useState<ZykluszeitVorschlag | null>(
     null,
   );
+
+  // Globales aktives Projekt auf neue Formulare übernehmen (geladenen Datensatz nicht überschreiben)
+  useEffect(() => {
+    if (editId != null) return;
+    setHierarchy({
+      customer_id: selection.customer_id,
+      program_id: selection.program_id,
+      project_id: selection.project_id,
+    });
+  }, [selection.customer_id, selection.program_id, selection.project_id, editId]);
 
   const setField = <K extends keyof SpritzgussFormData>(key: K, value: SpritzgussFormData[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -1168,14 +1176,16 @@ export function SpritzgussPage() {
   };
 
   const handleNew = () => {
+    const defaults = formDefaults();
     setEditId(null);
-    setForm(emptySpritzgussForm());
-    setDecimalRaw(loadSpritzgussDecimalRaw(emptySpritzgussForm()));
-    setHierarchy({
-      customer_id: null,
-      program_id: null,
-      project_id: null,
+    setForm({
+      ...emptySpritzgussForm(),
+      customer_id: defaults.customer_id,
+      program_id: defaults.program_id,
+      project_id: defaults.project_id,
     });
+    setDecimalRaw(loadSpritzgussDecimalRaw(emptySpritzgussForm()));
+    setHierarchy(defaults);
     setLegacyHierarchy(null);
     setSelectedVeredelung([]);
     setBloecke(null);

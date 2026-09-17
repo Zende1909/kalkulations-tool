@@ -6,6 +6,10 @@ export interface CustomerProjectSelection {
   project_id: number | null;
 }
 
+export function emptyCustomerProjectSelection(): CustomerProjectSelection {
+  return { customer_id: null, program_id: null, project_id: null };
+}
+
 export interface LegacyFreitext {
   kunde: string;
   projekt: string;

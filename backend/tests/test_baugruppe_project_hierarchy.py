@@ -896,3 +896,48 @@ def test_average_jahresstueckzahl_endpoint_empty(client: TestClient, hierarchy: 
     body = r.json()
     assert body["has_volumes"] is False
     assert body["jahresstueckzahl"] is None
+
+
+def test_list_baugruppen_filter_by_project_id(
+    client: TestClient, db: Session, hierarchy: dict[str, int]
+):
+    bg1 = Baugruppe(
+        name="BG P1",
+        teilenummer="P1-1",
+        project_id=hierarchy["project_1"],
+        linked_project_id=hierarchy["project_1"],
+        aktiv=True,
+        status="entwurf",
+    )
+    bg2 = Baugruppe(
+        name="BG P2 linked only",
+        teilenummer="P2-1",
+        project_id=None,
+        linked_project_id=hierarchy["project_2"],
+        aktiv=True,
+        status="entwurf",
+    )
+    bg_other = Baugruppe(
+        name="BG other",
+        teilenummer="X-1",
+        project_id=hierarchy["project_2"],
+        linked_project_id=hierarchy["project_2"],
+        aktiv=True,
+        status="entwurf",
+    )
+    db.add_all([bg1, bg2, bg_other])
+    db.commit()
+
+    r1 = client.get(f"/api/v1/baugruppen?project_id={hierarchy['project_1']}")
+    assert r1.status_code == 200
+    ids1 = {row["id"] for row in r1.json()}
+    assert bg1.id in ids1
+    assert bg2.id not in ids1
+    assert bg_other.id not in ids1
+
+    r2 = client.get(f"/api/v1/baugruppen?project_id={hierarchy['project_2']}")
+    assert r2.status_code == 200
+    ids2 = {row["id"] for row in r2.json()}
+    assert bg2.id in ids2
+    assert bg_other.id in ids2
+    assert bg1.id not in ids2

@@ -27,10 +27,11 @@ export function berechnen(payload: CalcPayload) {
   return api.post<BaugruppeCalcResponse>("/baugruppen/berechnen", payload);
 }
 
-export function listBaugruppen(params?: { aktiv?: boolean }) {
+export function listBaugruppen(params?: { aktiv?: boolean; project_id?: number }) {
   const search = new URLSearchParams();
   if (params?.aktiv === true) search.set("aktiv", "true");
   if (params?.aktiv === false) search.set("aktiv", "false");
+  if (params?.project_id != null) search.set("project_id", String(params.project_id));
   const qs = search.toString();
   return api.get<BaugruppeListItem[]>(qs ? `/baugruppen?${qs}` : "/baugruppen");
 }

@@ -2,7 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1015,6 +1015,10 @@ def list_baugruppen(
         None,
         description="Filter: true=nur aktiv, false=nur archiviert, ohne Parameter=alle",
     ),
+    project_id: int | None = Query(
+        None,
+        description="Nur Baugruppen mit project_id oder linked_project_id = dieser Projekt-ID",
+    ),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
@@ -1023,6 +1027,13 @@ def list_baugruppen(
         stmt = stmt.where(Baugruppe.aktiv.is_(True))
     elif aktiv is False:
         stmt = stmt.where(Baugruppe.aktiv.is_(False))
+    if project_id is not None:
+        stmt = stmt.where(
+            or_(
+                Baugruppe.project_id == project_id,
+                Baugruppe.linked_project_id == project_id,
+            )
+        )
     rows = db.scalars(stmt.offset(skip).limit(limit)).all()
     result: list[BaugruppeListItem] = []
     for row in rows:

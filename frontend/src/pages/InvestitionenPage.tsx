@@ -16,6 +16,7 @@ import {
   HierarchySelector,
   type HierarchySelection,
 } from "../components/hierarchy/HierarchySelector";
+import { useActiveProject } from "../context/ActiveProjectContext";
 import { useAuth } from "../context/AuthContext";
 import type { Customer, Program, Project } from "../types/hierarchy";
 import {
@@ -109,12 +110,13 @@ function validateForm(
 
 export function InvestitionenPage() {
   const { canWrite } = useAuth();
+  const { selection, isComplete, formDefaults } = useActiveProject();
   const [rows, setRows] = useState<Investition[]>([]);
-  const [filterHierarchy, setFilterHierarchy] = useState<HierarchySelection>(emptyHierarchy());
+  const [filterHierarchy, setFilterHierarchy] = useState<HierarchySelection>(() => formDefaults());
   const [appliedHierarchy, setAppliedHierarchy] = useState<HierarchySelection>(emptyHierarchy());
   const [filterLabels, setFilterLabels] = useState({ customer: "", program: "", project: "" });
 
-  const [formHierarchy, setFormHierarchy] = useState<HierarchySelection>(emptyHierarchy());
+  const [formHierarchy, setFormHierarchy] = useState<HierarchySelection>(() => formDefaults());
   const [formLabels, setFormLabels] = useState({ customer: "", program: "", project: "" });
   const [assignmentType, setAssignmentType] = useState<AssignmentType | null>(null);
   const [targets, setTargets] = useState<InvestitionTarget[]>([]);
@@ -141,6 +143,15 @@ export function InvestitionenPage() {
   useEffect(() => {
     listCustomers(undefined, true).then(setCustomers).catch(() => setCustomers([]));
   }, []);
+
+  // Globales aktives Projekt in Filter übernehmen
+  useEffect(() => {
+    setFilterHierarchy({
+      customer_id: selection.customer_id,
+      program_id: selection.program_id,
+      project_id: selection.project_id,
+    });
+  }, [selection.customer_id, selection.program_id, selection.project_id]);
 
   useEffect(() => {
     if (filterHierarchy.customer_id == null) {
@@ -196,6 +207,20 @@ export function InvestitionenPage() {
       setBusy(false);
     }
   }, [filterHierarchy, resolveLabels]);
+
+  // Automatisch laden, wenn globales Projekt vollständig ist
+  useEffect(() => {
+    if (!isComplete || filterHierarchy.project_id == null) return;
+    if (
+      filterHierarchy.customer_id !== selection.customer_id ||
+      filterHierarchy.program_id !== selection.program_id ||
+      filterHierarchy.project_id !== selection.project_id
+    ) {
+      return;
+    }
+    void loadProject();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- nur bei Context-Wechsel auto-laden
+  }, [isComplete, selection.customer_id, selection.program_id, selection.project_id]);
 
   const resetFilters = () => {
     setFilterHierarchy(emptyHierarchy());

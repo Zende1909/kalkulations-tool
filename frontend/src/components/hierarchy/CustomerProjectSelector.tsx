@@ -23,9 +23,17 @@ interface Props {
   onChange: (next: CustomerProjectSelection) => void;
   disabled?: boolean;
   legacyText?: { kunde: string; projekt: string } | null;
+  /** Einspaltig, kompakt (z. B. Sidebar). */
+  compact?: boolean;
 }
 
-export function CustomerProjectSelector({ value, onChange, disabled, legacyText }: Props) {
+export function CustomerProjectSelector({
+  value,
+  onChange,
+  disabled,
+  legacyText,
+  compact = false,
+}: Props) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -160,24 +168,38 @@ export function CustomerProjectSelector({ value, onChange, disabled, legacyText 
   };
 
   return (
-    <div className="grid gap-3 md:grid-cols-2 md:col-span-2">
+    <div className={compact ? "grid gap-2" : "grid gap-3 md:grid-cols-2 md:col-span-2"}>
       {legacyText && (legacyText.kunde || legacyText.projekt) && value.project_id == null && (
-        <div className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <div
+          className={
+            compact
+              ? "rounded-md border border-amber-200/40 bg-amber-500/10 p-2 text-xs text-amber-100"
+              : "md:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+          }
+        >
           <p className="font-medium">Historische Freitext-Zuordnung</p>
           <p>Kunde: {legacyText.kunde || "–"}</p>
           <p>Projekt: {legacyText.projekt || "–"}</p>
-          <p className="mt-1 text-xs">
-            Inhaltsänderungen können ohne neue Auswahl gespeichert werden. Optional Kunde, Programm und
-            Projekt aus den Stammdaten neu zuordnen.
-          </p>
+          {!compact ? (
+            <p className="mt-1 text-xs">
+              Inhaltsänderungen können ohne neue Auswahl gespeichert werden. Optional Kunde, Programm und
+              Projekt aus den Stammdaten neu zuordnen.
+            </p>
+          ) : null}
         </div>
       )}
 
       <label className="block text-sm">
-        <span className="font-medium text-gray-700">Kunde</span>
+        <span className={compact ? "font-medium text-sidebar-muted" : "font-medium text-gray-700"}>
+          Kunde
+        </span>
         <select
           disabled={disabled || customersLoading}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+          className={
+            compact
+              ? "mt-1 w-full rounded-md border border-sidebar-border bg-sidebar px-2 py-1.5 text-sm text-white"
+              : "mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+          }
           value={value.customer_id ?? ""}
           onChange={(e) => {
             const cid = e.target.value ? Number(e.target.value) : null;
@@ -191,14 +213,24 @@ export function CustomerProjectSelector({ value, onChange, disabled, legacyText 
             </option>
           ))}
         </select>
-        {customersError && <p className="mt-1 text-xs text-red-600">{customersError}</p>}
+        {customersError && (
+          <p className={compact ? "mt-1 text-xs text-red-300" : "mt-1 text-xs text-red-600"}>
+            {customersError}
+          </p>
+        )}
       </label>
 
       <label className="block text-sm">
-        <span className="font-medium text-gray-700">Programm</span>
+        <span className={compact ? "font-medium text-sidebar-muted" : "font-medium text-gray-700"}>
+          Programm
+        </span>
         <select
           disabled={disabled || value.customer_id == null || programsLoading}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+          className={
+            compact
+              ? "mt-1 w-full rounded-md border border-sidebar-border bg-sidebar px-2 py-1.5 text-sm text-white"
+              : "mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+          }
           value={value.program_id ?? ""}
           onChange={(e) => {
             const pid = e.target.value ? Number(e.target.value) : null;
@@ -212,14 +244,24 @@ export function CustomerProjectSelector({ value, onChange, disabled, legacyText 
             </option>
           ))}
         </select>
-        {programsError && <p className="mt-1 text-xs text-red-600">{programsError}</p>}
+        {programsError && (
+          <p className={compact ? "mt-1 text-xs text-red-300" : "mt-1 text-xs text-red-600"}>
+            {programsError}
+          </p>
+        )}
       </label>
 
-      <label className="block text-sm md:col-span-2">
-        <span className="font-medium text-gray-700">Projekt</span>
+      <label className={`block text-sm ${compact ? "" : "md:col-span-2"}`}>
+        <span className={compact ? "font-medium text-sidebar-muted" : "font-medium text-gray-700"}>
+          Projekt
+        </span>
         <select
           disabled={disabled || value.program_id == null || projectsLoading}
-          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+          className={
+            compact
+              ? "mt-1 w-full rounded-md border border-sidebar-border bg-sidebar px-2 py-1.5 text-sm text-white"
+              : "mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+          }
           value={value.project_id ?? ""}
           onChange={(e) => {
             const prid = e.target.value ? Number(e.target.value) : null;
@@ -233,7 +275,11 @@ export function CustomerProjectSelector({ value, onChange, disabled, legacyText 
             </option>
           ))}
         </select>
-        {projectsError && <p className="mt-1 text-xs text-red-600">{projectsError}</p>}
+        {projectsError && (
+          <p className={compact ? "mt-1 text-xs text-red-300" : "mt-1 text-xs text-red-600"}>
+            {projectsError}
+          </p>
+        )}
       </label>
     </div>
   );
