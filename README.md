@@ -1,6 +1,6 @@
-# Kalkulations-Tool
+# ZC PartCalc
 
-Kalkulationstool für Kunststoffmodule in der Automotive-Zulieferindustrie.
+Kalkulationstool (ZENDE Consultant) für Kunststoffmodule in der Automotive-Zulieferindustrie.
 
 ## Bereiche
 

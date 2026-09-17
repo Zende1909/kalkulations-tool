@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
+import { useT } from "../../i18n";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import type { Maschine, Werk } from "../../types/stammdaten";
 import {
@@ -11,27 +12,19 @@ import {
   submitMaschineFormValues,
 } from "../../utils/maschineFormDecimals";
 
-const columnDefs: ColDef<Maschine>[] = [
-  { field: "maschinen_nr", headerName: "Maschinen-Nr." },
-  { field: "bezeichnung", headerName: "Bezeichnung" },
-  { field: "werk_id", headerName: "Werk-ID" },
-  { field: "stundensatz", headerName: "Stundensatz EUR/h" },
-  { field: "stundensatz_source", headerName: "Satz Quellwährung" },
-  { field: "schliesskraft_t", headerName: "Schließkraft (t)" },
-  { field: "jahresstunden", headerName: "Jahresstunden" },
-  { field: "setup_zeit_min", headerName: "Setup (min)" },
-  { field: "aktiv", headerName: "Aktiv" },
-];
-
 /**
  * Maschinenmaske: nur maschinenabhängige Felder.
  * Standortparameter (Tage/Schichten/OEE/Sätze/Energiepreise) werden am Werk gepflegt.
  */
-function buildMachineFormFields(werke: Werk[], currentWerkId: number | null): FormField[] {
+function buildMachineFormFields(
+  werke: Werk[],
+  currentWerkId: number | null,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): FormField[] {
   const active = werke.filter((w) => w.aktiv);
   const current = currentWerkId != null ? werke.find((w) => w.id === currentWerkId) : null;
   const options = [
-    { value: "", label: "– Werk wählen –" },
+    { value: "", label: t("masterData.selectPlant") },
     ...active.map((w) => ({
       value: String(w.id),
       label: `${w.code} – ${w.name}`,
@@ -40,74 +33,74 @@ function buildMachineFormFields(werke: Werk[], currentWerkId: number | null): Fo
   if (current && !current.aktiv && !options.some((o) => o.value === String(current.id))) {
     options.push({
       value: String(current.id),
-      label: `${current.code} – ${current.name} (inaktiv)`,
+      label: `${current.code} – ${current.name} ${t("masterData.plantInactive")}`,
     });
   }
 
   return [
     {
       name: "werk_id",
-      label: "Werk",
+      label: t("masterData.plant"),
       type: "select",
       required: true,
       options,
     },
-    { name: "maschinen_nr", label: "Maschinen-Nr.", type: "text", required: true },
-    { name: "bezeichnung", label: "Bezeichnung", type: "text", required: true },
-    { name: "maschinentyp", label: "Maschinentyp", type: "text" },
-    { name: "variante", label: "Variante", type: "text" },
+    { name: "maschinen_nr", label: t("masterData.machineNo"), type: "text", required: true },
+    { name: "bezeichnung", label: t("masterData.designation"), type: "text", required: true },
+    { name: "maschinentyp", label: t("masterData.machineType"), type: "text" },
+    { name: "variante", label: t("masterData.variant"), type: "text" },
     {
       name: "stundensatz",
-      label: "Stundensatz (EUR/h)",
+      label: t("masterData.hourlyRateEurH"),
       type: "number",
       step: "0.0001",
       readOnly: true,
-      hint: "Berechnet aus Maschinen- und Werkparametern – nicht manuell überschreibbar.",
+      hint: t("masterData.hourlyRateCalculatedHint"),
     },
     {
       name: "stundensatz_source",
-      label: "Stundensatz (Quellwährung/h)",
+      label: t("masterData.hourlyRateSource"),
       type: "number",
       step: "0.0001",
       readOnly: true,
     },
-    { name: "source_currency", label: "Quellwährung", type: "text", readOnly: true },
+    { name: "source_currency", label: t("masterData.sourceCurrency"), type: "text", readOnly: true },
     {
       name: "schliesskraft_t",
-      label: "Schließkraft (t)",
+      label: t("masterData.clampingForceT"),
       type: "number",
       required: true,
       step: "0.1",
     },
-    { name: "investment", label: "Investment", type: "number", step: "1" },
-    { name: "flaeche_sqm", label: "Fläche (m²)", type: "number", step: "0.1" },
+    { name: "investment", label: t("masterData.investment"), type: "number", step: "1" },
+    { name: "flaeche_sqm", label: t("masterData.areaSqm"), type: "number", step: "0.1" },
     {
       name: "stromverbrauch_kwh_h",
-      label: "Stromverbrauch kWh/h",
+      label: t("masterData.powerConsumption"),
       type: "number",
       step: "0.1",
     },
     {
       name: "druckluftverbrauch_m3_h",
-      label: "Druckluftverbrauch m³/h",
+      label: t("masterData.compressedAirConsumption"),
       type: "number",
       step: "0.1",
     },
     {
       name: "kuehlwasserverbrauch_m3_h",
-      label: "Kühlwasserverbrauch m³/h",
+      label: t("masterData.coolingWaterConsumption"),
       type: "number",
       step: "0.1",
     },
-    { name: "setup_zeit_min", label: "Setup-Zeit (min)", type: "number", step: "1" },
+    { name: "setup_zeit_min", label: t("masterData.setupTimeMin"), type: "number", step: "1" },
     {
       name: "setup_mitarbeiter",
-      label: "Setup-Mitarbeiteranzahl",
+      label: t("masterData.setupOperators"),
       type: "number",
       step: "0.0001",
-      hint: "Dezimalwert möglich, z. B. 1,5",
+      hint: t("masterData.decimalExampleOneFive"),
     },
-    { name: "aktiv", label: "Aktiv", type: "checkbox" },
+    { name: "aktiv", label: t("common.active"), type: "checkbox" },
   ];
 }
 
@@ -132,6 +125,7 @@ const emptyFormValues = {
 };
 
 export function MaschinenPage() {
+  const t = useT();
   const { canWrite } = useAuth();
   const [werke, setWerke] = useState<Werk[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -145,9 +139,24 @@ export function MaschinenPage() {
     api.get<Werk[]>("/werke").then(setWerke).catch(() => setWerke([]));
   }, [reloadKey]);
 
+  const columnDefs = useMemo(
+    (): ColDef<Maschine>[] => [
+      { field: "maschinen_nr", headerName: t("masterData.machineNo") },
+      { field: "bezeichnung", headerName: t("masterData.designation") },
+      { field: "werk_id", headerName: t("masterData.plantId") },
+      { field: "stundensatz", headerName: t("masterData.hourlyRateEur") },
+      { field: "stundensatz_source", headerName: t("masterData.rateSourceCurrency") },
+      { field: "schliesskraft_t", headerName: t("masterData.clampingForceT") },
+      { field: "jahresstunden", headerName: t("masterData.annualHours") },
+      { field: "setup_zeit_min", headerName: t("masterData.setupMin") },
+      { field: "aktiv", headerName: t("common.active") },
+    ],
+    [t],
+  );
+
   const formFields = useMemo(
-    () => buildMachineFormFields(werke, formWerkId),
-    [werke, formWerkId],
+    () => buildMachineFormFields(werke, formWerkId, t),
+    [werke, formWerkId, t],
   );
 
   const selectedWerk = useMemo(
@@ -165,19 +174,26 @@ export function MaschinenPage() {
         `/maschinen/${selectedId}/recalculate-rate`,
         {},
       );
+      const fxSuffix =
+        updated.stundensatz_source != null
+          ? t("masterData.rateRecalculatedFx", {
+              source: updated.stundensatz_source,
+              currency: updated.source_currency ?? "",
+              fx: selectedWerk?.fx_to_eur ?? t("common.dash"),
+            })
+          : "";
       setMessage(
-        `Stundensatz neu berechnet: ${Number(updated.stundensatz).toFixed(4)} €/h` +
-          (updated.stundensatz_source != null
-            ? ` (${updated.stundensatz_source} ${updated.source_currency ?? ""}/h, FX ${selectedWerk?.fx_to_eur ?? "–"})`
-            : ""),
+        t("masterData.rateRecalculated", {
+          rate: Number(updated.stundensatz).toFixed(4),
+        }) + fxSuffix,
       );
       setReloadKey((k) => k + 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Neuberechnung fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("masterData.recalculateFailed"));
     } finally {
       setBusy(false);
     }
-  }, [selectedId, canWrite, selectedWerk?.fx_to_eur]);
+  }, [selectedId, canWrite, selectedWerk?.fx_to_eur, t]);
 
   return (
     <div className="space-y-2">
@@ -192,8 +208,9 @@ export function MaschinenPage() {
       )}
       <StammdatenGrid<Maschine>
         key={reloadKey}
-        title="Maschinen"
-        entityLabel="Maschine"
+        title={t("nav.machines")}
+        description={t("pages.machinesDesc")}
+        entityLabel={t("masterData.machine")}
         endpoint="/maschinen"
         columnDefs={columnDefs}
         formFields={formFields}
@@ -201,13 +218,9 @@ export function MaschinenPage() {
         formMaxWidthClassName="max-w-xl"
         formBanner={
           selectedWerk ? (
-            <p>
-              Kostenparameter werden aus Werk: <strong>{selectedWerk.code}</strong>{" "}
-              übernommen. Kapazität, Space-Satz, Abschreibung, Zinsen, Versicherung,
-              Instandhaltung und Energiepreise bitte unter Stammdaten → Werke pflegen.
-            </p>
+            <p>{t("masterData.plantParamsBanner", { code: selectedWerk.code })}</p>
           ) : (
-            <p>Bitte zuerst ein Werk wählen. Standortparameter werden am Werk gepflegt.</p>
+            <p>{t("masterData.selectPlantFirst")}</p>
           )
         }
         onSelectedIdChange={setSelectedId}
@@ -226,11 +239,11 @@ export function MaschinenPage() {
                 onClick={() => void recalculate()}
                 className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:opacity-50"
               >
-                {busy ? "Berechne…" : "Stundensatz neu berechnen"}
+                {busy ? t("masterData.calculating") : t("masterData.recalculateHourlyRate")}
               </button>
               {!selectedId && (
                 <span className="ml-2 text-xs text-gray-500">
-                  Maschine in der Tabelle auswählen
+                  {t("masterData.selectMachineInTable")}
                 </span>
               )}
             </div>

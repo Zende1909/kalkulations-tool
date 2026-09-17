@@ -14,11 +14,11 @@ const apiSrc = readFileSync(resolve(__dirname, "../api/spritzguss.ts"), "utf-8")
 
 describe("Zykluszeit-Schätzung UI", () => {
   it("kommt mit den zentralen Eingaben aus", () => {
-    expect(pageSrc).toMatch(/Zykluszeit-Schätzung/);
-    expect(pageSrc).toMatch(/kühlzeitrelevante Wandstärke \(mm\)/);
-    expect(pageSrc).toMatch(/Entnahmeart/);
-    expect(pageSrc).toMatch(/Prozessaufwand/);
-    expect(pageSrc).toMatch(/Nebenzeiten gesamt \(s\)/);
+    expect(pageSrc).toMatch(/spritzguss\.cycleTimeSection/);
+    expect(pageSrc).toMatch(/spritzguss\.coolingWallThickness/);
+    expect(pageSrc).toMatch(/spritzguss\.demoldingType/);
+    expect(pageSrc).toMatch(/spritzguss\.processEffort/);
+    expect(pageSrc).toMatch(/spritzguss\.ancillaryTimeTotal/);
   });
 
   it("verzichtet auf die früheren Detailparameter", () => {
@@ -64,20 +64,20 @@ describe("Zykluszeit-Schätzung UI", () => {
     ]) {
       expect(pageSrc).toContain(`zykluszeitVorschlag.${feld}`);
     }
-    expect(pageSrc).toMatch(/Werkzeugbewegung/);
-    expect(pageSrc).toMatch(/Einspritzen und Nachdruck/);
-    expect(pageSrc).toMatch(/Dosierüberhang/);
-    expect(pageSrc).toMatch(/Kühlzeit für Weiterrechnung/);
-    expect(pageSrc).toMatch(/Vorgeschlagene Gesamtzykluszeit/);
-    expect(pageSrc).toMatch(/Aktuell verwendete Zykluszeit/);
+    expect(pageSrc).toMatch(/spritzguss\.moldMovement/);
+    expect(pageSrc).toMatch(/spritzguss\.injectionAndHold/);
+    expect(pageSrc).toMatch(/spritzguss\.dosingOverrun/);
+    expect(pageSrc).toMatch(/spritzguss\.coolingTimeForCalc/);
+    expect(pageSrc).toMatch(/spritzguss\.suggestedTotalCycleTime/);
+    expect(pageSrc).toMatch(/spritzguss\.currentlyUsedCycleTime/);
   });
 
   it("kennzeichnet Erfahrungswerte, Parallelität und Fallbacks", () => {
-    expect(pageSrc).toMatch(/pauschale Erfahrungswerte/);
-    expect(pageSrc).toMatch(/Plastifizierung läuft parallel zur Kühlung/);
-    expect(pageSrc).toMatch(/Kavitätenzahl\s*\n?\s*verlängert die Kühlzeit nicht/);
+    expect(pageSrc).toMatch(/spritzguss\.experienceValuesNote/);
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.zuhaltekraft_fallback/);
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.schussgewicht_fallback/);
+    expect(pageSrc).toMatch(/spritzguss\.noClampingFallback/);
+    expect(pageSrc).toMatch(/spritzguss\.noShotWeightFallback/);
   });
 
   it("zeigt nicht blockierende Plausibilitätswarnungen an", () => {
@@ -96,22 +96,22 @@ describe("Zykluszeit-Schätzung UI", () => {
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.kuehlzeit_s/);
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.nebenzeiten_gesamt_s/);
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.materialgruppe/);
-    expect(pageSrc).toMatch(/theoretische Kühlzeit/);
+    expect(pageSrc).toMatch(/spritzguss\.materialTempsSummary/);
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.optimale_kuehlzeit_s/);
   });
 
   it("zeigt den Vorschlag in ganzen Sekunden und weist die exakte Summe aus", () => {
-    expect(pageSrc).toMatch(/Der Vorschlag wird auf eine volle Sekunde gerundet/);
+    expect(pageSrc).toMatch(/spritzguss\.cycleTimeIntro/);
     expect(pageSrc).toMatch(
       /formatSekunden\(zykluszeitVorschlag\.gesamtzykluszeit_s,\s*0\)/,
     );
     expect(pageSrc).toMatch(/zykluszeitVorschlag\.gesamtzykluszeit_exakt_s/);
-    expect(pageSrc).toMatch(/ungerundet/);
+    expect(pageSrc).toMatch(/spritzguss\.unrounded/);
   });
 
   it("schreibt den Vorschlag erst nach Klick auf Übernehmen ins Zykluszeitfeld", () => {
     expect(pageSrc).toMatch(/uebernehmeZykluszeit/);
-    expect(pageSrc).toMatch(/>\s*Übernehmen\s*<\/button>/);
+    expect(pageSrc).toMatch(/t\("spritzguss\.apply"\)/);
     expect(pageSrc).toMatch(/if \(!zykluszeitVorschlag\?\.kann_uebernommen_werden\) return;/);
     expect(pageSrc).toMatch(/disabled=\{!zykluszeitVorschlag\?\.kann_uebernommen_werden\}/);
     expect(pageSrc).toMatch(/zykluszeit_s: wert,\s*zykluszeit_quelle: "vorschlag"/);
@@ -121,10 +121,10 @@ describe("Zykluszeit-Schätzung UI", () => {
   });
 
   it("sperrt Übernehmen bei nicht plausiblem Vorschlag", () => {
-    expect(pageSrc).toMatch(/Zykluszeitvorschlag nicht plausibel/);
+    expect(pageSrc).toMatch(/spritzguss\.suggestionNotPlausible/);
     expect(pageSrc).toMatch(/status === "nicht_plausibel"/);
     expect(pageSrc).toMatch(/kann_uebernommen_werden/);
-    expect(pageSrc).toMatch(/maximale Schussgewichte/);
+    expect(pageSrc).toMatch(/spritzguss\.suggestionNotPlausibleBody/);
     expect(pageSrc).toMatch(/role=\{zykluszeitVorschlag\?\.status === "nicht_plausibel" \? "alert"/);
     expect(pageSrc).not.toMatch(/disabled=\{!zykluszeitVorschlag\?\.berechenbar\}/);
   });
@@ -133,8 +133,8 @@ describe("Zykluszeit-Schätzung UI", () => {
     expect(pageSrc).toMatch(
       /fieldKey === "zykluszeit_s"[\s\S]{0,160}zykluszeit_quelle: "manuell"/,
     );
-    expect(pageSrc).toMatch(/aus Vorschlag übernommen/);
-    expect(pageSrc).toMatch(/manuell erfasst/);
+    expect(pageSrc).toMatch(/spritzguss\.fromSuggestion/);
+    expect(pageSrc).toMatch(/spritzguss\.enteredManually/);
   });
 
   it("zeigt einen Hinweis, wenn keine Schätzung möglich ist", () => {

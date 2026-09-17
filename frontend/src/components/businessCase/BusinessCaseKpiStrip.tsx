@@ -1,3 +1,4 @@
+import { useT } from "../../i18n";
 import { formatPercentOrDash } from "../../pages/businessCaseFormatting";
 import type { BusinessCaseRevenueYearRow } from "../../types/businessCase";
 import {
@@ -37,6 +38,7 @@ export function BusinessCaseKpiStrip({
   ebitPct: number | null | undefined;
   roiPct: number | null | undefined;
 }) {
+  const t = useT();
   const points = buildRevenueChartPoints(revenueByYear);
   const total = sumDisplayRevenue(points);
   const scale = chooseRevenueScale([total, ...points.map((p) => p.display_revenue)]);
@@ -48,24 +50,24 @@ export function BusinessCaseKpiStrip({
       data-testid="business-case-kpi-strip"
     >
       <KpiTile
-        label="Gesamtumsatz"
+        label={t("businessCase.totalRevenue")}
         value={formatRevenueOnScale(total, scale)}
-        hint="Summe der Jahreswerte (Teileumsatz)"
+        hint={t("businessCase.revenueSumHint")}
       />
       <KpiTile
-        label="EBIT"
+        label={t("businessCase.ebit")}
         value={formatPercentOrDash(ebitPct)}
-        hint="tatsächlicher Preis, ohne CAPEX"
+        hint={t("businessCase.ebitHint")}
       />
       <KpiTile
-        label="ROI"
+        label={t("businessCase.roi")}
         value={formatPercentOrDash(roiPct)}
-        hint="inkl. CAPEX, tatsächlicher Preis"
+        hint={t("businessCase.roiHint")}
       />
       <KpiTile
-        label="Zeitraum"
-        value={period ?? "–"}
-        hint={period ? "Kalenderjahre im Mengenprofil" : "Kein Mengenprofil vorhanden"}
+        label={t("businessCase.period")}
+        value={period ?? t("common.dash")}
+        hint={period ? t("businessCase.periodHint") : t("businessCase.noVolumeProfile")}
       />
     </div>
   );

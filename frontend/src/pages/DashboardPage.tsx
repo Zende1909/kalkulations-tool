@@ -15,9 +15,10 @@ import type {
   DashboardQuery,
   DashboardSummary,
 } from "../types/dashboard";
+import { useT } from "../i18n";
 
-function euro(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return "Keine Daten";
+function euro(value: number | null | undefined, noData = "–"): string {
+  if (value == null || Number.isNaN(value)) return noData;
   return `${value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 }
 
@@ -26,8 +27,8 @@ function int(value: number | null | undefined): string {
   return value.toLocaleString("de-DE");
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return "–";
+function formatDate(value: string | null | undefined, dash = "–"): string {
+  if (!value) return dash;
   try {
     return new Date(value).toLocaleString("de-DE", {
       day: "2-digit",
@@ -41,8 +42,8 @@ function formatDate(value: string | null | undefined): string {
   }
 }
 
-function formatDay(value: string | null | undefined): string {
-  if (!value) return "–";
+function formatDay(value: string | null | undefined, dash = "–"): string {
+  if (!value) return dash;
   try {
     return new Date(value).toLocaleDateString("de-DE");
   } catch {
@@ -54,30 +55,17 @@ function chartHasValues(items: ChartBarItem[] | Array<{ label: string; value: nu
   return items.some((item) => item.value !== 0);
 }
 
-const KPI_CARDS: Array<{
-  key: keyof DashboardSummary["kpis"];
-  label: string;
-  format: "int" | "euro" | "avg";
-}> = [
-  { key: "anzahl_projekte", label: "Anzahl Projekte", format: "int" },
-  { key: "anzahl_spritzguss_kalkulationen", label: "Einzelteil-Kalkulationen", format: "int" },
-  { key: "anzahl_baugruppen", label: "Anzahl Baugruppen", format: "int" },
-  { key: "investitionen_gesamt", label: "Gesamtinvestitionsvolumen", format: "euro" },
-  { key: "umsatzpotenzial_jahr", label: "Summe Jahresumsätze", format: "euro" },
-  { key: "durchschnitt_preis_pro_stueck", label: "Ø Preis pro Stück", format: "avg" },
-  { key: "durchschnitt_endpreis_einzelteil", label: "Ø Endpreis je Einzelteil", format: "avg" },
-  { key: "durchschnitt_baugruppenpreis", label: "Ø Baugruppenpreis je Stück", format: "avg" },
-];
-
 function HorizontalBarChart({
   items,
   unit = "€",
+  emptyLabel,
 }: {
   items: Array<{ label: string; value: number }>;
   unit?: string;
+  emptyLabel: string;
 }) {
   if (!chartHasValues(items)) {
-    return <p className="text-sm text-gray-500">Keine Diagrammdaten für die aktuelle Auswahl.</p>;
+    return <p className="text-sm text-gray-500">{emptyLabel}</p>;
   }
   const max = Math.max(...items.map((i) => i.value), 1);
   return (
@@ -108,12 +96,14 @@ function HorizontalBarChart({
 function VerticalBarChart({
   items,
   unit = "€",
+  emptyLabel,
 }: {
   items: Array<{ label: string; value: number }>;
   unit?: string;
+  emptyLabel: string;
 }) {
   if (!chartHasValues(items)) {
-    return <p className="text-sm text-gray-500">Keine Diagrammdaten für die aktuelle Auswahl.</p>;
+    return <p className="text-sm text-gray-500">{emptyLabel}</p>;
   }
   const max = Math.max(...items.map((i) => i.value), 1);
   return (
@@ -140,6 +130,23 @@ function VerticalBarChart({
 const EMPTY_FILTERS: DashboardQuery = {};
 
 export function DashboardPage() {
+  const t = useT();
+  const noData = t("dashboard.noDataShort");
+  const dash = t("common.dash");
+  const kpiCards: Array<{
+    key: keyof DashboardSummary["kpis"];
+    label: string;
+    format: "int" | "euro" | "avg";
+  }> = [
+    { key: "anzahl_projekte", label: t("dashboard.kpiProjects"), format: "int" },
+    { key: "anzahl_spritzguss_kalkulationen", label: t("dashboard.kpiMolded"), format: "int" },
+    { key: "anzahl_baugruppen", label: t("dashboard.kpiAssemblies"), format: "int" },
+    { key: "investitionen_gesamt", label: t("dashboard.kpiInvestments"), format: "euro" },
+    { key: "umsatzpotenzial_jahr", label: t("dashboard.kpiRevenue"), format: "euro" },
+    { key: "durchschnitt_preis_pro_stueck", label: t("dashboard.kpiAvgPrice"), format: "avg" },
+    { key: "durchschnitt_endpreis_einzelteil", label: t("dashboard.kpiAvgMolded"), format: "avg" },
+    { key: "durchschnitt_baugruppenpreis", label: t("dashboard.kpiAvgAssembly"), format: "avg" },
+  ];
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [projectFilter, setProjectFilter] = useState("");
   const [customerFilter, setCustomerFilter] = useState("");
@@ -162,7 +169,7 @@ export function DashboardPage() {
       const summary = await getDashboardSummary(filters);
       setData(summary);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Dashboard konnte nicht geladen werden");
+      setError(err instanceof Error ? err.message : t("dashboard.loadFailed"));
       setData(null);
     } finally {
       setLoading(false);
@@ -204,7 +211,7 @@ export function DashboardPage() {
       const path = format === "pdf" ? dashboardPdfUrl(applied) : dashboardXlsxUrl(applied);
       await downloadReport(path, filename);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("common.exportFailed"));
     } finally {
       setExportBusy(false);
     }
@@ -218,7 +225,7 @@ export function DashboardPage() {
       const path = format === "pdf" ? baugruppePdfUrl(assemblyId) : baugruppeXlsxUrl(assemblyId);
       await downloadReport(path, filename);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("common.exportFailed"));
     } finally {
       setRowExportId(null);
     }
@@ -230,17 +237,17 @@ export function DashboardPage() {
     try {
       setDetail(await getAssemblyOverview(assemblyId));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Baugruppendetail konnte nicht geladen werden");
+      setError(err instanceof Error ? err.message : t("dashboard.assemblyDetailFailed"));
     } finally {
       setDetailLoading(false);
     }
   };
 
   const formatKpi = (key: keyof DashboardSummary["kpis"], format: "int" | "euro" | "avg") => {
-    if (!data) return format === "avg" ? "Keine Daten" : "0";
+    if (!data) return format === "avg" ? noData : "0";
     const value = data.kpis[key];
-    if (format === "avg") return euro(value as number | null);
-    if (format === "euro") return euro(value as number);
+    if (format === "avg") return euro(value as number | null, noData);
+    if (format === "euro") return euro(value as number, noData);
     return int(value as number);
   };
 
@@ -250,10 +257,8 @@ export function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Gesamtübersicht für Projekte, Kalkulationen, Baugruppen und Investitionen
-          </p>
+          <h2 className="text-2xl font-bold text-gray-900">{t("nav.dashboard")}</h2>
+          <p className="mt-1 text-sm text-gray-600">{t("dashboard.intro")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -262,7 +267,7 @@ export function DashboardPage() {
             onClick={() => load(applied)}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
           >
-            Aktualisieren
+            {t("common.reload")}
           </button>
           <ExportButtons
             busy={exportBusy}
@@ -274,16 +279,16 @@ export function DashboardPage() {
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="mb-3 text-sm font-semibold text-gray-900">Filter</h3>
+        <h3 className="mb-3 text-sm font-semibold text-gray-900">{t("common.filter")}</h3>
         <div className="flex flex-wrap items-end gap-3">
           <label className="block text-sm">
-            <span className="text-gray-600">Kunde</span>
+            <span className="text-gray-600">{t("project.customer")}</span>
             <select
               className="mt-1 block min-w-[180px] rounded border px-2 py-1.5"
               value={customerFilter}
               onChange={(e) => setCustomerFilter(e.target.value)}
             >
-              <option value="">Alle Kunden</option>
+              <option value="">{t("dashboard.allCustomers")}</option>
               {(data?.filter_options.kunden ?? []).map((k) => (
                 <option key={k} value={k}>
                   {k}
@@ -292,13 +297,13 @@ export function DashboardPage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="text-gray-600">Projekt</span>
+            <span className="text-gray-600">{t("project.project")}</span>
             <select
               className="mt-1 block min-w-[180px] rounded border px-2 py-1.5"
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
             >
-              <option value="">Alle Projekte</option>
+              <option value="">{t("project.allProjects")}</option>
               {(data?.filter_options.projekte ?? []).map((p) => (
                 <option key={p} value={p}>
                   {p}
@@ -307,13 +312,13 @@ export function DashboardPage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="text-gray-600">Status</span>
+            <span className="text-gray-600">{t("dashboard.colStatus")}</span>
             <select
               className="mt-1 block min-w-[160px] rounded border px-2 py-1.5"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
-              <option value="">Alle Status</option>
+              <option value="">{t("dashboard.allStatuses")}</option>
               {(data?.filter_options.statusse ?? []).map((s) => (
                 <option key={s} value={s}>
                   {s}
@@ -322,13 +327,13 @@ export function DashboardPage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="text-gray-600">Kalkulationsart</span>
+            <span className="text-gray-600">{t("dashboard.calculationType")}</span>
             <select
               className="mt-1 block min-w-[160px] rounded border px-2 py-1.5"
               value={kalkulationsart}
               onChange={(e) => setKalkulationsart(e.target.value)}
             >
-              <option value="">Alle Arten</option>
+              <option value="">{t("dashboard.allTypes")}</option>
               {(data?.filter_options.kalkulationsarten ?? ["Spritzguss", "Baugruppe"]).map((k) => (
                 <option key={k} value={k}>
                   {k}
@@ -337,7 +342,7 @@ export function DashboardPage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="text-gray-600">Zeitraum von</span>
+            <span className="text-gray-600">{t("dashboard.dateFrom")}</span>
             <input
               type="date"
               className="mt-1 block rounded border px-2 py-1.5"
@@ -346,7 +351,7 @@ export function DashboardPage() {
             />
           </label>
           <label className="block text-sm">
-            <span className="text-gray-600">Zeitraum bis</span>
+            <span className="text-gray-600">{t("dashboard.dateTo")}</span>
             <input
               type="date"
               className="mt-1 block rounded border px-2 py-1.5"
@@ -359,14 +364,14 @@ export function DashboardPage() {
             onClick={applyFilters}
             className="rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600"
           >
-            Filter anwenden
+            {t("dashboard.applyFilters")}
           </button>
           <button
             type="button"
             onClick={resetFilters}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
           >
-            Filter zurücksetzen
+            {t("dashboard.resetFilters")}
           </button>
         </div>
       </section>
@@ -375,27 +380,26 @@ export function DashboardPage() {
 
       {loading ? (
         <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-500">
-          Dashboard wird geladen …
+          {t("dashboard.loading")}
         </div>
       ) : data && !data.has_data ? (
         <section className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center">
-          <h3 className="text-lg font-semibold text-gray-900">Keine Daten gefunden</h3>
+          <h3 className="text-lg font-semibold text-gray-900">{t("dashboard.noDataTitle")}</h3>
           <p className="mx-auto mt-2 max-w-xl text-sm text-gray-600">
-            {data.empty_message ||
-              "Keine Daten für die gewählten Filter. Setzen Sie die Filter zurück oder legen Sie Projekte, Kalkulationen oder Investitionen an."}
+            {data.empty_message || t("dashboard.noDataDefault")}
           </p>
           <button
             type="button"
             onClick={resetFilters}
             className="mt-4 rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600"
           >
-            Filter zurücksetzen
+            {t("dashboard.resetFilters")}
           </button>
         </section>
       ) : data ? (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {KPI_CARDS.map(({ key, label, format }) => (
+            {kpiCards.map(({ key, label, format }) => (
               <div key={key} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                 <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
                 <p className="mt-2 text-2xl font-bold tabular-nums text-gray-900">{formatKpi(key, format)}</p>
@@ -406,13 +410,14 @@ export function DashboardPage() {
           <div className="grid gap-6 xl:grid-cols-2">
             <section className="rounded-lg border border-gray-200 bg-white p-4">
               <h3 className="mb-4 font-semibold text-gray-900">
-                Kostenstruktur {detail ? `– ${detail.name}` : "der Baugruppen"}
+                {t("dashboard.costStructure")} {detail ? `– ${detail.name}` : t("dashboard.costStructureOfAssemblies")}
               </h3>
-              <HorizontalBarChart items={costChart} />
+              <HorizontalBarChart items={costChart} emptyLabel={t("dashboard.noChartData")} />
             </section>
             <section className="rounded-lg border border-gray-200 bg-white p-4">
-              <h3 className="mb-4 font-semibold text-gray-900">Vergleich Preis pro Stück</h3>
+              <h3 className="mb-4 font-semibold text-gray-900">{t("dashboard.priceComparison")}</h3>
               <HorizontalBarChart
+                emptyLabel={t("dashboard.noChartData")}
                 items={data.price_comparison.map((i) => ({
                   label: `${i.label} (${i.typ})`,
                   value: i.value,
@@ -423,8 +428,9 @@ export function DashboardPage() {
 
           <div className="grid gap-6 xl:grid-cols-2">
             <section className="rounded-lg border border-gray-200 bg-white p-4">
-              <h3 className="mb-4 font-semibold text-gray-900">Jahresumsatz je Projekt</h3>
+              <h3 className="mb-4 font-semibold text-gray-900">{t("dashboard.revenueByProject")}</h3>
               <VerticalBarChart
+                emptyLabel={t("dashboard.noChartData")}
                 items={data.revenue_by_project.map((i) => ({
                   label: i.projekt,
                   value: i.betrag,
@@ -432,8 +438,9 @@ export function DashboardPage() {
               />
             </section>
             <section className="rounded-lg border border-gray-200 bg-white p-4">
-              <h3 className="mb-4 font-semibold text-gray-900">Investitionsvolumen je Projekt</h3>
+              <h3 className="mb-4 font-semibold text-gray-900">{t("dashboard.investmentByProject")}</h3>
               <VerticalBarChart
+                emptyLabel={t("dashboard.noChartData")}
                 items={data.investment_by_project.map((i) => ({
                   label: i.projekt,
                   value: i.betrag,
@@ -443,20 +450,20 @@ export function DashboardPage() {
           </div>
 
           <section className="overflow-x-auto rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-4 font-semibold text-gray-900">Zuletzt geänderte Kalkulationen</h3>
+            <h3 className="mb-4 font-semibold text-gray-900">{t("dashboard.recentCalculations")}</h3>
             {data.recent_calculations.length === 0 ? (
-              <p className="text-sm text-gray-500">Keine Kalkulationen in der aktuellen Auswahl.</p>
+              <p className="text-sm text-gray-500">{t("dashboard.noCalculations")}</p>
             ) : (
               <table className="w-full min-w-[800px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-gray-500">
-                    <th className="py-2 pr-3">Art</th>
-                    <th className="py-2 pr-3">Bezeichnung</th>
-                    <th className="py-2 pr-3">Nummer</th>
-                    <th className="py-2 pr-3">Kunde</th>
-                    <th className="py-2 pr-3">Projekt</th>
-                    <th className="py-2 pr-3 text-right">Preis/St.</th>
-                    <th className="py-2">Geändert</th>
+                    <th className="py-2 pr-3">{t("dashboard.colType")}</th>
+                    <th className="py-2 pr-3">{t("dashboard.colDesignation")}</th>
+                    <th className="py-2 pr-3">{t("dashboard.colNumber")}</th>
+                    <th className="py-2 pr-3">{t("dashboard.colCustomer")}</th>
+                    <th className="py-2 pr-3">{t("dashboard.colProject")}</th>
+                    <th className="py-2 pr-3 text-right">{t("dashboard.colPricePc")}</th>
+                    <th className="py-2">{t("dashboard.colChanged")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -465,10 +472,10 @@ export function DashboardPage() {
                       <td className="py-2 pr-3">{row.kalkulationsart}</td>
                       <td className="py-2 pr-3">{row.bezeichnung}</td>
                       <td className="py-2 pr-3">{row.nummer}</td>
-                      <td className="py-2 pr-3">{row.kunde || "–"}</td>
-                      <td className="py-2 pr-3">{row.projekt || "–"}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{euro(row.endpreis_je_stueck)}</td>
-                      <td className="py-2 whitespace-nowrap">{formatDate(row.updated_at)}</td>
+                      <td className="py-2 pr-3">{row.kunde || dash}</td>
+                      <td className="py-2 pr-3">{row.projekt || dash}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{euro(row.endpreis_je_stueck, noData)}</td>
+                      <td className="py-2 whitespace-nowrap">{formatDate(row.updated_at, dash)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -477,18 +484,18 @@ export function DashboardPage() {
           </section>
 
           <section className="overflow-x-auto rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-4 font-semibold text-gray-900">Zuletzt angelegte Investitionen</h3>
+            <h3 className="mb-4 font-semibold text-gray-900">{t("dashboard.recentInvestments")}</h3>
             {data.recent_investments.length === 0 ? (
-              <p className="text-sm text-gray-500">Keine Investitionen in der aktuellen Auswahl.</p>
+              <p className="text-sm text-gray-500">{t("dashboard.noInvestments")}</p>
             ) : (
               <table className="w-full min-w-[700px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-gray-500">
-                    <th className="py-2 pr-3">Bezeichnung</th>
-                    <th className="py-2 pr-3">Typ</th>
-                    <th className="py-2 pr-3">Projekt</th>
-                    <th className="py-2 pr-3 text-right">Betrag</th>
-                    <th className="py-2">Angelegt</th>
+                    <th className="py-2 pr-3">{t("dashboard.colDesignation")}</th>
+                    <th className="py-2 pr-3">{t("dashboard.colInvestmentType")}</th>
+                    <th className="py-2 pr-3">{t("dashboard.colProject")}</th>
+                    <th className="py-2 pr-3 text-right">{t("dashboard.colAmount")}</th>
+                    <th className="py-2">{t("dashboard.colCreated")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -496,9 +503,9 @@ export function DashboardPage() {
                     <tr key={row.id} className="border-b border-gray-100">
                       <td className="py-2 pr-3">{row.bezeichnung}</td>
                       <td className="py-2 pr-3">{row.typ}</td>
-                      <td className="py-2 pr-3">{row.projekt || "–"}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{euro(row.betrag)}</td>
-                      <td className="py-2 whitespace-nowrap">{formatDate(row.created_at)}</td>
+                      <td className="py-2 pr-3">{row.projekt || dash}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{euro(row.betrag, noData)}</td>
+                      <td className="py-2 whitespace-nowrap">{formatDate(row.created_at, dash)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -507,24 +514,24 @@ export function DashboardPage() {
           </section>
 
           <section className="overflow-x-auto rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-4 font-semibold text-gray-900">Baugruppenübersicht</h3>
+            <h3 className="mb-4 font-semibold text-gray-900">{t("dashboard.assemblyOverview")}</h3>
             {data.assemblies.length === 0 ? (
               <p className="text-sm text-gray-500">
-                Keine Baugruppen gefunden. Legen Sie eine Baugruppe an oder setzen Sie die Filter zurück.
+                {t("dashboard.noAssemblies")}
               </p>
             ) : (
               <table className="w-full min-w-[980px] text-sm">
                 <thead>
                   <tr className="border-b text-left text-gray-500">
-                    <th className="py-2 pr-3">Baugruppe</th>
-                    <th className="py-2 pr-3">Projekt</th>
-                    <th className="py-2 pr-3">Kunde</th>
-                    <th className="py-2 pr-3">Status</th>
-                    <th className="py-2 pr-3 text-right">Jahresstückzahl</th>
-                    <th className="py-2 pr-3 text-right">Preis/St.</th>
-                    <th className="py-2 pr-3 text-right">Jahresumsatz</th>
-                    <th className="py-2 pr-3">Letzte Kalkulation</th>
-                    <th className="py-2">Export</th>
+                    <th className="py-2 pr-3">{t("dashboard.colAssembly")}</th>
+                    <th className="py-2 pr-3">{t("dashboard.colProject")}</th>
+                    <th className="py-2 pr-3">{t("dashboard.colCustomer")}</th>
+                    <th className="py-2 pr-3">{t("dashboard.colStatus")}</th>
+                    <th className="py-2 pr-3 text-right">{t("dashboard.colAnnualQty")}</th>
+                    <th className="py-2 pr-3 text-right">{t("dashboard.colPricePc")}</th>
+                    <th className="py-2 pr-3 text-right">{t("dashboard.colAnnualRevenue")}</th>
+                    <th className="py-2 pr-3">{t("dashboard.colLastCalc")}</th>
+                    <th className="py-2">{t("dashboard.colExport")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -542,13 +549,13 @@ export function DashboardPage() {
                           {row.name}
                         </button>
                       </td>
-                      <td className="py-2 pr-3">{row.projekt || "–"}</td>
-                      <td className="py-2 pr-3">{row.kunde || "–"}</td>
-                      <td className="py-2 pr-3">{row.status || "–"}</td>
+                      <td className="py-2 pr-3">{row.projekt || dash}</td>
+                      <td className="py-2 pr-3">{row.kunde || dash}</td>
+                      <td className="py-2 pr-3">{row.status || dash}</td>
                       <td className="py-2 pr-3 text-right tabular-nums">{int(row.jahresstueckzahl)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{euro(row.preis_je_stueck)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{euro(row.jahresumsatz)}</td>
-                      <td className="py-2 pr-3 whitespace-nowrap">{formatDate(row.letzte_kalkulation)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{euro(row.preis_je_stueck, noData)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{euro(row.jahresumsatz, noData)}</td>
+                      <td className="py-2 pr-3 whitespace-nowrap">{formatDate(row.letzte_kalkulation, dash)}</td>
                       <td className="py-2">
                         <div className="flex gap-1">
                           <ExportButtons
@@ -571,11 +578,11 @@ export function DashboardPage() {
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
                   <h3 className="font-semibold text-gray-900">
-                    Baugruppendetail{detail ? ` – ${detail.name}` : ""}
+                    {t("dashboard.assemblyDetail")}{detail ? ` – ${detail.name}` : ""}
                   </h3>
                   {detail && (
                     <p className="mt-1 text-sm text-gray-600">
-                      {detail.kunde || "–"} · {detail.projekt || "–"} · Version {detail.structure_version}
+                      {detail.kunde || dash} · {detail.projekt || dash} · {t("dashboard.version", { version: detail.structure_version })}
                     </p>
                   )}
                 </div>
@@ -589,36 +596,36 @@ export function DashboardPage() {
                 )}
               </div>
               {detailLoading || !detail ? (
-                <p className="text-sm text-gray-500">Detail wird geladen …</p>
+                <p className="text-sm text-gray-500">{t("dashboard.detailLoading")}</p>
               ) : (
                 <>
                   <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 text-sm">
-                    <p>Einzelteilkosten: {euro(detail.einzelteilkosten)}</p>
-                    <p>Kaufteilkosten: {euro(detail.kaufteilkosten)}</p>
-                    <p>Veredelungskosten: {euro(detail.veredelungskosten)}</p>
-                    <p>Investitions-/Werkzeugkosten: {euro(detail.investitionskosten)}</p>
-                    <p>VVGK: {euro(detail.vvgk)}</p>
-                    <p>Gewinn: {euro(detail.gewinn)}</p>
-                    <p>Skonto: {euro(detail.skonto)}</p>
-                    <p>Nettoverkaufspreis: {euro(detail.nettoverkaufspreis)}</p>
-                    <p>Bruttoverkaufspreis: {euro(detail.bruttoverkaufspreis)}</p>
-                    <p>Preis pro Stück: {euro(detail.preis_je_stueck)}</p>
-                    <p>Jahresumsatz: {euro(detail.jahresumsatz)}</p>
-                    <p>Gesamtsumme: {euro(detail.gesamtsumme)}</p>
+                    <p>{t("dashboard.moldedCosts")}: {euro(detail.einzelteilkosten, noData)}</p>
+                    <p>{t("dashboard.purchasedCosts")}: {euro(detail.kaufteilkosten, noData)}</p>
+                    <p>{t("dashboard.finishingCosts")}: {euro(detail.veredelungskosten, noData)}</p>
+                    <p>{t("dashboard.investmentToolingCosts")}: {euro(detail.investitionskosten, noData)}</p>
+                    <p>{t("dashboard.vvgk")}: {euro(detail.vvgk, noData)}</p>
+                    <p>{t("dashboard.profit")}: {euro(detail.gewinn, noData)}</p>
+                    <p>{t("dashboard.cashDiscount")}: {euro(detail.skonto, noData)}</p>
+                    <p>{t("dashboard.netSalesPrice")}: {euro(detail.nettoverkaufspreis, noData)}</p>
+                    <p>{t("dashboard.grossSalesPrice")}: {euro(detail.bruttoverkaufspreis, noData)}</p>
+                    <p>{t("dashboard.pricePerPiece")}: {euro(detail.preis_je_stueck, noData)}</p>
+                    <p>{t("dashboard.annualRevenue")}: {euro(detail.jahresumsatz, noData)}</p>
+                    <p>{t("dashboard.grandTotal")}: {euro(detail.gesamtsumme, noData)}</p>
                   </div>
-                  <h4 className="mb-2 text-sm font-semibold text-gray-900">BOM / Komponentenliste</h4>
+                  <h4 className="mb-2 text-sm font-semibold text-gray-900">{t("dashboard.bom")}</h4>
                   {detail.bom.length === 0 ? (
-                    <p className="text-sm text-gray-500">Keine Komponenten gespeichert.</p>
+                    <p className="text-sm text-gray-500">{t("dashboard.noComponents")}</p>
                   ) : (
                     <table className="w-full min-w-[700px] text-sm">
                       <thead>
                         <tr className="border-b text-left text-gray-500">
-                          <th className="py-2 pr-3">Typ</th>
-                          <th className="py-2 pr-3">Bezeichnung</th>
-                          <th className="py-2 pr-3">Teilenummer</th>
-                          <th className="py-2 pr-3 text-right">Menge</th>
-                          <th className="py-2 pr-3 text-right">Einzelpreis</th>
-                          <th className="py-2 text-right">Summe</th>
+                          <th className="py-2 pr-3">{t("dashboard.colBomType")}</th>
+                          <th className="py-2 pr-3">{t("dashboard.colDesignation")}</th>
+                          <th className="py-2 pr-3">{t("dashboard.colPartNumber")}</th>
+                          <th className="py-2 pr-3 text-right">{t("dashboard.colQty")}</th>
+                          <th className="py-2 pr-3 text-right">{t("dashboard.colUnitPrice")}</th>
+                          <th className="py-2 text-right">{t("dashboard.colSum")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -626,10 +633,10 @@ export function DashboardPage() {
                           <tr key={`${row.position_type}-${index}`} className="border-b border-gray-100">
                             <td className="py-2 pr-3">{row.position_type}</td>
                             <td className="py-2 pr-3">{row.bezeichnung}</td>
-                            <td className="py-2 pr-3">{row.teilenummer || "–"}</td>
+                            <td className="py-2 pr-3">{row.teilenummer || dash}</td>
                             <td className="py-2 pr-3 text-right tabular-nums">{row.menge}</td>
-                            <td className="py-2 pr-3 text-right tabular-nums">{euro(row.einzelpreis)}</td>
-                            <td className="py-2 text-right tabular-nums">{euro(row.zwischensumme)}</td>
+                            <td className="py-2 pr-3 text-right tabular-nums">{euro(row.einzelpreis, noData)}</td>
+                            <td className="py-2 text-right tabular-nums">{euro(row.zwischensumme, noData)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -641,24 +648,24 @@ export function DashboardPage() {
           )}
 
           <section className="overflow-x-auto rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-4 font-semibold text-gray-900">Investitionsübersicht</h3>
+            <h3 className="mb-4 font-semibold text-gray-900">{t("dashboard.investmentOverview")}</h3>
             {data.investments.length === 0 ? (
-              <p className="text-sm text-gray-500">Keine Investitionen in der aktuellen Auswahl.</p>
+              <p className="text-sm text-gray-500">{t("dashboard.noInvestments")}</p>
             ) : (
               <>
                 <table className="mb-4 w-full min-w-[1100px] text-sm">
                   <thead>
                     <tr className="border-b text-left text-gray-500">
-                      <th className="py-2 pr-3">Bezeichnung</th>
-                      <th className="py-2 pr-3">Typ</th>
-                      <th className="py-2 pr-3">Projekt</th>
-                      <th className="py-2 pr-3 text-right">Betrag</th>
-                      <th className="py-2 pr-3">Lieferant</th>
-                      <th className="py-2 pr-3">Status</th>
-                      <th className="py-2 pr-3">Bestelldatum</th>
-                      <th className="py-2 pr-3">Liefertermin</th>
-                      <th className="py-2 pr-3 text-right">Amortisationsvolumen</th>
-                      <th className="py-2 text-right">Kostenanteil/Teil</th>
+                      <th className="py-2 pr-3">{t("dashboard.colDesignation")}</th>
+                      <th className="py-2 pr-3">{t("dashboard.colInvestmentType")}</th>
+                      <th className="py-2 pr-3">{t("dashboard.colProject")}</th>
+                      <th className="py-2 pr-3 text-right">{t("dashboard.colAmount")}</th>
+                      <th className="py-2 pr-3">{t("dashboard.colSupplier")}</th>
+                      <th className="py-2 pr-3">{t("dashboard.colStatus")}</th>
+                      <th className="py-2 pr-3">{t("dashboard.colOrderDate")}</th>
+                      <th className="py-2 pr-3">{t("dashboard.colDeliveryDate")}</th>
+                      <th className="py-2 pr-3 text-right">{t("dashboard.colAmortVolume")}</th>
+                      <th className="py-2 text-right">{t("dashboard.colCostSharePc")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -666,33 +673,33 @@ export function DashboardPage() {
                       <tr key={row.id} className="border-b border-gray-100">
                         <td className="py-2 pr-3">{row.bezeichnung}</td>
                         <td className="py-2 pr-3">{row.typ}</td>
-                        <td className="py-2 pr-3">{row.projekt || "–"}</td>
-                        <td className="py-2 pr-3 text-right tabular-nums">{euro(row.betrag)}</td>
-                        <td className="py-2 pr-3">{row.lieferant || "–"}</td>
+                        <td className="py-2 pr-3">{row.projekt || dash}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{euro(row.betrag, noData)}</td>
+                        <td className="py-2 pr-3">{row.lieferant || dash}</td>
                         <td className="py-2 pr-3">{row.status}</td>
-                        <td className="py-2 pr-3 whitespace-nowrap">{formatDay(row.bestelldatum)}</td>
-                        <td className="py-2 pr-3 whitespace-nowrap">{formatDay(row.liefertermin)}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap">{formatDay(row.bestelldatum, dash)}</td>
+                        <td className="py-2 pr-3 whitespace-nowrap">{formatDay(row.liefertermin, dash)}</td>
                         <td className="py-2 pr-3 text-right tabular-nums">
-                          {row.amortisationsvolumen == null ? "–" : int(row.amortisationsvolumen)}
+                          {row.amortisationsvolumen == null ? dash : int(row.amortisationsvolumen)}
                         </td>
-                        <td className="py-2 text-right tabular-nums">{euro(row.kostenanteil_pro_teil)}</td>
+                        <td className="py-2 text-right tabular-nums">{euro(row.kostenanteil_pro_teil, noData)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                <h4 className="mb-2 text-sm font-semibold text-gray-900">Gesamtinvestitionsvolumen je Projekt</h4>
+                <h4 className="mb-2 text-sm font-semibold text-gray-900">{t("dashboard.investmentTotalByProject")}</h4>
                 <table className="w-full max-w-xl text-sm">
                   <thead>
                     <tr className="border-b text-left text-gray-500">
-                      <th className="py-2 pr-3">Projekt</th>
-                      <th className="py-2 text-right">Betrag</th>
+                      <th className="py-2 pr-3">{t("dashboard.colProject")}</th>
+                      <th className="py-2 text-right">{t("dashboard.colAmount")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.investment_by_project.map((row) => (
                       <tr key={row.projekt} className="border-b border-gray-100">
                         <td className="py-2 pr-3">{row.projekt}</td>
-                        <td className="py-2 text-right tabular-nums">{euro(row.betrag)}</td>
+                        <td className="py-2 text-right tabular-nums">{euro(row.betrag, noData)}</td>
                       </tr>
                     ))}
                   </tbody>

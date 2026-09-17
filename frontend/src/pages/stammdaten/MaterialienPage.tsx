@@ -10,90 +10,11 @@ import {
 } from "../../components/ui/agGridFormatters";
 import type { Material } from "../../types/stammdaten";
 import type { Materialgruppe } from "../../types/materialgruppe";
+import { useT } from "../../i18n";
 import {
   loadMaterialFormValues,
   submitMaterialFormValues,
 } from "../../utils/materialFormDecimals";
-
-const columnDefs: ColDef<Material>[] = [
-  { field: "material_nr", headerName: "Material-Nr.", minWidth: 130, pinned: "left" },
-  { field: "bezeichnung", headerName: "Bezeichnung", minWidth: 180 },
-  {
-    field: "preis_pro_kg",
-    headerName: "Preis/kg",
-    type: "numericColumn",
-    valueFormatter: decimalValueFormatter(4),
-    cellClass: "text-right",
-    headerClass: "ag-right-aligned-header",
-    minWidth: 110,
-  },
-  {
-    field: "dichte",
-    headerName: "Dichte",
-    type: "numericColumn",
-    valueFormatter: decimalValueFormatter(4),
-    cellClass: "text-right",
-    headerClass: "ag-right-aligned-header",
-    minWidth: 100,
-  },
-  {
-    field: "injection_pressure_kg_cm2",
-    headerName: "Einspritzdruck kg/cm²",
-    type: "numericColumn",
-    valueFormatter: decimalValueFormatter(2),
-    cellClass: "text-right",
-    headerClass: "ag-right-aligned-header",
-    minWidth: 150,
-  },
-  { field: "materialgruppe", headerName: "Materialgruppe", minWidth: 140 },
-  { field: "waehrung", headerName: "Währung", minWidth: 90, maxWidth: 110 },
-  {
-    field: "aktiv",
-    headerName: "Status",
-    minWidth: 110,
-    maxWidth: 130,
-    cellRenderer: activeStatusCellRenderer,
-    filter: false,
-  },
-];
-
-const baseFormFields: FormField[] = [
-  { name: "material_nr", label: "Material-Nr.", type: "text", required: true },
-  { name: "bezeichnung", label: "Bezeichnung", type: "text", required: true },
-  {
-    name: "preis_pro_kg",
-    label: "Preis pro kg",
-    type: "number",
-    required: true,
-    step: "0.0001",
-    hint: "Dezimalwert, z. B. 2,10 oder 2.10",
-  },
-  {
-    name: "dichte",
-    label: "Dichte",
-    type: "number",
-    required: true,
-    step: "0.0001",
-    hint: "Dezimalwert, z. B. 1,04 oder 1.04",
-  },
-  { name: "waehrung", label: "Währung", type: "text", required: true },
-  {
-    name: "injection_pressure_kg_cm2",
-    label: "Einspritzdruck",
-    type: "number",
-    required: true,
-    step: "0.01",
-    hint: "kg/cm² – Standard 500 bei neuen Materialien",
-  },
-  {
-    name: "materialgruppe",
-    label: "Materialgruppe",
-    type: "select",
-    options: [""],
-    hint: "Aus den Stammdaten Materialgruppen. Steuert die Zykluszeit-Schätzung.",
-  },
-  { name: "aktiv", label: "Aktiv", type: "checkbox" },
-];
 
 const emptyFormValues = {
   bezeichnung: "",
@@ -107,6 +28,7 @@ const emptyFormValues = {
 };
 
 export function MaterialienPage() {
+  const t = useT();
   const [gruppen, setGruppen] = useState<Materialgruppe[]>([]);
 
   useEffect(() => {
@@ -124,30 +46,112 @@ export function MaterialienPage() {
     };
   }, []);
 
+  const columnDefs = useMemo(
+    (): ColDef<Material>[] => [
+      {
+        field: "material_nr",
+        headerName: t("masterData.materialNo"),
+        minWidth: 130,
+        pinned: "left",
+      },
+      { field: "bezeichnung", headerName: t("masterData.designation"), minWidth: 180 },
+      {
+        field: "preis_pro_kg",
+        headerName: t("masterData.pricePerKgCol"),
+        type: "numericColumn",
+        valueFormatter: decimalValueFormatter(4),
+        cellClass: "text-right",
+        headerClass: "ag-right-aligned-header",
+        minWidth: 110,
+      },
+      {
+        field: "dichte",
+        headerName: t("masterData.density"),
+        type: "numericColumn",
+        valueFormatter: decimalValueFormatter(4),
+        cellClass: "text-right",
+        headerClass: "ag-right-aligned-header",
+        minWidth: 100,
+      },
+      {
+        field: "injection_pressure_kg_cm2",
+        headerName: t("masterData.injectionPressureCol"),
+        type: "numericColumn",
+        valueFormatter: decimalValueFormatter(2),
+        cellClass: "text-right",
+        headerClass: "ag-right-aligned-header",
+        minWidth: 150,
+      },
+      {
+        field: "materialgruppe",
+        headerName: t("masterData.materialGroupField"),
+        minWidth: 140,
+      },
+      { field: "waehrung", headerName: t("masterData.currency"), minWidth: 90, maxWidth: 110 },
+      {
+        field: "aktiv",
+        headerName: t("masterData.status"),
+        minWidth: 110,
+        maxWidth: 130,
+        cellRenderer: activeStatusCellRenderer,
+        filter: false,
+      },
+    ],
+    [t],
+  );
+
   const formFields = useMemo(
-    (): FormField[] =>
-      baseFormFields.map((field) =>
-        field.name === "materialgruppe"
-          ? {
-              ...field,
-              options: [
-                "",
-                ...gruppen.map((gruppe) => ({
-                  value: gruppe.gruppe,
-                  label: `${gruppe.gruppe} – ${gruppe.bezeichnung}`,
-                })),
-              ],
-            }
-          : field,
-      ),
-    [gruppen],
+    (): FormField[] => [
+      { name: "material_nr", label: t("masterData.materialNo"), type: "text", required: true },
+      { name: "bezeichnung", label: t("masterData.designation"), type: "text", required: true },
+      {
+        name: "preis_pro_kg",
+        label: t("masterData.pricePerKg"),
+        type: "number",
+        required: true,
+        step: "0.0001",
+        hint: t("masterData.decimalHint", { example: t("masterData.examplePrice") }),
+      },
+      {
+        name: "dichte",
+        label: t("masterData.density"),
+        type: "number",
+        required: true,
+        step: "0.0001",
+        hint: t("masterData.decimalHint", { example: t("masterData.exampleDensity") }),
+      },
+      { name: "waehrung", label: t("masterData.currency"), type: "text", required: true },
+      {
+        name: "injection_pressure_kg_cm2",
+        label: t("masterData.injectionPressure"),
+        type: "number",
+        required: true,
+        step: "0.01",
+        hint: t("masterData.injectionPressureHint"),
+      },
+      {
+        name: "materialgruppe",
+        label: t("masterData.materialGroupField"),
+        type: "select",
+        options: [
+          "",
+          ...gruppen.map((gruppe) => ({
+            value: gruppe.gruppe,
+            label: `${gruppe.gruppe} – ${gruppe.bezeichnung}`,
+          })),
+        ],
+        hint: t("masterData.materialGroupHint"),
+      },
+      { name: "aktiv", label: t("common.active"), type: "checkbox" },
+    ],
+    [gruppen, t],
   );
 
   return (
     <StammdatenGrid<Material>
-      title="Materialien"
-      description="Materialstammdaten mit Preisen, Dichte, Einspritzdruck und Materialgruppe für Zykluszeit-Schätzungen."
-      entityLabel="Material"
+      title={t("nav.materials")}
+      description={t("pages.materialsDesc")}
+      entityLabel={t("masterData.material")}
       endpoint="/materialien"
       columnDefs={columnDefs}
       formFields={formFields}

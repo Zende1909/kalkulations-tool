@@ -6,20 +6,24 @@ import { describe, expect, it } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pageSrc = readFileSync(resolve(__dirname, "./SpritzgussPage.tsx"), "utf-8");
+const labelsSrc = readFileSync(resolve(__dirname, "../i18n/spritzgussLabels.ts"), "utf-8");
+const catalogsSrc = readFileSync(resolve(__dirname, "../i18n/catalogs.ts"), "utf-8");
 
 describe("Spritzguss Ergebnisübersicht FGK", () => {
   it("zeigt additive Aufbauzeilen und FGK einmal vor den Herstellkosten", () => {
     expect(pageSrc).toMatch(/materialkosten_gesamt/);
-    expect(pageSrc).toMatch(/FGK-Basis \(Maschine \+ Lohn \+ Setup \+ Veredelung\)/);
-    expect(pageSrc).toMatch(/FGK-Betrag \(einmal\)/);
-    expect(pageSrc).toMatch(/Herstellkosten \(= Summe inkl\. FGK\)/);
-    expect(pageSrc).toMatch(/genau einmal/);
+    expect(labelsSrc).toMatch(/spritzguss\.overview\.fgkBase/);
+    expect(labelsSrc).toMatch(/spritzguss\.overview\.fgkAmountOnce/);
+    expect(labelsSrc).toMatch(/spritzguss\.overview\.manufacturingCost/);
+    expect(catalogsSrc).toMatch(/FGK-Basis \(Maschine \+ Lohn \+ Setup \+ Veredelung\)/);
+    expect(pageSrc).toMatch(/spritzguss\.resultOverviewHint/);
+    expect(catalogsSrc).toMatch(/genau einmal/);
   });
 
   it("stellt Spritzguss-HK nicht als Summand vor der FGK dar", () => {
-    const overviewBlock = pageSrc.slice(
-      pageSrc.indexOf("const ERGEBNISUEBERSICHT"),
-      pageSrc.indexOf("const FIELD_LABELS"),
+    const overviewBlock = labelsSrc.slice(
+      labelsSrc.indexOf("export const ERGEBNISUEBERSICHT_DEF"),
+      labelsSrc.indexOf("export const DETAIL_BLOCK_ORDER"),
     );
     const sgIdx = overviewBlock.indexOf("spritzguss_herstellkosten");
     const fgkIdx = overviewBlock.indexOf("fertigungsgemeinkosten");

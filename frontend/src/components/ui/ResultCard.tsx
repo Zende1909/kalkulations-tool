@@ -20,7 +20,7 @@ export function ResultCard({
     success: "border-green-200 bg-success-light",
     warning: "border-orange-200 bg-warning-light",
     danger: "border-red-200 bg-danger-light",
-    brand: "border-blue-200 bg-brand-light",
+    brand: "border-cyan-200 bg-brand-light",
   } as const;
 
   return (

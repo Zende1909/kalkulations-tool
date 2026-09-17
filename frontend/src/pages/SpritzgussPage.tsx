@@ -26,6 +26,17 @@ import {
 } from "../components/hierarchy/HierarchySelector";
 import { useAuth } from "../context/AuthContext";
 import { useActiveProject } from "../context/ActiveProjectContext";
+import { useT } from "../i18n";
+import {
+  DETAIL_BLOCK_ORDER,
+  ERGEBNISUEBERSICHT_DEF,
+  blockLabel,
+  entnahmeDesc,
+  entnahmeLabel,
+  fieldLabel,
+  sizeClassLabel,
+  veredelungDetailLabel,
+} from "../i18n/spritzgussLabels";
 import type { Lohnkosten, Land, Maschine, Material, Werk } from "../types/stammdaten";
 import type { Veredelungsschritt } from "../types/veredelung";
 import {
@@ -129,57 +140,8 @@ function formatDetailValue(field: string, value: unknown): string {
   return euro(num);
 }
 
-const BLOCK_LABELS: Record<string, string> = {
-  material: "Material",
-  fertigung: "Fertigung",
-  veredelung: "Veredelung",
-  gemeinkosten: "Gemeinkosten / Selbstkosten",
-  verkaufspreis: "Verkaufspreis",
-};
-
-const DETAIL_BLOCK_ORDER = [
-  "material",
-  "fertigung",
-  "veredelung",
-  "gemeinkosten",
-  "verkaufspreis",
-] as const;
-
-const ERGEBNISUEBERSICHT: Array<{
-  key: string;
-  label: string;
-  /** primary = zentrale Kostenbasis (Selbstkosten); secondary = finales Ergebnis (Endpreis) */
-  emphasis?: "primary" | "secondary";
-  /** Zeile ausblenden, wenn Wert 0 / fehlend (keine Null-Zeilen für Setup/Veredelung). */
-  hideZero?: boolean;
-}> = [
-  // Additive Aufbauzeilen – FGK nur einmal vor den Herstellkosten
-  { key: "materialkosten_gesamt", label: "Material inkl. Ausschuss + MGK (€)" },
-  { key: "maschinenkosten", label: "Maschinenkosten je Gutteil (€)" },
-  { key: "fertigungslohn", label: "Fertigungslohn je Gutteil (€)" },
-  { key: "setup_kosten_je_teil", label: "Setup-Kosten je Teil (€)", hideZero: true },
-  { key: "veredelung_gesamt", label: "Veredelungskosten direkt (€)", hideZero: true },
-  {
-    key: "fgk_basis",
-    label: "FGK-Basis (Maschine + Lohn + Setup + Veredelung) (€)",
-  },
-  { key: "fertigungsgemeinkosten", label: "FGK-Betrag (einmal) (€)" },
-  {
-    key: "gesamte_herstellkosten",
-    label: "Herstellkosten (= Summe inkl. FGK) (€)",
-  },
-  { key: "vvgk", label: "SG&A / VVGK (€)" },
-  { key: "selbstkosten", label: "Selbstkosten (€)", emphasis: "primary" },
-  { key: "gewinn", label: "Profit / Gewinn (€)" },
-  { key: "nettoverkaufspreis_gesamt", label: "Nettoverkaufspreis (€)" },
-  { key: "skonto", label: "Skonto (€)", hideZero: true },
-  { key: "endpreis_je_stueck", label: "Endpreis je Stück (€)", emphasis: "secondary" },
-  // Nur bei Veredelung: Spritzguss-HK enthält bereits anteilige FGK – kein Summand
-  {
-    key: "spritzguss_herstellkosten",
-    label: "davon Spritzguss-HK inkl. FGK (ohne Veredelung) (€)",
-  },
-];
+/** @deprecated labels live in spritzgussLabels; kept name for UI-test key order scans */
+const ERGEBNISUEBERSICHT = ERGEBNISUEBERSICHT_DEF;
 
 function ergebnisUebersichtRowClass(emphasis?: "primary" | "secondary"): string {
   if (emphasis === "primary") {
@@ -201,62 +163,6 @@ function ergebnisUebersichtValueClass(emphasis?: "primary" | "secondary"): strin
   if (emphasis === "primary") return "text-lg font-bold tabular-nums text-slate-900";
   if (emphasis === "secondary") return "text-base font-semibold tabular-nums text-slate-900";
   return "font-medium tabular-nums text-gray-900";
-}
-
-const FIELD_LABELS: Record<string, string> = {
-  materialgewicht_kg: "Materialgewicht aus Schussgewicht (kg)",
-  materialkosten: "Materialkosten aus Schussgewicht (€)",
-  materialkosten_inkl_ausschuss: "Materialkosten inkl. Prozessausschuss / MGK-Basis (€)",
-  materialausschuss_betrag: "Materialausschuss (€)",
-  materialgemeinkosten: "Materialgemeinkosten MGK (€)",
-  materialkosten_gesamt: "Materialkosten inkl. MGK (€)",
-  mgk_basis: "MGK-Basis (Material inkl. Ausschuss) (€)",
-  mgk_pct: "MGK-Satz (%)",
-  material_nominierung: "Material-Nominierung",
-  maschinenkosten: "Maschinenkosten je Gutteil (€)",
-  fertigungslohn: "Fertigungslohn je Gutteil (€)",
-  fertigungsgemeinkosten: "Fertigungsgemeinkosten FGK (einmal) (€)",
-  fgk_basis: "FGK-Basis (Maschine + Lohn + Setup + Veredelung) (€)",
-  fgk_pct: "FGK-Satz (%)",
-  bruttokapazitaet_exakt: "Bruttokapazität exakt (Stück/h)",
-  bruttokapazitaet: "Bruttokapazität kalkulatorisch ROUND (Stück/h)",
-  nettokapazitaet: "Nettokapazität nach Ausschuss (Stück/h)",
-  setup_maschinenkosten_je_teil: "Setup-Maschinenkosten je Teil (Anteil, gerundet) (€)",
-  setup_lohnkosten_je_teil: "Setup-Lohnkosten je Teil (Anteil, gerundet) (€)",
-  setup_kosten_je_teil: "Setup-Gesamtkosten je Teil (€)",
-  losgroesse: "Aktive Losgröße (Stück)",
-  losgroesse_modus: "Losgrößen-Quelle",
-  losgroesse_automatisch: "Automatische Losgröße (Stück)",
-  losgroesse_aktiv: "Aktive Losgröße (Stück)",
-  losgroesse_jahresbedarf: "Durchschnittlicher Jahresbedarf (Stück)",
-  produktionsintervall_arbeitstage: "Produktionsintervall (Arbeitstage)",
-  arbeitstage_pro_jahr: "Arbeitstage pro Jahr",
-  losgroesse_hinweis: "Losgrößen-Hinweis",
-  vvgk_pct: "VVGK-Satz (%)",
-  gewinn_pct: "Gewinn-Satz (%)",
-  skonto_pct: "Skonto-Satz (%)",
-  vvgk_basis: "VVGK-Basis / Herstellkosten (€)",
-  gewinn_basis: "Gewinn-Basis / Selbstkosten (€)",
-  werkzeugkostenanteil: "Werkzeugkostenanteil je Stück (€)",
-  werkzeug_einmalzahlung: "Einmalzahlung / Investition (€)",
-  herstellkosten: "Herstellkosten inkl. FGK (€)",
-  vvgk: "VVGK / SG&A (€)",
-  selbstkosten: "Selbstkosten (€)",
-  gewinn: "Gewinn (€)",
-  nettoverkaufspreis: "Nettoverkaufspreis (€)",
-  skonto: "Skonto (€)",
-  verkaufspreis: "Endpreis je Stück (€)",
-};
-
-function veredelungDetailLabel(
-  field: string,
-  selectedVeredelung: SelectedVeredelung[],
-): string {
-  if (field === "veredelung_gesamt") return "Veredelungskosten gesamt (€)";
-  const match = /^schritt_(\d+)$/.exec(field);
-  if (!match) return field;
-  const schritt = selectedVeredelung.find((s) => s.reihenfolge === Number(match[1]));
-  return schritt ? `${schritt.bezeichnung} (€)` : `Veredelungsschritt ${match[1]} (€)`;
 }
 
 function NumberInput({
@@ -321,6 +227,7 @@ function formatSizingNumber(value: number | null | undefined, fractionDigits = 6
 }
 
 export function SpritzgussPage() {
+  const t = useT();
   const { canWrite } = useAuth();
   const { selection, formDefaults } = useActiveProject();
   const [form, setForm] = useState<SpritzgussFormData>(emptySpritzgussForm());
@@ -407,9 +314,9 @@ export function SpritzgussPage() {
 
   useEffect(() => {
     loadStammdaten().catch((err) => {
-      setError(err instanceof Error ? err.message : "Stammdaten konnten nicht geladen werden");
+      setError(err instanceof Error ? err.message : t("spritzguss.masterDataLoadFailed"));
     });
-  }, [loadStammdaten]);
+  }, [loadStammdaten, t]);
 
   const veredelungZuordnungen = useMemo<VeredelungZuordnungInput[]>(
     () =>
@@ -429,7 +336,7 @@ export function SpritzgussPage() {
       setJahresbedarf(null);
       setJahresbedarfHint(
         hierarchy.customer_id != null || hierarchy.program_id != null
-          ? "Jahresbedarf wird nach Projektauswahl aus den Projektstückzahlen berechnet."
+          ? t("spritzguss.annualDemandAfterProject")
           : null,
       );
       setJahresbedarfLoading(false);
@@ -443,20 +350,23 @@ export function SpritzgussPage() {
         if (!avg.has_volumes || avg.jahresstueckzahl == null) {
           setJahresbedarf(null);
           setJahresbedarfHint(
-            "Für dieses Projekt sind keine Jahresstückzahlen hinterlegt – automatische Losgröße nicht berechenbar.",
+            t("spritzguss.annualDemandMissing"),
           );
           return;
         }
         setJahresbedarf(avg.jahresstueckzahl);
         setJahresbedarfHint(
-          `Durchschnittlicher Jahresbedarf: ⌈Summe / ${avg.year_count} Jahre⌉ = ${avg.jahresstueckzahl.toLocaleString("de-DE")} Stück`,
+          t("spritzguss.annualDemandSummary", {
+            years: avg.year_count,
+            pieces: avg.jahresstueckzahl.toLocaleString("de-DE"),
+          }),
         );
       })
       .catch((err) => {
         if (!cancelled) {
           setJahresbedarf(null);
           setJahresbedarfHint(
-            err instanceof Error ? err.message : "Jahresbedarf konnte nicht geladen werden.",
+            err instanceof Error ? err.message : t("spritzguss.annualDemandLoadFailed"),
           );
         }
       })
@@ -466,7 +376,7 @@ export function SpritzgussPage() {
     return () => {
       cancelled = true;
     };
-  }, [hierarchy.project_id, hierarchy.customer_id, hierarchy.program_id, form.project_id]);
+  }, [hierarchy.project_id, hierarchy.customer_id, hierarchy.program_id, form.project_id, t]);
 
   const selectedWerk = useMemo(
     () => werke.find((w) => w.id === form.werk_id) ?? null,
@@ -572,7 +482,7 @@ export function SpritzgussPage() {
       zykluszeit_s: formatDecimalForInputDe(wert),
     }));
     setSuccess(
-      `Zykluszeitvorschlag mit ${formatSekunden(wert, 0)} s in das Zykluszeitfeld übernommen.`,
+      t("spritzguss.cycleTimeApplied", { seconds: formatSekunden(wert, 0) }),
     );
   };
 
@@ -939,14 +849,14 @@ export function SpritzgussPage() {
       setBloecke(result.bloecke);
       applyMaschinenGroesseResponse(result.maschinen_groesse);
       updateSelectedFromResponse(result.veredelung_zuordnungen);
-      setSuccess("Berechnung erfolgreich.");
+      setSuccess(t("spritzguss.calcSuccess"));
     } catch (err) {
       setError(
         err instanceof PercentPointsParseError
           ? err.message
           : err instanceof Error
             ? err.message
-            : "Berechnung fehlgeschlagen",
+            : t("spritzguss.calcFailed"),
       );
     } finally {
       setBusy(false);
@@ -961,13 +871,13 @@ export function SpritzgussPage() {
     try {
       const parsedForm = resolveParsedForm();
       if (!parsedForm.teilebezeichnung.trim()) {
-        throw new Error("Teilebezeichnung ist für das Speichern erforderlich.");
+        throw new Error(t("spritzguss.partNameRequired"));
       }
       if (!parsedForm.teilenummer.trim()) {
-        throw new Error("Teilenummer ist für das Speichern erforderlich.");
+        throw new Error(t("spritzguss.partNumberRequired"));
       }
       if (!legacyHierarchy && hierarchy.project_id == null) {
-        throw new Error("Bitte Kunde, Programm und Projekt auswählen.");
+        throw new Error(t("spritzguss.hierarchyRequired"));
       }
       const payload = {
         ...parsedForm,
@@ -1003,8 +913,8 @@ export function SpritzgussPage() {
       loadVeredelungFromSaved(saved.veredelung_zuordnungen);
       setSuccess(
         wasNew
-          ? `Kalkulation #${saved.id} gespeichert.`
-          : `Kalkulation #${saved.id} aktualisiert.`,
+          ? t("spritzguss.calcSaved", { id: saved.id })
+          : t("spritzguss.calcUpdated", { id: saved.id }),
       );
       setSavedListRefreshKey((value) => value + 1);
     } catch (err) {
@@ -1013,7 +923,7 @@ export function SpritzgussPage() {
           ? err.message
           : err instanceof Error
             ? err.message
-            : "Speichern fehlgeschlagen",
+            : t("spritzguss.saveFailed"),
       );
     } finally {
       setBusy(false);
@@ -1167,9 +1077,9 @@ export function SpritzgussPage() {
       );
       setBloecke((item.ergebnis_bloecke as SpritzgussBloecke) ?? null);
       loadVeredelungFromSaved(item.veredelung_zuordnungen);
-      setSuccess(`Kalkulation #${item.id} geladen.`);
+      setSuccess(t("spritzguss.calcLoaded", { id: item.id }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Laden fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("spritzguss.loadFailed"));
     } finally {
       setBusy(false);
     }
@@ -1232,9 +1142,9 @@ export function SpritzgussPage() {
       const filename = `einzelteil_${nummer}.${format === "pdf" ? "pdf" : "xlsx"}`;
       const path = format === "pdf" ? spritzgussPdfUrl(editId) : spritzgussXlsxUrl(editId);
       await downloadReport(path, filename);
-      setSuccess(`Export ${format.toUpperCase()} erfolgreich.`);
+      setSuccess(t("spritzguss.exportSuccess", { format: format.toUpperCase() }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("common.exportFailed"));
     } finally {
       setExportBusy(false);
     }
@@ -1248,9 +1158,9 @@ export function SpritzgussPage() {
       await deleteKalkulation(id);
       if (editId === id) handleNew();
       setSavedListRefreshKey((value) => value + 1);
-      setSuccess("Kalkulation gelöscht.");
+      setSuccess(t("spritzguss.calcDeleted"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("spritzguss.deleteFailed"));
     } finally {
       setBusy(false);
     }
@@ -1265,11 +1175,8 @@ export function SpritzgussPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Einzelteilkalkulation</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Zuschlagskalkulation für Kunststoff-Einzelteile. Preise und Sätze aus den Stammdaten
-            werden vorausgefüllt und können je Kalkulation überschrieben werden.
-          </p>
+          <h2 className="text-2xl font-bold text-gray-900">{t("spritzguss.title")}</h2>
+          <p className="mt-1 text-sm text-gray-600">{t("spritzguss.intro")}</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -1277,7 +1184,7 @@ export function SpritzgussPage() {
             onClick={handleNew}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
           >
-            Neue Kalkulation
+            {t("spritzguss.newCalculation")}
           </button>
           <button
             type="button"
@@ -1285,7 +1192,7 @@ export function SpritzgussPage() {
             onClick={handleBerechnen}
             className="rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:opacity-50"
           >
-            Berechnen
+            {t("spritzguss.calculate")}
           </button>
           {canWrite && (
             <button
@@ -1294,7 +1201,7 @@ export function SpritzgussPage() {
               onClick={handleSave}
               className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
             >
-              Kalkulation speichern
+              {t("spritzguss.saveCalculation")}
             </button>
           )}
           {editId != null && (
@@ -1316,7 +1223,7 @@ export function SpritzgussPage() {
       )}
       {editId != null && (
         <p className="text-sm text-slate-600">
-          Bearbeite gespeicherte Kalkulation <strong>#{editId}</strong>
+          {t("spritzguss.editingSaved")} <strong>#{editId}</strong>
         </p>
       )}
 
@@ -1331,15 +1238,15 @@ export function SpritzgussPage() {
       <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
         <form id="spritzguss-form" className="space-y-6" onSubmit={(e) => e.preventDefault()}>
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Allgemeine Daten</h3>
+            <h3 className="mb-3 font-semibold text-gray-900">{t("spritzguss.generalData")}</h3>
             <div className="grid gap-3 md:grid-cols-2">
               <TextInput
-                label="Teilebezeichnung"
+                label={t("spritzguss.partName")}
                 value={form.teilebezeichnung}
                 onChange={(v) => setField("teilebezeichnung", v)}
               />
               <TextInput
-                label="Teilenummer"
+                label={t("spritzguss.partNumber")}
                 value={form.teilenummer}
                 onChange={(v) => setField("teilenummer", v)}
               />
@@ -1376,16 +1283,16 @@ export function SpritzgussPage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Material</h3>
+            <h3 className="mb-3 font-semibold text-gray-900">{t("spritzguss.materialSection")}</h3>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-sm md:col-span-2">
-                <span className="font-medium text-gray-700">Material (Stammdaten)</span>
+                <span className="font-medium text-gray-700">{t("spritzguss.materialMaster")}</span>
                 <select
                   value={form.material_id ?? ""}
                   onChange={(e) => handleMaterialChange(e.target.value)}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
-                  <option value="">– auswählen –</option>
+                  <option value="">{t("project.selectOption")}</option>
                   {materials.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.material_nr} – {m.bezeichnung} ({euro(m.preis_pro_kg)} €/kg)
@@ -1395,34 +1302,34 @@ export function SpritzgussPage() {
               </label>
               <NumberInput
                 fieldKey="schussgewicht_g"
-                label="Schussgewicht / Brutto (g) – Materialbasis"
+                label={t("spritzguss.shotWeightGross")}
                 value={form.schussgewicht_g}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <NumberInput
                 fieldKey="teilegewicht_netto_g"
-                label="Teilegewicht netto (g) – nur Information"
+                label={t("spritzguss.netPartWeight")}
                 value={form.teilegewicht_netto_g}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <NumberInput
                 fieldKey="ausschussquote_pct"
-                label="Ausschussquote (%)"
+                label={t("spritzguss.scrapRate")}
                 value={form.ausschussquote_pct}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <NumberInput
                 fieldKey="materialpreis_pro_kg"
-                label="Materialpreis (€/kg, überschreibbar)"
+                label={t("spritzguss.materialPrice")}
                 value={form.materialpreis_pro_kg}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <label className="block text-sm md:col-span-2">
-                <span className="font-medium text-gray-700">Material-Nominierung (MGK)</span>
+                <span className="font-medium text-gray-700">{t("spritzguss.materialNomination")}</span>
                 <select
                   value={form.material_nominierung ?? ""}
                   onChange={(e) =>
@@ -1435,27 +1342,20 @@ export function SpritzgussPage() {
                   }
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
-                  <option value="">– bitte wählen –</option>
-                  <option value="selbstnominiert">selbstnominiert (MGK aus Stammdaten)</option>
-                  <option value="oem_nominiert">OEM-nominiert (MGK aus Stammdaten)</option>
+                  <option value="">{t("common.pleaseSelect")}</option>
+                  <option value="selbstnominiert">{t("spritzguss.selfNominated")}</option>
+                  <option value="oem_nominiert">{t("spritzguss.oemNominated")}</option>
                 </select>
                 {!form.material_nominierung && (
-                  <p className="mt-1 text-xs text-amber-800">
-                    Ohne Nominierung kann die Kalkulation nicht berechnet werden. Bitte
-                    selbstnominiert oder OEM-nominiert wählen (Prozentsätze nur unter Stammdaten
-                    → Zuschlagssätze).
-                  </p>
+                  <p className="mt-1 text-xs text-amber-800">{t("spritzguss.nominationRequired")}</p>
                 )}
               </label>
             </div>
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Maschinengröße / Zuhaltekraft</h3>
-            <p className="mb-3 text-xs text-gray-600">
-              Berechnung nach Excel p1-1 (Maße mit Öffnungen oder projizierte Fläche, 20&nbsp;%
-              Sicherheitszuschlag).
-            </p>
+            <h3 className="mb-3 font-semibold text-gray-900">{t("spritzguss.machineSizeSection")}</h3>
+            <p className="mb-3 text-xs text-gray-600">{t("spritzguss.machineSizeHint")}</p>
             <div className="mb-4 flex flex-wrap gap-4 text-sm">
               <label className="inline-flex items-center gap-2">
                 <input
@@ -1464,7 +1364,7 @@ export function SpritzgussPage() {
                   checked={form.maschinen_groesse_modus === "masse"}
                   onChange={() => setField("maschinen_groesse_modus", "masse")}
                 />
-                Maße
+                {t("spritzguss.dimensions")}
               </label>
               <label className="inline-flex items-center gap-2">
                 <input
@@ -1473,7 +1373,7 @@ export function SpritzgussPage() {
                   checked={form.maschinen_groesse_modus === "flaeche"}
                   onChange={() => setField("maschinen_groesse_modus", "flaeche")}
                 />
-                Projizierte Fläche
+                {t("spritzguss.projectedArea")}
               </label>
               <label className="inline-flex items-center gap-2">
                 <input
@@ -1482,7 +1382,7 @@ export function SpritzgussPage() {
                   checked={form.maschinen_groesse_modus == null}
                   onChange={() => setField("maschinen_groesse_modus", null)}
                 />
-                Keine Berechnung
+                {t("spritzguss.noCalculation")}
               </label>
             </div>
             {form.maschinen_groesse_modus != null && (
@@ -1491,21 +1391,21 @@ export function SpritzgussPage() {
                   <>
                     <NumberInput
                       fieldKey="maschinen_groesse_breite_mm"
-                      label="Breite (mm)"
+                      label={t("spritzguss.widthMm")}
                       value={form.maschinen_groesse_breite_mm ?? 0}
                       decimalRaw={decimalRaw}
                       onDecimalChange={handleDecimalChange}
                     />
                     <NumberInput
                       fieldKey="maschinen_groesse_laenge_mm"
-                      label="Länge (mm)"
+                      label={t("spritzguss.lengthMm")}
                       value={form.maschinen_groesse_laenge_mm ?? 0}
                       decimalRaw={decimalRaw}
                       onDecimalChange={handleDecimalChange}
                     />
                     <NumberInput
                       fieldKey="maschinen_groesse_oeffnungen_pct"
-                      label="Öffnungen (%)"
+                      label={t("spritzguss.openingsPct")}
                       value={form.maschinen_groesse_oeffnungen_pct ?? 0}
                       decimalRaw={decimalRaw}
                       onDecimalChange={handleDecimalChange}
@@ -1514,46 +1414,48 @@ export function SpritzgussPage() {
                 ) : (
                   <NumberInput
                     fieldKey="maschinen_groesse_proj_flaeche_mm2"
-                    label="Projizierte Fläche (mm²)"
+                    label={t("spritzguss.projectedAreaMm2")}
                     value={form.maschinen_groesse_proj_flaeche_mm2 ?? 0}
                     decimalRaw={decimalRaw}
                     onDecimalChange={handleDecimalChange}
                   />
                 )}
                 <div className="text-sm md:col-span-2 rounded-md border border-gray-100 bg-gray-50 p-3">
-                  <div className="font-medium text-gray-800">Materialdaten</div>
+                  <div className="font-medium text-gray-800">{t("spritzguss.materialData")}</div>
                   <div className="mt-1 text-gray-700">
                     {selectedMaterial
                       ? `${selectedMaterial.bezeichnung} (${selectedMaterial.material_nr})`
-                      : "– kein Material gewählt –"}
+                      : t("spritzguss.noMaterialSelected")}
                   </div>
                   <div className="mt-1 text-gray-600">
-                    Einspritzdruck:{" "}
+                    {t("spritzguss.injectionPressure")}:{" "}
                     {selectedMaterial
                       ? `${formatSizingNumber(selectedMaterial.injection_pressure_kg_cm2, 2)} kg/cm²`
                       : "–"}
                   </div>
-                  <div className="text-gray-600">Kavitäten: {effectiveKavitaeten}</div>
+                  <div className="text-gray-600">
+                    {t("spritzguss.cavities")}: {effectiveKavitaeten}
+                  </div>
                   {maschinenGroesse && (
                     <>
                       <div className="text-gray-600">
-                        Projizierte Fläche netto:{" "}
+                        {t("spritzguss.projectedAreaNet")}:{" "}
                         {formatSizingNumber(maschinenGroesse.proj_flaeche_netto_mm2, 2)} mm²
                       </div>
                       <div className="text-gray-600">
-                        Zuhaltekraft ohne Sicherheit:{" "}
+                        {t("spritzguss.clampingForceWithoutSafety")}:{" "}
                         {formatSizingNumber(maschinenGroesse.zuhaltekraft_ohne_sicherheit_t)} t
                       </div>
                       <div className="text-gray-600">
-                        Erforderliche Zuhaltekraft (+20&nbsp;%):{" "}
+                        {t("spritzguss.requiredClampingForce")}:{" "}
                         {formatSizingNumber(maschinenGroesse.zuhaltekraft_erforderlich_t)} t
                       </div>
                       <div className="text-gray-600">
-                        Empfohlene Maschine:{" "}
-                        {maschinenGroesse.empfohlene_maschine_name ?? "Keine passende Maschine"}
+                        {t("spritzguss.recommendedMachine")}:{" "}
+                        {maschinenGroesse.empfohlene_maschine_name ?? t("spritzguss.noMatchingMachine")}
                       </div>
                       <div className="text-gray-600">
-                        Maschinen-Zuhaltekraft:{" "}
+                        {t("spritzguss.machineClampingForce")}:{" "}
                         {formatSizingNumber(
                           maschinenGroesse.empfohlene_maschine_schliesskraft_t,
                           2,
@@ -1571,34 +1473,23 @@ export function SpritzgussPage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-1 font-semibold text-gray-900">Zykluszeit-Schätzung</h3>
-            <p className="mb-3 text-xs text-gray-600">
-              Konservative Abschätzung für die frühe Angebotskalkulation (1K-Thermoplast,
-              Serien-Stahlwerkzeuge) aus Materialkennwerten und kühlzeitrelevanter Wandstärke.
-              Der Vorschlag wird auf eine volle Sekunde gerundet und erst nach „Übernehmen“ in
-              das Zykluszeitfeld geschrieben. Die Nebenzeit setzt sich aus Werkzeugbewegung, Einspritzen und
-              Nachdruck, Dosierüberhang, Entnahme und Prozessaufwand zusammen und nutzt
-              Zuhaltekraft, Schussgewicht und Kavitäten der Kalkulation. IKET-Variante 2 gilt
-              fachlich primär für teilkristalline Thermoplaste; für amorphe Materialien ist der
-              Vorschlag eine vereinfachte Näherung.
-            </p>
+            <h3 className="mb-1 font-semibold text-gray-900">{t("spritzguss.cycleTimeSection")}</h3>
+            <p className="mb-3 text-xs text-gray-600">{t("spritzguss.cycleTimeIntro")}</p>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div>
                 <NumberInput
                   fieldKey="zykluszeit_wandstaerke_mm"
-                  label="kühlzeitrelevante Wandstärke (mm)"
+                  label={t("spritzguss.coolingWallThickness")}
                   value={form.zykluszeit_wandstaerke_mm ?? 0}
                   decimalRaw={decimalRaw}
                   onDecimalChange={handleDecimalChange}
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  Maßgebend ist die größte für die Kühlung relevante Wandstärke einschließlich
-                  lokaler Dickstellen, zum Beispiel an Domen, Rippenkreuzungen oder
-                  Materialanhäufungen. Nicht automatisch die mittlere Wandstärke verwenden.
+                  {t("spritzguss.coolingWallThicknessHint")}
                 </p>
               </div>
               <label className="block text-sm">
-                <span className="font-medium text-gray-700">Entnahmeart</span>
+                <span className="font-medium text-gray-700">{t("spritzguss.demoldingType")}</span>
                 <select
                   value={form.zykluszeit_entnahmeart}
                   onChange={(e) =>
@@ -1606,21 +1497,18 @@ export function SpritzgussPage() {
                   }
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
-                  {ZYKLUSZEIT_ENTNAHMEARTEN.map(({ key, label }) => (
+                  {ZYKLUSZEIT_ENTNAHMEARTEN.map(({ key }) => (
                     <option key={key} value={key}>
-                      {label}
+                      {entnahmeLabel(t, key)}
                     </option>
                   ))}
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
-                  {
-                    ZYKLUSZEIT_ENTNAHMEARTEN.find((a) => a.key === form.zykluszeit_entnahmeart)
-                      ?.beschreibung
-                  }
+                  {entnahmeDesc(t, form.zykluszeit_entnahmeart)}
                 </p>
               </label>
               <label className="block text-sm">
-                <span className="font-medium text-gray-700">Prozessaufwand</span>
+                <span className="font-medium text-gray-700">{t("spritzguss.processEffort")}</span>
                 <select
                   value={form.zykluszeit_prozessaufwand}
                   onChange={(e) =>
@@ -1631,19 +1519,21 @@ export function SpritzgussPage() {
                   }
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
-                  <option value="normal">normal – Standardprozess</option>
-                  <option value="aufwendig">aufwendig – zusätzlicher Zeitbedarf</option>
+                  <option value="normal">{t("spritzguss.processNormal")}</option>
+                  <option value="aufwendig">{t("spritzguss.processComplex")}</option>
                 </select>
                 <p className="mt-1 text-xs text-gray-500">
                   {form.zykluszeit_prozessaufwand === "aufwendig"
-                    ? `Zusätzlicher Zeitbedarf, zum Beispiel durch Einlegeteile, mehrere Kernzüge oder Ausschrauben (+${ZYKLUSZEIT_PROZESSAUFWAND_ZUSCHLAG_S} s nur auf die automatische Nebenzeit).`
-                    : "Standardprozess ohne besonderen Entformungs- oder Handlingaufwand."}
+                    ? t("spritzguss.processComplexHint", {
+                        seconds: ZYKLUSZEIT_PROZESSAUFWAND_ZUSCHLAG_S,
+                      })
+                    : t("spritzguss.processNormalHint")}
                 </p>
               </label>
               <div>
                 <NumberInput
                   fieldKey="zykluszeit_nebenzeiten_gesamt_s"
-                  label="Nebenzeiten gesamt (s)"
+                  label={t("spritzguss.ancillaryTimeTotal")}
                   value={
                     form.zykluszeit_nebenzeiten_gesamt_s ??
                     zykluszeitVorschlag?.nebenzeiten_automatisch_s ??
@@ -1653,9 +1543,7 @@ export function SpritzgussPage() {
                   onDecimalChange={handleDecimalChange}
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  Leer lassen, um die automatische Nebenzeit aus den Komponenten unten zu
-                  verwenden. Eine manuelle Nebenzeit hat Vorrang und wird durch Entnahmeart,
-                  Schussgewicht, Kavitäten und Prozessaufwand nicht verändert.
+                  {t("spritzguss.ancillaryTimeHint")}
                 </p>
               </div>
             </div>
@@ -1672,38 +1560,35 @@ export function SpritzgussPage() {
                 zykluszeitVorschlag.status === "nicht_plausibel" ? (
                 <>
                   <div className="font-medium text-amber-950">
-                    Zykluszeitvorschlag nicht plausibel
+                    {t("spritzguss.suggestionNotPlausible")}
                   </div>
                   <p className="mt-1 text-sm text-amber-950">
-                    Die berechnete Dosierzeit passt nicht zur aus der Zuhaltekraft abgeleiteten
-                    Maschinen-/Plastifizierklasse. Ohne hinterlegte maximale Schussgewichte je
-                    Maschine ist nur ein Plausibilitätshinweis möglich – der Wert darf nicht
-                    automatisch übernommen werden.
+                    {t("spritzguss.suggestionNotPlausibleBody")}
                   </p>
                   <dl className="mt-2 grid gap-x-6 gap-y-1 text-amber-950 sm:grid-cols-2">
                     <div className="flex justify-between gap-2">
-                      <dt>Berechnete Dosierzeit</dt>
+                      <dt>{t("spritzguss.calculatedDosingTime")}</dt>
                       <dd>{formatSekunden(zykluszeitVorschlag.nebenzeit_dosierzeit_s)} s</dd>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <dt>Kühlzeit für Weiterrechnung</dt>
+                      <dt>{t("spritzguss.coolingTimeForCalc")}</dt>
                       <dd>{formatSekunden(zykluszeitVorschlag.kuehlzeit_s)} s</dd>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <dt>Plastifizierleistung</dt>
+                      <dt>{t("spritzguss.plasticizingRate")}</dt>
                       <dd>
                         {formatSekunden(zykluszeitVorschlag.plastifizierleistung_kg_h, 0)} kg/h
                       </dd>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <dt>Schussgewicht</dt>
+                      <dt>{t("spritzguss.shotWeight")}</dt>
                       <dd>
                         {formatSekunden(zykluszeitVorschlag.schussgewicht_g, 0)} g ·{" "}
                         {zykluszeitVorschlag.kavitaeten ?? 1} Kav.
                       </dd>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <dt>Maßgebliche Zuhaltekraft</dt>
+                      <dt>{t("spritzguss.decisiveClampingForce")}</dt>
                       <dd>
                         {zykluszeitVorschlag.zuhaltekraft_t == null
                           ? "–"
@@ -1711,29 +1596,28 @@ export function SpritzgussPage() {
                       </dd>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <dt>Dosierüberhang</dt>
+                      <dt>{t("spritzguss.dosingOverrun")}</dt>
                       <dd>
                         {formatSekunden(zykluszeitVorschlag.nebenzeit_dosier_ueberhang_s)} s
                       </dd>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <dt>Berechnete Gesamtzeit (nicht übernehmbar)</dt>
+                      <dt>{t("spritzguss.calculatedTotalNotApplicable")}</dt>
                       <dd>{formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s, 0)} s</dd>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <dt>Aktuell verwendete Zykluszeit</dt>
+                      <dt>{t("spritzguss.currentlyUsedCycleTime")}</dt>
                       <dd>
                         {formatZykluszeitFeld(form.zykluszeit_s)} s (
                         {form.zykluszeit_quelle === "vorschlag"
-                          ? "aus Vorschlag übernommen"
-                          : "manuell erfasst"}
+                          ? t("spritzguss.fromSuggestion")
+                          : t("spritzguss.enteredManually")}
                         )
                       </dd>
                     </div>
                   </dl>
                   <p className="mt-2 text-xs text-amber-900">
-                    Bitte Maße, Schussgewicht, Kavitätenzahl und Maschinenauslegung prüfen. Die
-                    manuelle Zykluszeit bleibt unverändert nutzbar.
+                    {t("spritzguss.checkInputsHint")}
                   </p>
                   {(zykluszeitVorschlag.warnungen ?? []).map((warnung) => (
                     <p key={warnung} className="mt-2 text-xs text-amber-900">
@@ -1744,29 +1628,34 @@ export function SpritzgussPage() {
                 ) : (
                 <>
                   <div className="font-medium text-gray-900">
-                    Vorschlag {formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s, 0)} s
-                    <span className="ml-2 text-xs font-normal text-gray-500">gültig</span>
+                    {t("spritzguss.suggestionLabel", {
+                      seconds: formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s, 0),
+                    })}
+                    <span className="ml-2 text-xs font-normal text-gray-500">
+                      {t("spritzguss.suggestionValid")}
+                    </span>
                   </div>
                   <dl className="mt-2 grid gap-x-6 gap-y-1 text-gray-700 sm:grid-cols-2">
                     <div className="flex justify-between gap-2">
-                      <dt>Werkzeugbewegung</dt>
+                      <dt>{t("spritzguss.moldMovement")}</dt>
                       <dd>
                         {formatSekunden(zykluszeitVorschlag.nebenzeit_werkzeugbewegung_s)} s
                       </dd>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <dt>Einspritzen und Nachdruck</dt>
+                      <dt>{t("spritzguss.injectionAndHold")}</dt>
                       <dd>
                         {formatSekunden(zykluszeitVorschlag.nebenzeit_einspritz_nachdruck_s)} s
                       </dd>
                     </div>
                     <div className="flex justify-between gap-2">
                       <dt>
-                        Dosierüberhang
+                        {t("spritzguss.dosingOverrun")}
                         <span className="ml-1 text-xs text-gray-500">
-                          (Dosierzeit{" "}
-                          {formatSekunden(zykluszeitVorschlag.nebenzeit_dosierzeit_s)} s bei{" "}
-                          {formatSekunden(zykluszeitVorschlag.plastifizierleistung_kg_h, 0)} kg/h)
+                          {t("spritzguss.dosingTimeAtRate", {
+                            dosing: formatSekunden(zykluszeitVorschlag.nebenzeit_dosierzeit_s),
+                            rate: formatSekunden(zykluszeitVorschlag.plastifizierleistung_kg_h, 0),
+                          })}
                         </span>
                       </dt>
                       <dd>
@@ -1775,18 +1664,26 @@ export function SpritzgussPage() {
                     </div>
                     <div className="flex justify-between gap-2">
                       <dt>
-                        Entnahme
+                        {t("spritzguss.demolding")}
                         <span className="ml-1 text-xs text-gray-500">
-                          ({zykluszeitVorschlag.entnahmeart ?? "–"})
+                          (
+                          {zykluszeitVorschlag.entnahmeart
+                            ? entnahmeLabel(t, zykluszeitVorschlag.entnahmeart)
+                            : "–"}
+                          )
                         </span>
                       </dt>
                       <dd>{formatSekunden(zykluszeitVorschlag.nebenzeit_entnahme_s)} s</dd>
                     </div>
                     <div className="flex justify-between gap-2">
                       <dt>
-                        Prozessaufwand
+                        {t("spritzguss.processEffort")}
                         <span className="ml-1 text-xs text-gray-500">
-                          ({zykluszeitVorschlag.prozessaufwand ?? "normal"})
+                          (
+                          {zykluszeitVorschlag.prozessaufwand === "aufwendig"
+                            ? t("spritzguss.processComplex")
+                            : t("spritzguss.processNormal")}
+                          )
                         </span>
                       </dt>
                       <dd>
@@ -1798,91 +1695,89 @@ export function SpritzgussPage() {
                     </div>
                     <div className="flex justify-between gap-2 font-medium text-gray-900">
                       <dt>
-                        Nebenzeit gesamt
+                        {t("spritzguss.ancillaryTotal")}
                         <span className="ml-1 text-xs font-normal text-gray-500">
                           (
                           {zykluszeitVorschlag.nebenzeit_quelle === "manuell"
-                            ? "manuell"
-                            : "automatisch"}
+                            ? t("spritzguss.manual")
+                            : t("spritzguss.automatic")}
                           )
                         </span>
                       </dt>
                       <dd>{formatSekunden(zykluszeitVorschlag.nebenzeiten_gesamt_s)} s</dd>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <dt>Kühlzeit für Weiterrechnung</dt>
+                      <dt>{t("spritzguss.coolingTimeForCalc")}</dt>
                       <dd>{formatSekunden(zykluszeitVorschlag.kuehlzeit_s)} s</dd>
                     </div>
                     <div className="flex justify-between gap-2 font-medium text-gray-900">
                       <dt>
-                        Vorgeschlagene Gesamtzykluszeit
+                        {t("spritzguss.suggestedTotalCycleTime")}
                         <span className="ml-1 text-xs font-normal text-gray-500">
-                          (ungerundet{" "}
-                          {formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_exakt_s)} s)
+                          {t("spritzguss.unrounded", {
+                            seconds: formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_exakt_s),
+                          })}
                         </span>
                       </dt>
                       <dd>{formatSekunden(zykluszeitVorschlag.gesamtzykluszeit_s, 0)} s</dd>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <dt>Aktuell verwendete Zykluszeit</dt>
+                      <dt>{t("spritzguss.currentlyUsedCycleTime")}</dt>
                       <dd>
                         {formatZykluszeitFeld(form.zykluszeit_s)} s (
                         {form.zykluszeit_quelle === "vorschlag"
-                          ? "aus Vorschlag übernommen"
-                          : "manuell erfasst"}
+                          ? t("spritzguss.fromSuggestion")
+                          : t("spritzguss.enteredManually")}
                         )
                       </dd>
                     </div>
                   </dl>
                   {zykluszeitVorschlag.nebenzeit_quelle === "manuell" ? (
                     <p className="mt-2 text-xs text-gray-500">
-                      Die Komponenten sind informativ: die manuell eingegebene Nebenzeit von{" "}
-                      {formatSekunden(zykluszeitVorschlag.nebenzeiten_gesamt_s)} s hat Vorrang
-                      (automatisch wären es{" "}
-                      {formatSekunden(zykluszeitVorschlag.nebenzeiten_automatisch_s)} s).
+                      {t("spritzguss.manualAncillaryPriority", {
+                        manual: formatSekunden(zykluszeitVorschlag.nebenzeiten_gesamt_s),
+                        auto: formatSekunden(zykluszeitVorschlag.nebenzeiten_automatisch_s),
+                      })}
                     </p>
                   ) : null}
                   <p className="mt-2 text-xs text-gray-500">
-                    Die Nebenzeitwerte sind pauschale Erfahrungswerte für die frühe
-                    Angebotskalkulation. Die Plastifizierung läuft parallel zur Kühlung – nur
-                    der Dosierüberhang über die Kühlzeit ist taktwirksam. Die Kavitätenzahl
-                    verlängert die Kühlzeit nicht, wirkt aber über die Schussmasse auf die
-                    Dosierzeit.
+                    {t("spritzguss.experienceValuesNote")}
                   </p>
                   {zykluszeitVorschlag.zuhaltekraft_fallback ? (
                     <p className="mt-1 text-xs text-amber-800">
-                      Ohne Zuhaltekraft: Werkzeugbewegung, Entnahme und Plastifizierleistung
-                      sind pauschal angesetzt. Maschinengröße berechnen oder Maschine wählen.
+                      {t("spritzguss.noClampingFallback")}
                     </p>
                   ) : null}
                   {zykluszeitVorschlag.schussgewicht_fallback ? (
                     <p className="mt-1 text-xs text-amber-800">
-                      Ohne Schussgewicht: Einspritz- und Nachdruckzeit pauschal mit{" "}
-                      {formatSekunden(zykluszeitVorschlag.nebenzeit_einspritz_nachdruck_s)} s
-                      angesetzt, Dosierüberhang nicht bewertet.
+                      {t("spritzguss.noShotWeightFallback", {
+                        seconds: formatSekunden(
+                          zykluszeitVorschlag.nebenzeit_einspritz_nachdruck_s,
+                        ),
+                      })}
                     </p>
                   ) : null}
                   <div className="mt-2 text-xs text-gray-500">
-                    {zykluszeitVorschlag.materialgruppe} (
-                    {zykluszeitVorschlag.material_bezeichnung}
-                    {zykluszeitVorschlag.materialklasse
-                      ? `, ${zykluszeitVorschlag.materialklasse}`
-                      : ""}
-                    ), Werkzeug {formatSekunden(zykluszeitVorschlag.werkzeugtemperatur_c, 0)} °C,
-                    Schmelze {formatSekunden(zykluszeitVorschlag.schmelzetemperatur_c, 0)} °C,
-                    Entformung {formatSekunden(zykluszeitVorschlag.entformungstemperatur_c, 0)} °C
-                    · theoretische Kühlzeit{" "}
-                    {formatSekunden(zykluszeitVorschlag.optimale_kuehlzeit_s)} s × Zuschlag{" "}
-                    {formatSekunden(zykluszeitVorschlag.kuehlfaktor, 1)} · kühlzeitrelevante
-                    Wandstärke {formatSekunden(zykluszeitVorschlag.wandstaerke_mm)} mm ·
-                    maßgebliche Zuhaltekraft{" "}
-                    {zykluszeitVorschlag.zuhaltekraft_t == null
-                      ? "–"
-                      : `${formatSizingNumber(zykluszeitVorschlag.zuhaltekraft_t)} t`}{" "}
-                    ({ZYKLUSZEIT_GROESSENKLASSEN.find(
-                      (k) => k.key === zykluszeitVorschlag.groessenklasse,
-                    )?.label ?? "–"}
-                    )
+                    {t("spritzguss.materialTempsSummary", {
+                      group: zykluszeitVorschlag.materialgruppe ?? "",
+                      material: zykluszeitVorschlag.material_bezeichnung ?? "",
+                      classSuffix: zykluszeitVorschlag.materialklasse
+                        ? `, ${zykluszeitVorschlag.materialklasse}`
+                        : "",
+                      mold: formatSekunden(zykluszeitVorschlag.werkzeugtemperatur_c, 0),
+                      melt: formatSekunden(zykluszeitVorschlag.schmelzetemperatur_c, 0),
+                      demold: formatSekunden(zykluszeitVorschlag.entformungstemperatur_c, 0),
+                      theo: formatSekunden(zykluszeitVorschlag.optimale_kuehlzeit_s),
+                      factor: formatSekunden(zykluszeitVorschlag.kuehlfaktor, 1),
+                      wall: formatSekunden(zykluszeitVorschlag.wandstaerke_mm),
+                      clamp:
+                        zykluszeitVorschlag.zuhaltekraft_t == null
+                          ? "–"
+                          : `${formatSizingNumber(zykluszeitVorschlag.zuhaltekraft_t)} t`,
+                      sizeClass: zykluszeitVorschlag.groessenklasse
+                        ? sizeClassLabel(t, zykluszeitVorschlag.groessenklasse)
+                        : "–",
+                    })}
                   </div>
                   {zykluszeitVorschlag.hinweis ? (
                     <p className="mt-2 text-xs text-amber-800">{zykluszeitVorschlag.hinweis}</p>
@@ -1897,8 +1792,7 @@ export function SpritzgussPage() {
               ) : (
                 <>
                   <p className="text-amber-800">
-                    {zykluszeitVorschlag?.hinweis ??
-                      "Die Schätzung erscheint, sobald Materialkennwerte und kühlzeitrelevante Wandstärke gepflegt sind."}
+                    {zykluszeitVorschlag?.hinweis ?? t("spritzguss.estimateAppearsWhen")}
                   </p>
                   {(zykluszeitVorschlag?.warnungen ?? []).map((warnung) => (
                     <p key={warnung} className="mt-2 text-xs text-amber-800">
@@ -1917,28 +1811,30 @@ export function SpritzgussPage() {
                 aria-disabled={!zykluszeitVorschlag?.kann_uebernommen_werden}
                 title={
                   zykluszeitVorschlag?.kann_uebernommen_werden
-                    ? "Vorschlag in das Zykluszeitfeld übernehmen"
-                    : "Vorschlag nicht übernehmbar – Eingaben prüfen oder Zykluszeit manuell setzen"
+                    ? t("spritzguss.applySuggestionTitle")
+                    : t("spritzguss.applySuggestionDisabledTitle")
                 }
                 className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-300"
               >
-                Übernehmen
+                {t("spritzguss.apply")}
               </button>
               <span className="text-sm text-gray-600">
-                Aktuelle Zykluszeit: {formatZykluszeitFeld(form.zykluszeit_s)} s (
-                {form.zykluszeit_quelle === "vorschlag"
-                  ? "aus Vorschlag übernommen"
-                  : "manuell erfasst"}
-                )
+                {t("spritzguss.currentCycleTime", {
+                  seconds: formatZykluszeitFeld(form.zykluszeit_s),
+                  source:
+                    form.zykluszeit_quelle === "vorschlag"
+                      ? t("spritzguss.fromSuggestion")
+                      : t("spritzguss.enteredManually"),
+                })}
               </span>
             </div>
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Maschine & Lohn</h3>
+            <h3 className="mb-3 font-semibold text-gray-900">{t("spritzguss.machineLaborSection")}</h3>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-sm">
-                <span className="font-medium text-gray-700">Land / Region</span>
+                <span className="font-medium text-gray-700">{t("spritzguss.countryRegion")}</span>
                 <select
                   value={selectedLandId ?? ""}
                   onChange={(e) => {
@@ -1948,7 +1844,7 @@ export function SpritzgussPage() {
                   }}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
-                  <option value="">– optional / Legacy –</option>
+                  <option value="">{t("spritzguss.optionalLegacy")}</option>
                   {laender.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.code} – {l.name}
@@ -1957,13 +1853,13 @@ export function SpritzgussPage() {
                 </select>
               </label>
               <label className="block text-sm">
-                <span className="font-medium text-gray-700">Werk / Standort</span>
+                <span className="font-medium text-gray-700">{t("spritzguss.plantSite")}</span>
                 <select
                   value={form.werk_id ?? ""}
                   onChange={(e) => handleWerkChange(e.target.value)}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
-                  <option value="">– optional / Legacy –</option>
+                  <option value="">{t("spritzguss.optionalLegacy")}</option>
                   {filteredWerke.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.code} – {w.name} ({w.currency}, FX {w.fx_to_eur})
@@ -1972,13 +1868,13 @@ export function SpritzgussPage() {
                 </select>
               </label>
               <label className="block text-sm md:col-span-2">
-                <span className="font-medium text-gray-700">Maschine (Stammdaten)</span>
+                <span className="font-medium text-gray-700">{t("spritzguss.machineMaster")}</span>
                 <select
                   value={form.maschine_id ?? ""}
                   onChange={(e) => handleMaschineChange(e.target.value)}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
-                  <option value="">– auswählen –</option>
+                  <option value="">{t("project.selectOption")}</option>
                   {filteredMachines.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.maschinen_nr} – {m.bezeichnung} ({euro(m.stundensatz)} €/h)
@@ -1988,33 +1884,33 @@ export function SpritzgussPage() {
               </label>
               <NumberInput
                 fieldKey="zykluszeit_s"
-                label="Zykluszeit (s)"
+                label={t("spritzguss.cycleTimeS")}
                 value={form.zykluszeit_s}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <NumberInput
                 fieldKey="kavitaeten"
-                label="Kavitäten"
+                label={t("spritzguss.cavities")}
                 value={form.kavitaeten}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <NumberInput
                 fieldKey="maschinenstundensatz"
-                label="Maschinenstundensatz (€/h, überschreibbar)"
+                label={t("spritzguss.machineHourlyRate")}
                 value={form.maschinenstundensatz}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <label className="block text-sm md:col-span-2">
-                <span className="font-medium text-gray-700">Lohnkosten Produktion</span>
+                <span className="font-medium text-gray-700">{t("spritzguss.productionLabor")}</span>
                 <select
                   value={form.lohnkosten_id ?? ""}
                   onChange={(e) => handleLohnChange(e.target.value)}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
                 >
-                  <option value="">– auswählen –</option>
+                  <option value="">{t("project.selectOption")}</option>
                   {filteredLohns.map((l) => (
                     <option key={l.id} value={l.id}>
                       {l.bezeichnung}
@@ -2025,35 +1921,35 @@ export function SpritzgussPage() {
               </label>
               <NumberInput
                 fieldKey="lohnstundensatz"
-                label="Lohnstundensatz Produktion (€/h)"
+                label={t("spritzguss.productionLaborRate")}
                 value={form.lohnstundensatz}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <NumberInput
                 fieldKey="setup_lohnstundensatz"
-                label="Setup-Lohnsatz (€/h)"
+                label={t("spritzguss.setupLaborRate")}
                 value={form.setup_lohnstundensatz}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <NumberInput
                 fieldKey="setup_zeit_min"
-                label="Setup-Zeit (min)"
+                label={t("spritzguss.setupTimeMin")}
                 value={form.setup_zeit_min}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <NumberInput
                 fieldKey="setup_mitarbeiter"
-                label="Setup-Mitarbeiter"
+                label={t("spritzguss.setupOperators")}
                 value={form.setup_mitarbeiter}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
               />
               <div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium text-slate-900">Losgröße für Setup-Umlage</span>
+                  <span className="font-medium text-slate-900">{t("spritzguss.lotSizeForSetup")}</span>
                   <label className="inline-flex items-center gap-2 text-slate-700">
                     <input
                       type="checkbox"
@@ -2069,28 +1965,27 @@ export function SpritzgussPage() {
                         }))
                       }
                     />
-                    Losgröße manuell überschreiben
+                    {t("spritzguss.overrideLotSizeManual")}
                   </label>
                 </div>
                 {form.losgroesse_modus === "automatisch" ? (
                   <p className="text-slate-600">
-                    Modus: <span className="font-medium">automatisch</span>
+                    {t("spritzguss.modeAutomatic")}
                     {losgroessePreview.aktiv != null ? (
                       <>
                         {" "}
-                        – berechnete Losgröße:{" "}
-                        <span className="font-semibold tabular-nums">
-                          {losgroessePreview.aktiv.toLocaleString("de-DE")} Stück
-                        </span>
+                        {t("spritzguss.calculatedLotSize", {
+                          pieces: losgroessePreview.aktiv.toLocaleString("de-DE"),
+                        })}
                       </>
                     ) : (
-                      " – noch nicht berechenbar"
+                      t("spritzguss.notYetCalculable")
                     )}
                   </p>
                 ) : (
                   <NumberInput
                     fieldKey="losgroesse_manuell"
-                    label="Manuelle Losgröße (Stück)"
+                    label={t("spritzguss.manualLotSize")}
                     value={form.losgroesse_manuell ?? 0}
                     decimalRaw={decimalRaw}
                     onDecimalChange={handleDecimalChange}
@@ -2098,7 +1993,7 @@ export function SpritzgussPage() {
                 )}
                 <dl className="mt-2 space-y-1 text-xs text-slate-600">
                   <div className="flex justify-between gap-3">
-                    <dt>Durchschnittlicher Jahresbedarf</dt>
+                    <dt>{t("spritzguss.avgAnnualDemand")}</dt>
                     <dd className="tabular-nums font-medium text-slate-800">
                       {jahresbedarfLoading
                         ? "…"
@@ -2108,19 +2003,19 @@ export function SpritzgussPage() {
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
-                    <dt>Produktionsintervall</dt>
+                    <dt>{t("spritzguss.productionInterval")}</dt>
                     <dd className="tabular-nums font-medium text-slate-800">
-                      {losgroessePreview.intervall} Arbeitstage
+                      {t("spritzguss.workdays", { days: losgroessePreview.intervall })}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
-                    <dt>Arbeitstage pro Jahr</dt>
+                    <dt>{t("spritzguss.workdaysPerYear")}</dt>
                     <dd className="tabular-nums font-medium text-slate-800">
                       {losgroessePreview.arbeitstage ?? "–"}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
-                    <dt>Automatische Losgröße</dt>
+                    <dt>{t("spritzguss.automaticLotSize")}</dt>
                     <dd className="tabular-nums font-medium text-slate-800">
                       {losgroessePreview.auto != null
                         ? losgroessePreview.auto.toLocaleString("de-DE")
@@ -2128,12 +2023,15 @@ export function SpritzgussPage() {
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
-                    <dt>Aktive Losgröße</dt>
+                    <dt>{t("spritzguss.activeLotSize")}</dt>
                     <dd className="tabular-nums font-semibold text-slate-900">
                       {losgroessePreview.aktiv != null
                         ? losgroessePreview.aktiv.toLocaleString("de-DE")
                         : "–"}{" "}
-                      ({losgroessePreview.quelle})
+                      ({losgroessePreview.quelle === "manuell"
+                        ? t("spritzguss.manual")
+                        : t("spritzguss.automatic")}
+                      )
                     </dd>
                   </div>
                 </dl>
@@ -2141,12 +2039,12 @@ export function SpritzgussPage() {
                   <p className="mt-2 text-xs text-slate-500">{jahresbedarfHint}</p>
                 ) : null}
                 <p className="mt-2 text-xs text-slate-500">
-                  Keine EOQ-/Andler-Losgröße – basiert auf Produktionsintervall am Werk.
+                  {t("spritzguss.noEoqNote")}
                 </p>
               </div>
               <NumberInput
                 fieldKey="setup_maschinenstundensatz"
-                label="Setup-Maschinenstundensatz (€/h)"
+                label={t("spritzguss.setupMachineRate")}
                 value={form.setup_maschinenstundensatz}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
@@ -2155,14 +2053,14 @@ export function SpritzgussPage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Veredelungsschritte</h3>
+            <h3 className="mb-3 font-semibold text-gray-900">{t("spritzguss.finishingSteps")}</h3>
             <p className="mb-3 text-sm text-gray-600">
-              Aktive Veredelungsschritte auswählen und in der gewünschten Reihenfolge anordnen.
+              {t("spritzguss.finishingIntro")}
             </p>
 
             {veredelungPool.length === 0 ? (
               <p className="text-sm text-gray-500">
-                Keine aktiven Veredelungsschritte vorhanden. Bitte zuerst unter Veredelung anlegen.
+                {t("spritzguss.noActiveFinishing")}
               </p>
             ) : (
               <div className="mb-4 flex flex-wrap gap-2">
@@ -2186,7 +2084,7 @@ export function SpritzgussPage() {
             )}
 
             {selectedVeredelung.length === 0 ? (
-              <p className="text-sm text-gray-500">Keine Veredelungsschritte ausgewählt.</p>
+              <p className="text-sm text-gray-500">{t("spritzguss.noFinishingSelected")}</p>
             ) : (
               <ul className="space-y-2">
                 {[...selectedVeredelung]
@@ -2217,10 +2115,10 @@ export function SpritzgussPage() {
                             )
                           }
                         />
-                        aktiv
+                        {t("common.active")}
                       </label>
                       <label className="inline-flex items-center gap-1 text-xs">
-                        Faktor
+                        {t("spritzguss.factor")}
                         <input
                           type="number"
                           min={0}
@@ -2260,7 +2158,7 @@ export function SpritzgussPage() {
                             onClick={() => removeVeredelungSchritt(schritt.veredelungsschritt_id)}
                             className="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700"
                           >
-                            Entfernen
+                            {t("common.remove")}
                           </button>
                         </>
                       )}
@@ -2270,17 +2168,14 @@ export function SpritzgussPage() {
             )}
 
             <p className="mt-3 text-sm">
-              <span className="text-gray-600">Veredelungskosten gesamt (aktiv): </span>
+              <span className="text-gray-600">{t("spritzguss.finishingCostActiveTotal")} </span>
               <span className="font-semibold tabular-nums">{euro(veredelungGesamtAktiv)} €</span>
             </p>
           </section>
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Zuschläge (automatisch)</h3>
+            <h3 className="mb-3 font-semibold text-gray-900">{t("spritzguss.markupsAuto")}</h3>
             <p className="text-sm text-gray-600">
-              Material-MGK (laut Nominierung), FGK, SG&A/VVGK, Gewinn und Skonto kommen zentral aus{" "}
-              <span className="font-medium">Stammdaten → Zuschlagssätze</span>. Material-MGK bezieht
-              sich auf die Materialkosten inklusive Ausschuss; Kaufteil-MGK auf den Einkaufspreis.
-              Die Beträge und Kostenbasen erscheinen in der Ergebnisübersicht.
+              {t("spritzguss.markupsBody", { source: t("spritzguss.markupsSource") })}
             </p>
           </section>
         </form>
@@ -2288,33 +2183,34 @@ export function SpritzgussPage() {
         <aside className="space-y-4">
           {teilbildPreview ? (
             <section className="rounded-lg border border-gray-200 bg-white p-4">
-              <h3 className="mb-3 font-semibold text-gray-900">Teilbild</h3>
+              <h3 className="mb-3 font-semibold text-gray-900">{t("spritzguss.partImage")}</h3>
               <div className="flex justify-center overflow-hidden rounded-md border border-gray-200 bg-slate-50 p-2">
                 <img
                   src={teilbildPreview}
-                  alt={`Teilbild ${form.teilenummer || form.teilebezeichnung || ""}`.trim()}
+                  alt={t("spritzguss.partImageAlt", {
+                    name: form.teilenummer || form.teilebezeichnung || "",
+                  }).trim()}
                   className="max-h-48 max-w-full object-contain"
                 />
               </div>
             </section>
           ) : null}
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Ergebnis</h3>
+            <h3 className="mb-3 font-semibold text-gray-900">{t("spritzguss.result")}</h3>
             {!bloecke ? (
-              <p className="text-sm text-gray-500">Noch keine Berechnung. „Berechnen“ wählen.</p>
+              <p className="text-sm text-gray-500">{t("spritzguss.noResultYet")}</p>
             ) : (
               <div className="space-y-4">
                 {ergebnisUebersicht && (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                     <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
-                      Ergebnisübersicht
+                      {t("spritzguss.resultOverview")}
                     </h4>
                     <p className="mb-3 text-xs text-slate-500">
-                      Aufbau additiv: FGK wird genau einmal auf die FGK-Basis berechnet und in
-                      den Herstellkosten mitgezählt – nicht erneut zu den Spritzguss-HK addieren.
+                      {t("spritzguss.resultOverviewHint")}
                     </p>
                     <dl className="space-y-1 text-sm">
-                      {ERGEBNISUEBERSICHT.map(({ key, label, emphasis, hideZero }) => {
+                      {ERGEBNISUEBERSICHT.map(({ key, labelKey, emphasis, hideZero }) => {
                         const value = ergebnisUebersicht[key];
                         if (value == null) return null;
                         const num = typeof value === "number" ? value : Number(value);
@@ -2327,7 +2223,7 @@ export function SpritzgussPage() {
                             <dt
                               className={`min-w-0 flex-1 basis-[55%] sm:basis-auto ${ergebnisUebersichtLabelClass(emphasis)}`}
                             >
-                              {label}
+                              {t(labelKey)}
                             </dt>
                             <dd
                               className={`shrink-0 text-right ${ergebnisUebersichtValueClass(emphasis)}`}
@@ -2343,7 +2239,7 @@ export function SpritzgussPage() {
 
                 <div className="border-t border-gray-200 pt-4">
                   <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Detailbereiche
+                    {t("spritzguss.detailSections")}
                   </h4>
                   {DETAIL_BLOCK_ORDER.filter((blockKey) => bloecke[blockKey]).map((blockKey) => {
                     const fields = bloecke[blockKey];
@@ -2351,14 +2247,14 @@ export function SpritzgussPage() {
                     return (
                       <div key={blockKey} className="mb-4">
                         <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-600">
-                          {BLOCK_LABELS[blockKey] ?? blockKey}
+                          {blockLabel(t, blockKey)}
                         </h4>
                         <dl className="space-y-1 text-sm">
                           {Object.entries(fields).map(([field, value]) => {
                             const label =
                               blockKey === "veredelung"
-                                ? veredelungDetailLabel(field, selectedVeredelung)
-                                : FIELD_LABELS[field] ?? field;
+                                ? veredelungDetailLabel(t, field, selectedVeredelung)
+                                : fieldLabel(t, field);
                             return (
                               <div
                                 key={field}

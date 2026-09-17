@@ -6,7 +6,7 @@ const styles: Record<ValidationVariant, string> = {
   error: "border-red-200 bg-danger-light text-danger-foreground",
   success: "border-green-200 bg-success-light text-success-foreground",
   warning: "border-orange-200 bg-warning-light text-warning-foreground",
-  info: "border-blue-200 bg-brand-light text-blue-900",
+  info: "border-cyan-200 bg-brand-light text-cyan-900",
 };
 
 export function ValidationMessage({

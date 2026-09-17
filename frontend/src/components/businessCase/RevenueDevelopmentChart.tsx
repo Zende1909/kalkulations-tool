@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import { useT } from "../../i18n";
 import { useEcharts, type EChartsCoreOption } from "../../hooks/useEcharts";
 import { formatRevenueEuro } from "../../pages/businessCaseFormatting";
 import type { BusinessCaseRevenueYearRow } from "../../types/businessCase";
@@ -34,6 +35,7 @@ export function RevenueDevelopmentChart({
   /** Kompakt neben ROI in der zweiten Dashboard-Zeile. */
   variant?: "default" | "compact";
 }) {
+  const t = useT();
   const [tableOpen, setTableOpen] = useState(false);
   const points = useMemo(() => buildRevenueChartPoints(rows), [rows]);
   const hasData = hasDisplayableRevenue(points);
@@ -44,8 +46,8 @@ export function RevenueDevelopmentChart({
   const total = sumDisplayRevenue(points);
   const seriesLabel =
     points.find((p) => p.series !== "none")?.series === "bottom"
-      ? "Bottom Price"
-      : "tatsächlich";
+      ? t("businessCase.seriesBottom")
+      : t("businessCase.seriesActual");
   const isCompactLayout = variant === "compact";
 
   const option = useMemo(
@@ -68,15 +70,16 @@ export function RevenueDevelopmentChart({
     >
       <div className="flex min-w-0 shrink-0 items-start justify-between gap-2">
         <div className="min-w-0">
-          <h4 className="text-base font-semibold text-slate-900">Umsatzentwicklung</h4>
+          <h4 className="text-base font-semibold text-slate-900">
+            {t("businessCase.revenueDevelopment")}
+          </h4>
           {!isCompactLayout ? (
             <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600">
-              Umsatz je Kalenderjahr aus Projektstückzahl × Stückpreis ({seriesLabel}). Einmalige
-              Investitionserlöse sind nicht enthalten.
+              {t("businessCase.revenueDevelopmentDesc", { series: seriesLabel })}
             </p>
           ) : (
             <p className="mt-0.5 text-xs text-slate-500">
-              Stückzahl × Preis ({seriesLabel})
+              {t("businessCase.revenueDevelopmentDescCompact", { series: seriesLabel })}
             </p>
           )}
         </div>
@@ -87,7 +90,7 @@ export function RevenueDevelopmentChart({
             }`}
           >
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-              Gesamtumsatz
+              {t("businessCase.totalRevenue")}
             </div>
             <div className="text-sm font-bold tabular-nums text-slate-900">
               {formatRevenueOnScale(total, scale)}
@@ -98,7 +101,7 @@ export function RevenueDevelopmentChart({
 
       {!hasData || option == null ? (
         <p className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600">
-          Für den ausgewählten Business Case liegen noch keine Umsatzwerte vor.
+          {t("businessCase.noRevenueData")}
         </p>
       ) : (
         <>
@@ -131,7 +134,7 @@ export function RevenueDevelopmentChart({
                 </div>
                 <aside className="hidden min-w-0 rounded-lg border border-slate-100 bg-slate-50/80 p-3 lg:block">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                    Jahreswerte
+                    {t("businessCase.yearlyValues")}
                   </p>
                   <ul className="mt-2 space-y-1.5">
                     {points.map((p) => (
@@ -156,15 +159,17 @@ export function RevenueDevelopmentChart({
                   aria-expanded={tableOpen}
                   onClick={() => setTableOpen((v) => !v)}
                 >
-                  {tableOpen ? "Jahreswerte ausblenden" : "Jahreswerte anzeigen"}
+                  {tableOpen
+                    ? t("businessCase.hideYearlyValues")
+                    : t("businessCase.showYearlyValues")}
                 </button>
                 {tableOpen ? (
                   <table className="mt-2 min-w-full text-sm">
-                    <caption className="sr-only">Umsatz je Kalenderjahr</caption>
+                    <caption className="sr-only">{t("businessCase.revenueByYear")}</caption>
                     <thead>
                       <tr className="border-b text-left text-slate-600">
-                        <th className="py-1.5 pr-3">Jahr</th>
-                        <th className="py-1.5 text-right">Umsatz</th>
+                        <th className="py-1.5 pr-3">{t("businessCase.year")}</th>
+                        <th className="py-1.5 text-right">{t("businessCase.revenue")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -184,12 +189,12 @@ export function RevenueDevelopmentChart({
           )}
 
           <table className="sr-only">
-            <caption>Umsatz je Kalenderjahr als barrierefreie Alternative</caption>
+            <caption>{t("businessCase.revenueByYearA11y")}</caption>
             <thead>
               <tr>
-                <th>Jahr</th>
-                <th>Umsatz</th>
-                <th>Serie</th>
+                <th>{t("businessCase.year")}</th>
+                <th>{t("businessCase.revenue")}</th>
+                <th>{t("businessCase.series")}</th>
               </tr>
             </thead>
             <tbody>
@@ -197,14 +202,16 @@ export function RevenueDevelopmentChart({
                 <tr key={`a11y-${p.calendar_year}`}>
                   <td>{p.calendar_year}</td>
                   <td>
-                    {p.display_revenue != null ? formatRevenueEuro(p.display_revenue) : "–"}
+                    {p.display_revenue != null
+                      ? formatRevenueEuro(p.display_revenue)
+                      : t("common.dash")}
                   </td>
                   <td>
                     {p.series === "actual"
-                      ? "tatsächlich"
+                      ? t("businessCase.seriesActual")
                       : p.series === "bottom"
-                        ? "Bottom Price"
-                        : "–"}
+                        ? t("businessCase.seriesBottom")
+                        : t("common.dash")}
                   </td>
                 </tr>
               ))}

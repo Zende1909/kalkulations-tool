@@ -74,6 +74,6 @@ describe("Material Dezimal-Submit", () => {
   it("MaterialienPage nutzt Load-/Submit-Helfer", () => {
     expect(pageSrc).toMatch(/submitMaterialFormValues/);
     expect(pageSrc).toMatch(/loadMaterialFormValues/);
-    expect(pageSrc).toMatch(/Preis pro kg/);
+    expect(pageSrc).toMatch(/masterData\.pricePerKg/);
   });
 });

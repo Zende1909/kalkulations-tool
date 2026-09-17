@@ -48,10 +48,11 @@ import {
   type SelectedVeredelung,
 } from "../types/baugruppe";
 import {
-  mixStatusLabel,
   type ProjectAssemblyMix,
+  type ProjectAssemblyMixStatus,
 } from "../types/projectAssemblyMix";
 import { coerceFormDecimal, formatDecimalForInputDe } from "../utils/decimalInput";
+import { useT } from "../i18n";
 
 function euro(value: number | undefined | null): string {
   if (value == null || Number.isNaN(value)) return "–";
@@ -61,12 +62,29 @@ function euro(value: number | undefined | null): string {
   });
 }
 
-function kaufteilListLabel(k: Kaufteil): string {
+type TFn = (key: string, params?: Record<string, string | number | null | undefined>) => string;
+
+const INVESTMENT_TYPE_I18N: Record<string, string> = {
+  Werkzeug: "investments.typeWerkzeug",
+  Vorrichtung: "investments.typeVorrichtung",
+  Maschine: "investments.typeMaschine",
+  Prüfmittel: "investments.typePruefmittel",
+  Lehre: "investments.typeLehre",
+  Montageanlage: "investments.typeMontageanlage",
+  Sonstige: "investments.typeSonstige",
+};
+
+function kaufteilListLabel(k: Kaufteil, t: TFn): string {
   const tags: string[] = [];
-  if (k.project_id == null) tags.push("(Standard)");
-  if (!k.aktiv) tags.push("(inaktiv)");
+  if (k.project_id == null) tags.push(t("assemblies.standardTag"));
+  if (!k.aktiv) tags.push(t("assemblies.inactiveTag"));
   const tagStr = tags.length ? ` ${tags.join(" ")}` : "";
-  return `${k.bezeichnung} (${k.artikelnummer})${tagStr} – ${euro(k.preis)} € Einkauf`;
+  return t("assemblies.purchaseLabel", {
+    name: k.bezeichnung,
+    article: k.artikelnummer,
+    tags: tagStr,
+    price: euro(k.preis),
+  });
 }
 
 function kaufteilSelectionTags(
@@ -74,44 +92,61 @@ function kaufteilSelectionTags(
   baugruppeProjectId: number | null,
   kaufteileList: Kaufteil[],
   metaById: Map<number, Kaufteil>,
+  t: TFn,
 ): string {
   const kt = kaufteileList.find((k) => k.id === kaufteilId) ?? metaById.get(kaufteilId);
-  if (!kt) return " (unbekannt)";
+  if (!kt) return ` ${t("assemblies.unknownTag")}`;
   const tags: string[] = [];
-  if (kt.project_id == null) tags.push("(Standard)");
-  if (!kt.aktiv) tags.push("(inaktiv)");
+  if (kt.project_id == null) tags.push(t("assemblies.standardTag"));
+  if (!kt.aktiv) tags.push(t("assemblies.inactiveTag"));
   if (
     kt.project_id != null &&
     baugruppeProjectId != null &&
     kt.project_id !== baugruppeProjectId
   ) {
-    tags.push("(anderes Projekt)");
+    tags.push(t("assemblies.otherProjectTag"));
   }
   return tags.length ? ` ${tags.join(" ")}` : "";
 }
 
-const ZUSAMMENFASSUNG: Array<{ key: keyof BaugruppeErgebnis; label: string; highlight?: boolean }> = [
-  { key: "einzelteile_gesamt", label: "Einzelteil-Selbstkosten gesamt (€)" },
-  { key: "kaufteile_einkauf_gesamt", label: "Kaufteil-Einkauf gesamt (€)" },
-  { key: "kaufteile_mgk_gesamt", label: "Kaufteil-MGK gesamt (€)" },
-  { key: "kaufteile_oem_handling_gesamt", label: "OEM-Handling gesamt (€)" },
-  { key: "kaufteile_sga_gesamt", label: "Kaufteil-SG&A gesamt (€)" },
-  { key: "kaufteile_gesamt", label: "Kaufteil-Selbstkosten gesamt (€)" },
-  { key: "vorprodukt_gesamt", label: "Vorprodukt-Zwischensumme (€)" },
-  { key: "assembly_direkt_gesamt", label: "Montage direkt (€)" },
-  { key: "assembly_fgk_betrag", label: "Montage-FGK (€)" },
-  { key: "kostenbasis_vor_ausschuss", label: "Kostenbasis vor Ausschuss (€)" },
-  { key: "assembly_ausschuss_zuschlag", label: "Assembly-Ausschusszuschlag (€)" },
-  { key: "kostenbasis_nach_assembly", label: "Kostenbasis nach Assembly (€)" },
-  { key: "gewinn_pct", label: "Gewinnsatz (%)" },
-  { key: "gewinn_betrag", label: "Gewinnbetrag (€)" },
-  { key: "baugruppenpreis_je_stueck", label: "Endpreis je Stück (€)", highlight: true },
-  { key: "jahresstueckzahl", label: "Jahresstückzahl" },
-  { key: "jahresumsatz", label: "Jahresumsatz (€)" },
-  { key: "investitionen_gesamt", label: "Investitionen gesamt (€)" },
-];
+function mixStatusLabelI18n(status: ProjectAssemblyMixStatus, t: TFn): string {
+  switch (status) {
+    case "complete":
+      return t("assemblies.mixComplete");
+    case "incomplete":
+      return t("assemblies.mixIncomplete");
+    case "overflow":
+      return t("assemblies.mixOverflow");
+    case "empty":
+      return t("assemblies.mixEmpty");
+  }
+}
+
+function zusammenfassungRows(t: TFn): Array<{ key: keyof BaugruppeErgebnis; label: string; highlight?: boolean }> {
+  return [
+    { key: "einzelteile_gesamt", label: t("assemblies.summaryEinzelteile") },
+    { key: "kaufteile_einkauf_gesamt", label: t("assemblies.summaryKaufteileEinkauf") },
+    { key: "kaufteile_mgk_gesamt", label: t("assemblies.summaryKaufteileMgk") },
+    { key: "kaufteile_oem_handling_gesamt", label: t("assemblies.summaryOemHandling") },
+    { key: "kaufteile_sga_gesamt", label: t("assemblies.summaryKaufteileSga") },
+    { key: "kaufteile_gesamt", label: t("assemblies.summaryKaufteileGesamt") },
+    { key: "vorprodukt_gesamt", label: t("assemblies.summaryVorprodukt") },
+    { key: "assembly_direkt_gesamt", label: t("assemblies.summaryAssemblyDirekt") },
+    { key: "assembly_fgk_betrag", label: t("assemblies.summaryAssemblyFgk") },
+    { key: "kostenbasis_vor_ausschuss", label: t("assemblies.summaryKostenbasisVor") },
+    { key: "assembly_ausschuss_zuschlag", label: t("assemblies.summaryAusschuss") },
+    { key: "kostenbasis_nach_assembly", label: t("assemblies.summaryKostenbasisNach") },
+    { key: "gewinn_pct", label: t("assemblies.summaryGewinnPct") },
+    { key: "gewinn_betrag", label: t("assemblies.summaryGewinnBetrag") },
+    { key: "baugruppenpreis_je_stueck", label: t("assemblies.summaryEndpreis"), highlight: true },
+    { key: "jahresstueckzahl", label: t("assemblies.summaryJahresstueckzahl") },
+    { key: "jahresumsatz", label: t("assemblies.summaryJahresumsatz") },
+    { key: "investitionen_gesamt", label: t("assemblies.summaryInvestitionen") },
+  ];
+}
 
 export function BaugruppenPage() {
+  const t = useT();
   const { canWrite } = useAuth();
   const { selection, formDefaults, listFilters } = useActiveProject();
   const [list, setList] = useState<BaugruppeListItem[]>([]);
@@ -340,7 +375,7 @@ export function BaugruppenPage() {
       );
     }
     setProjectFilterHint(
-      "Nicht zum gewählten Projekt passende Komponenten wurden aus der Auswahl entfernt.",
+      t("assemblies.projectComponentsRemoved"),
     );
   }, [
     form.project_id,
@@ -359,7 +394,7 @@ export function BaugruppenPage() {
     if (form.project_id == null) {
       setJahresstueckzahlHint(
         form.customer_id != null || form.program_id != null
-          ? "Jahresstückzahl wird nach Projektauswahl aus den Projektstückzahlen berechnet."
+          ? t("assemblies.annualQtyAfterProject")
           : null,
       );
       setJahresstueckzahlLoading(false);
@@ -374,7 +409,7 @@ export function BaugruppenPage() {
         if (cancelled) return;
         if (!avg.has_volumes || avg.jahresstueckzahl == null) {
           setJahresstueckzahlHint(
-            "Für dieses Projekt sind keine Jahresstückzahlen hinterlegt. Bitte Mengenprofil im Programm pflegen.",
+            t("assemblies.annualQtyMissing"),
           );
           return;
         }
@@ -386,13 +421,16 @@ export function BaugruppenPage() {
           );
         }
         setJahresstueckzahlHint(
-          `Automatisch: ⌈Summe / ${avg.year_count} Jahre⌉ = ${avg.jahresstueckzahl.toLocaleString("de-DE")}`,
+          t("assemblies.annualQtyAuto", {
+            years: avg.year_count,
+            value: avg.jahresstueckzahl.toLocaleString("de-DE"),
+          }),
         );
       })
       .catch((err) => {
         if (!cancelled) {
           setJahresstueckzahlHint(
-            err instanceof Error ? err.message : "Jahresstückzahl konnte nicht geladen werden.",
+            err instanceof Error ? err.message : t("assemblies.annualQtyLoadFailed"),
           );
         }
       })
@@ -430,7 +468,7 @@ export function BaugruppenPage() {
       .catch((err) => {
         if (!cancelled) {
           setProjectMix(null);
-          setProjectMixError(err instanceof Error ? err.message : "Variantenmix konnte nicht geladen werden");
+          setProjectMixError(err instanceof Error ? err.message : t("assemblies.mixLoadFailed"));
         }
       })
       .finally(() => {
@@ -551,15 +589,15 @@ export function BaugruppenPage() {
     setError(null);
     setSuccess(null);
     try {
-      if (!form.name.trim()) throw new Error("Baugruppenname ist erforderlich.");
+      if (!form.name.trim()) throw new Error(t("assemblies.nameRequiredError"));
       const result = await berechnen(calcPayload);
       setErgebnis(result.ergebnis);
       setBloecke(result.bloecke);
-      setSuccess("Berechnung erfolgreich.");
+      setSuccess(t("assemblies.calcSuccess"));
     } catch (err) {
       setErgebnis(null);
       setBloecke(null);
-      setError(err instanceof Error ? err.message : "Berechnung fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("assemblies.calcFailed"));
     } finally {
       setBusy(false);
     }
@@ -571,11 +609,11 @@ export function BaugruppenPage() {
     setError(null);
     setSuccess(null);
     try {
-      if (!form.name.trim()) throw new Error("Baugruppenname ist für das Speichern erforderlich.");
+      if (!form.name.trim()) throw new Error(t("assemblies.nameRequiredSaveError"));
       if (hierarchySelectionRequiresIds(formHierarchy)) {
-        if (form.customer_id == null) throw new Error("Bitte einen Kunden auswählen.");
-        if (form.program_id == null) throw new Error("Bitte ein Programm auswählen.");
-        if (form.project_id == null) throw new Error("Bitte ein Projekt auswählen.");
+        if (form.customer_id == null) throw new Error(t("assemblies.selectCustomer"));
+        if (form.program_id == null) throw new Error(t("assemblies.selectProgram"));
+        if (form.project_id == null) throw new Error(t("assemblies.selectProject"));
       }
       const wasArchived = editId != null && !form.aktiv;
       const reactivating = wasArchived && form.status === "aktiv";
@@ -638,10 +676,10 @@ export function BaugruppenPage() {
       loadFromSaved(saved);
       setSuccess(
         wasNew
-          ? `Baugruppe #${saved.id} gespeichert.`
+          ? t("assemblies.savedNew", { id: saved.id })
           : reactivating
-            ? `Baugruppe #${saved.id} reaktiviert und aktualisiert.`
-            : `Baugruppe #${saved.id} aktualisiert.`,
+            ? t("assemblies.savedReactivated", { id: saved.id })
+            : t("assemblies.savedUpdated", { id: saved.id }),
       );
       // Liste neu laden; bei Reaktivierung ggf. Filter auf Aktiv
       if (reactivating && listFilter === "archiviert") {
@@ -650,7 +688,7 @@ export function BaugruppenPage() {
         await loadList();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("assemblies.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -738,25 +776,25 @@ export function BaugruppenPage() {
       setBloecke(item.ergebnis_bloecke);
       setInvestitionen(item.investitionen ?? []);
       loadFromSaved(item);
-      setSuccess(`Baugruppe #${item.id} geladen.`);
+      setSuccess(t("assemblies.loaded", { id: item.id }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Laden fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("assemblies.loadFailed"));
     } finally {
       setBusy(false);
     }
   };
 
   const handleArchive = async (id: number) => {
-    if (!canWrite || !window.confirm("Baugruppe wirklich archivieren?")) return;
+    if (!canWrite || !window.confirm(t("assemblies.archiveConfirm"))) return;
     setBusy(true);
     setError(null);
     try {
       await archivierenBaugruppe(id);
       if (editId === id) handleNew();
       await loadList();
-      setSuccess("Baugruppe archiviert.");
+      setSuccess(t("assemblies.archivedSuccess"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Archivieren fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("assemblies.archiveFailed"));
     } finally {
       setBusy(false);
     }
@@ -765,9 +803,7 @@ export function BaugruppenPage() {
   const handleDelete = async (id: number) => {
     if (
       !canWrite ||
-      !window.confirm(
-        "Baugruppe endgültig löschen? Zugehörige Positionen und Zuordnungen werden mitgelöscht. Dieser Vorgang kann nicht rückgängig gemacht werden.",
-      )
+      !window.confirm(t("assemblies.deleteConfirm"))
     ) {
       return;
     }
@@ -777,9 +813,9 @@ export function BaugruppenPage() {
       await deleteBaugruppe(id);
       if (editId === id) handleNew();
       await loadList();
-      setSuccess("Baugruppe gelöscht.");
+      setSuccess(t("assemblies.deletedSuccess"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("assemblies.deleteFailed"));
     } finally {
       setBusy(false);
     }
@@ -794,9 +830,9 @@ export function BaugruppenPage() {
       const filename = `baugruppe_${nummer}.${format === "pdf" ? "pdf" : "xlsx"}`;
       const path = format === "pdf" ? baugruppePdfUrl(editId) : baugruppeXlsxUrl(editId);
       await downloadReport(path, filename);
-      setSuccess(`Export ${format.toUpperCase()} erfolgreich.`);
+      setSuccess(t("assemblies.exportSuccess", { format: format.toUpperCase() }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("common.exportFailed"));
     } finally {
       setExportBusy(false);
     }
@@ -808,11 +844,8 @@ export function BaugruppenPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Baugruppen</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Zusammenführung von Einzelteilen, Kaufteilen und Montageschritten. Keine doppelten
-            Zuschläge auf Einzelteilpreise.
-          </p>
+          <h2 className="text-2xl font-bold text-gray-900">{t("nav.assemblies")}</h2>
+          <p className="mt-1 text-sm text-gray-600">{t("assemblies.intro")}</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -820,7 +853,7 @@ export function BaugruppenPage() {
             onClick={handleNew}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
           >
-            Neu
+            {t("assemblies.new")}
           </button>
           <button
             type="button"
@@ -828,7 +861,7 @@ export function BaugruppenPage() {
             onClick={handleBerechnen}
             className="rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:opacity-50"
           >
-            Berechnen
+            {t("assemblies.calculate")}
           </button>
           {canWrite && (
             <button
@@ -837,7 +870,7 @@ export function BaugruppenPage() {
               onClick={handleSave}
               className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
             >
-              Baugruppe speichern
+              {t("assemblies.saveAssembly")}
             </button>
           )}
           {editId != null && (
@@ -858,29 +891,27 @@ export function BaugruppenPage() {
       )}
       {editId != null && (
         <p className="text-sm text-slate-600">
-          Bearbeite Baugruppe <strong>#{editId}</strong>
+          {t("assemblies.editing", { id: editId })}
           {!form.aktiv && (
             <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase text-amber-950">
-              Archiviert
+              {t("assemblies.archivedBadge")}
             </span>
           )}
         </p>
       )}
       {editId != null && !form.aktiv && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          Diese Baugruppe ist archiviert. Zum Reaktivieren im Statusfeld „Aktiv“ wählen und speichern.
-          Ohne Statusänderung bleibt sie archiviert. Zum endgültigen Entfernen „Löschen“ in der Liste
-          verwenden.
+          {t("assemblies.archivedHint")}
         </div>
       )}
 
       <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
         <div className="space-y-6">
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Stammdaten</h3>
+            <h3 className="mb-3 font-semibold text-gray-900">{t("assemblies.masterData")}</h3>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block text-sm">
-                <span className="text-gray-600">Name *</span>
+                <span className="text-gray-600">{t("assemblies.nameRequired")}</span>
                 <input
                   className="mt-1 w-full rounded border px-2 py-1.5"
                   value={form.name}
@@ -888,7 +919,7 @@ export function BaugruppenPage() {
                 />
               </label>
               <label className="block text-sm">
-                <span className="text-gray-600">Teilenummer</span>
+                <span className="text-gray-600">{t("assemblies.partNumber")}</span>
                 <input
                   className="mt-1 w-full rounded border px-2 py-1.5"
                   value={form.teilenummer}
@@ -919,7 +950,7 @@ export function BaugruppenPage() {
                 </p>
               ) : null}
               <label className="block text-sm">
-                <span className="text-gray-600">Land / Region</span>
+                <span className="text-gray-600">{t("assemblies.countryRegion")}</span>
                 <select
                   className="mt-1 w-full rounded border px-2 py-1.5"
                   value={selectedLandId ?? ""}
@@ -930,19 +961,19 @@ export function BaugruppenPage() {
                     setForm((c) => ({ ...c, werk_id: null }));
                   }}
                 >
-                  <option value="">– optional / Legacy –</option>
+                  <option value="">{t("assemblies.optionalLegacy")}</option>
                   {laender
                     .filter((l) => l.aktiv || (form.werk_id != null && werke.some((w) => w.id === form.werk_id && w.land_id === l.id)))
                     .map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.code} – {l.name}
-                        {!l.aktiv ? " (inaktiv)" : ""}
+                        {!l.aktiv ? ` ${t("assemblies.inactiveTag")}` : ""}
                       </option>
                     ))}
                 </select>
               </label>
               <label className="block text-sm">
-                <span className="text-gray-600">Werk / Standort</span>
+                <span className="text-gray-600">{t("assemblies.plantSite")}</span>
                 <select
                   className="mt-1 w-full rounded border px-2 py-1.5"
                   value={form.werk_id ?? ""}
@@ -956,11 +987,11 @@ export function BaugruppenPage() {
                     }
                   }}
                 >
-                  <option value="">– optional / Legacy –</option>
+                  <option value="">{t("assemblies.optionalLegacy")}</option>
                   {filteredWerke.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.code} – {w.name}
-                      {!w.aktiv ? " (inaktiv)" : ""}
+                      {!w.aktiv ? ` ${t("assemblies.inactiveTag")}` : ""}
                     </option>
                   ))}
                 </select>
@@ -968,8 +999,7 @@ export function BaugruppenPage() {
               {hierarchyClearedPendingUnlink && (
                 <div className="md:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                   <p>
-                    Die Kunden-/Programm-/Projektauswahl wurde geleert. Beim Speichern bleibt die
-                    bestehende Verknüpfung erhalten.
+                    {t("assemblies.hierarchyClearedHint")}
                   </p>
                   <button
                     type="button"
@@ -977,9 +1007,7 @@ export function BaugruppenPage() {
                     className="mt-2 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-100 disabled:opacity-50"
                     onClick={() => {
                       if (
-                        !window.confirm(
-                          "Verknüpfung zu Kunde, Programm und Projekt wirklich entfernen? Die Änderung wird erst beim Speichern übernommen.",
-                        )
+                        !window.confirm(t("assemblies.unlinkConfirm"))
                       ) {
                         return;
                       }
@@ -992,13 +1020,13 @@ export function BaugruppenPage() {
                       }));
                     }}
                   >
-                    Verknüpfung entfernen
+                    {t("assemblies.unlink")}
                   </button>
                 </div>
               )}
               {unlinkConfirmed && loadedHierarchy.project_id != null && (
                 <div className="md:col-span-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                  Verknüpfung wird beim Speichern entfernt.{" "}
+                  {t("assemblies.unlinkPending")}{" "}
                   <button
                     type="button"
                     className="underline"
@@ -1012,12 +1040,12 @@ export function BaugruppenPage() {
                       }));
                     }}
                   >
-                    Rückgängig
+                    {t("assemblies.undo")}
                   </button>
                 </div>
               )}
               <label className="block text-sm">
-                <span className="text-gray-600">Jahresstückzahl (aus Projekt)</span>
+                <span className="text-gray-600">{t("assemblies.annualQtyFromProject")}</span>
                 <input
                   type="number"
                   readOnly
@@ -1027,14 +1055,14 @@ export function BaugruppenPage() {
                   value={form.jahresstueckzahl}
                 />
                 {jahresstueckzahlLoading && (
-                  <p className="mt-1 text-xs text-gray-500">Jahresstückzahl wird berechnet…</p>
+                  <p className="mt-1 text-xs text-gray-500">{t("assemblies.annualQtyCalculating")}</p>
                 )}
                 {jahresstueckzahlHint && (
                   <p className="mt-1 text-xs text-amber-800">{jahresstueckzahlHint}</p>
                 )}
               </label>
               <label className="block text-sm">
-                <span className="text-gray-600">Anteil am Projekt (%)</span>
+                <span className="text-gray-600">{t("assemblies.variantSharePct")}</span>
                 <input
                   type="number"
                   min={0}
@@ -1047,21 +1075,21 @@ export function BaugruppenPage() {
                     const raw = e.target.value;
                     setField("variant_share_pct", raw === "" ? null : Number(raw));
                   }}
-                  placeholder="optional"
+                  placeholder={t("assemblies.variantSharePlaceholder")}
                 />
                 <p className="mt-1 text-xs text-gray-500">
-                  Leer = ohne Variantenmix (Legacy). Mit Wert nimmt die Baugruppe am Projektmix teil.
+                  {t("assemblies.variantShareHint")}
                 </p>
                 {computedShareJahresmenge != null && (
                   <p className="mt-1 text-xs text-slate-700">
-                    Baugruppen-Jahresmenge:{" "}
-                    {computedShareJahresmenge.toLocaleString("de-DE")} Stück
-                    {" "}(= Projektstückzahl × Anteil / 100)
+                    {t("assemblies.assemblyAnnualQty", {
+                      qty: computedShareJahresmenge.toLocaleString("de-DE"),
+                    })}
                   </p>
                 )}
               </label>
               <label className="block text-sm">
-                <span className="text-gray-600">Status</span>
+                <span className="text-gray-600">{t("assemblies.status")}</span>
                 <select
                   className="mt-1 w-full rounded border px-2 py-1.5"
                   value={form.status}
@@ -1069,27 +1097,26 @@ export function BaugruppenPage() {
                 >
                   {form.aktiv ? (
                     <>
-                      <option value="entwurf">Entwurf</option>
-                      <option value="aktiv">Aktiv</option>
-                      <option value="archiviert">Archiviert</option>
+                      <option value="entwurf">{t("assemblies.statusDraft")}</option>
+                      <option value="aktiv">{t("assemblies.statusActive")}</option>
+                      <option value="archiviert">{t("assemblies.statusArchived")}</option>
                     </>
                   ) : (
                     <>
-                      <option value="archiviert">Archiviert</option>
-                      <option value="aktiv">Aktiv</option>
+                      <option value="archiviert">{t("assemblies.statusArchived")}</option>
+                      <option value="aktiv">{t("assemblies.statusActive")}</option>
                     </>
                   )}
                 </select>
                 {!form.aktiv && (
                   <p className="mt-1 text-xs text-amber-800">
-                    Zum Reaktivieren „Aktiv“ wählen und speichern. Ohne Statusänderung bleibt die
-                    Baugruppe archiviert.
+                    {t("assemblies.reactivateHint")}
                   </p>
                 )}
               </label>
             </div>
             <label className="mt-3 block text-sm">
-              <span className="text-gray-600">Beschreibung</span>
+              <span className="text-gray-600">{t("assemblies.description")}</span>
               <textarea
                 className="mt-1 w-full rounded border px-2 py-1.5"
                 rows={2}
@@ -1100,16 +1127,20 @@ export function BaugruppenPage() {
           </section>
 
           <PositionSection
-            title="Einzelteile"
-            addLabel="Einzelteilkalkulation hinzufügen"
+            title={t("assemblies.moldedParts")}
+            addLabel={t("assemblies.addMoldedPart")}
             options={spritzgussList.map((s) => ({
               id: s.id,
-              label: `${s.teilebezeichnung} (${s.teilenummer}) – Selbstkosten ${euro(s.selbstkosten ?? s.verkaufspreis)} €`,
+              label: t("assemblies.moldedOptionLabel", {
+                name: s.teilebezeichnung,
+                number: s.teilenummer,
+                price: euro(s.selbstkosten ?? s.verkaufspreis),
+              }),
             }))}
             disabled={form.project_id == null}
-            disabledHint="Bitte zuerst ein Projekt auswählen."
+            disabledHint={t("assemblies.selectProjectFirst")}
             onAdd={addSpritzguss}
-            emptyText="Noch keine Einzelteile."
+            emptyText={t("assemblies.noMoldedParts")}
           >
             {selectedSpritzguss
               .sort((a, b) => a.reihenfolge - b.reihenfolge)
@@ -1118,7 +1149,7 @@ export function BaugruppenPage() {
                   key={s.spritzguss_kalkulation_id}
                   title={`${s.bezeichnung}${
                     !spritzgussList.some((x) => x.id === s.spritzguss_kalkulation_id)
-                      ? " (inaktiv / anderes Projekt)"
+                      ? ` ${t("assemblies.inactiveOtherProject")}`
                       : ""
                   }`}
                   subtitle={s.teilenummer}
@@ -1159,22 +1190,22 @@ export function BaugruppenPage() {
                       s.spritzguss_kalkulation_id,
                     )
                   }
-                  preisLabel="Selbstkosten"
+                  preisLabel={t("assemblies.selfCost")}
                 />
               ))}
           </PositionSection>
 
           <PositionSection
-            title="Kaufteile"
-            addLabel="Kaufteil hinzufügen"
+            title={t("assemblies.purchasedParts")}
+            addLabel={t("assemblies.addPurchasedPart")}
             options={kaufteileList.map((k) => ({
               id: k.id,
-              label: kaufteilListLabel(k),
+              label: kaufteilListLabel(k, t),
             }))}
             disabled={form.project_id == null}
-            disabledHint="Bitte zuerst ein Projekt auswählen."
+            disabledHint={t("assemblies.selectProjectFirst")}
             onAdd={addKaufteil}
-            emptyText="Noch keine Kaufteile."
+            emptyText={t("assemblies.noPurchasedParts")}
           >
             {selectedKaufteile
               .sort((a, b) => a.reihenfolge - b.reihenfolge)
@@ -1186,6 +1217,7 @@ export function BaugruppenPage() {
                     form.project_id,
                     kaufteileList,
                     kaufteilMetaById,
+                    t,
                   )}`}
                   subtitle={k.lieferant}
                   menge={k.menge}
@@ -1229,20 +1261,23 @@ export function BaugruppenPage() {
                       k.kaufteil_id,
                     )
                   }
-                  preisLabel="Preis"
+                  preisLabel={t("assemblies.price")}
                 />
               ))}
           </PositionSection>
 
           <PositionSection
-            title="Montage / Veredelung"
-            addLabel="Veredelungsschritt hinzufügen"
+            title={t("assemblies.finishingAssembly")}
+            addLabel={t("assemblies.addFinishingStep")}
             options={veredelungList.map((v) => ({
               id: v.id,
-              label: `${v.bezeichnung} – ${euro(v.kosten_inkl_ausschuss)} €`,
+              label: t("assemblies.finishingOptionLabel", {
+                name: v.bezeichnung,
+                price: euro(v.kosten_inkl_ausschuss),
+              }),
             }))}
             onAdd={addVeredelung}
-            emptyText="Noch keine Montage-/Veredelungsschritte."
+            emptyText={t("assemblies.noFinishingSteps")}
           >
             {selectedVeredelung
               .sort((a, b) => a.reihenfolge - b.reihenfolge)
@@ -1253,7 +1288,7 @@ export function BaugruppenPage() {
                 >
                   <span className="font-medium">{v.bezeichnung}</span>
                   <label className="flex items-center gap-1">
-                    Faktor
+                    {t("assemblies.factor")}
                     <input
                       type="number"
                       min={0.01}
@@ -1272,12 +1307,15 @@ export function BaugruppenPage() {
                     />
                   </label>
                   <span className="text-gray-600">
-                    Kosten: {euro(v.kosten)} € → {euro(v.kosten * v.mengenfaktor)} €
+                    {t("assemblies.costArrow", {
+                      cost: euro(v.kosten),
+                      total: euro(v.kosten * v.mengenfaktor),
+                    })}
                   </span>
                   <div className="ml-auto flex gap-1">
                     <button type="button" className="text-xs text-slate-600" onClick={() => moveItem(selectedVeredelung, 0, "up", setSelectedVeredelung, "veredelungsschritt_id", v.veredelungsschritt_id)}>↑</button>
                     <button type="button" className="text-xs text-slate-600" onClick={() => moveItem(selectedVeredelung, 0, "down", setSelectedVeredelung, "veredelungsschritt_id", v.veredelungsschritt_id)}>↓</button>
-                    <button type="button" className="text-xs text-red-600" onClick={() => setSelectedVeredelung((c) => c.filter((x) => x.veredelungsschritt_id !== v.veredelungsschritt_id))}>Entfernen</button>
+                    <button type="button" className="text-xs text-red-600" onClick={() => setSelectedVeredelung((c) => c.filter((x) => x.veredelungsschritt_id !== v.veredelungsschritt_id))}>{t("common.remove")}</button>
                   </div>
                 </div>
               ))}
@@ -1287,9 +1325,9 @@ export function BaugruppenPage() {
         <aside className="space-y-4">
           {form.project_id != null && (
             <section className="rounded-lg border border-gray-200 bg-white p-4">
-              <h3 className="mb-2 font-semibold text-gray-900">Projekt-Variantenmix</h3>
+              <h3 className="mb-2 font-semibold text-gray-900">{t("assemblies.variantMix")}</h3>
               {projectMixLoading && (
-                <p className="text-sm text-gray-500">Mix wird geladen…</p>
+                <p className="text-sm text-gray-500">{t("assemblies.mixLoading")}</p>
               )}
               {projectMixError && (
                 <p className="text-sm text-red-700">{projectMixError}</p>
@@ -1297,7 +1335,7 @@ export function BaugruppenPage() {
               {projectMix && !projectMixLoading && (
                 <div className="space-y-3 text-sm">
                   <p className="text-gray-700">
-                    Anteile gesamt:{" "}
+                    {t("assemblies.shareTotal")}{" "}
                     <strong>
                       {projectMix.active_share_sum_pct.toLocaleString("de-DE", {
                         maximumFractionDigits: 2,
@@ -1315,13 +1353,13 @@ export function BaugruppenPage() {
                     }`}
                   >
                     <p className="font-medium">
-                      Status: {mixStatusLabel(projectMix.mix_status)}
+                      {t("assemblies.mixStatus", { status: mixStatusLabelI18n(projectMix.mix_status, t) })}
                     </p>
                     <p className="mt-1">{projectMix.mix_message}</p>
                   </div>
                   {projectMix.gewichtete_kosten_pro_projektstueck != null && (
                     <p className="text-gray-800">
-                      Gewichtete Kosten / Projektstück:{" "}
+                      {t("assemblies.weightedCostPerPiece")}{" "}
                       <strong>
                         {euro(projectMix.gewichtete_kosten_pro_projektstueck)} €
                       </strong>
@@ -1331,12 +1369,12 @@ export function BaugruppenPage() {
                     <table className="min-w-full text-left text-xs">
                       <thead className="border-b text-gray-500">
                         <tr>
-                          <th className="py-1 pr-2 font-medium">Teilenr</th>
-                          <th className="py-1 pr-2 font-medium">Ausführung</th>
-                          <th className="py-1 pr-2 font-medium">Anteil</th>
-                          <th className="py-1 pr-2 font-medium">Jahresmenge</th>
-                          <th className="py-1 pr-2 font-medium">Aktiv</th>
-                          <th className="py-1 font-medium">Kosten</th>
+                          <th className="py-1 pr-2 font-medium">{t("assemblies.colPartNo")}</th>
+                          <th className="py-1 pr-2 font-medium">{t("assemblies.colVariant")}</th>
+                          <th className="py-1 pr-2 font-medium">{t("assemblies.colShare")}</th>
+                          <th className="py-1 pr-2 font-medium">{t("assemblies.colAnnualQty")}</th>
+                          <th className="py-1 pr-2 font-medium">{t("assemblies.colActive")}</th>
+                          <th className="py-1 font-medium">{t("assemblies.colCost")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1363,7 +1401,7 @@ export function BaugruppenPage() {
                                 {row.bezeichnung}
                                 {row.legacy_standalone && (
                                   <span className="ml-1 text-[10px] text-amber-800">
-                                    ohne Variantenmix
+                                    {t("assemblies.withoutVariantMix")}
                                   </span>
                                 )}
                               </button>
@@ -1376,7 +1414,7 @@ export function BaugruppenPage() {
                             <td className="py-1.5 pr-2 tabular-nums">
                               {row.jahresmenge.toLocaleString("de-DE")}
                             </td>
-                            <td className="py-1.5 pr-2">{row.aktiv ? "ja" : "nein"}</td>
+                            <td className="py-1.5 pr-2">{row.aktiv ? t("common.yes") : t("common.no")}</td>
                             <td className="py-1.5 tabular-nums">{euro(row.kosten_je_stueck)} €</td>
                           </tr>
                         ))}
@@ -1385,18 +1423,24 @@ export function BaugruppenPage() {
                   </div>
                   {projectMix.aggregated_components?.length > 0 && (
                     <div>
-                      <p className="mb-1 font-medium text-gray-800">Aggregierte Komponenten</p>
+                      <p className="mb-1 font-medium text-gray-800">{t("assemblies.aggregatedComponents")}</p>
                       <ul className="max-h-40 space-y-1 overflow-y-auto text-xs text-gray-600">
                         {projectMix.aggregated_components.slice(0, 12).map((c) => (
                           <li key={`${c.component_type}-${c.component_id}`}>
-                            {c.bezeichnung || c.teilenummer || `#${c.component_id}`}:{" "}
-                            {c.effektive_jahresmenge.toLocaleString("de-DE")} / Jahr
-                            {c.losgroesse != null ? ` (Los ${c.losgroesse}` : ""}
-                            {c.anzahl_lose != null ? `, ${c.anzahl_lose} Lose)` : c.losgroesse != null ? ")" : ""}
+                            {t("assemblies.componentYearLine", {
+                              name: c.bezeichnung || c.teilenummer || `#${c.component_id}`,
+                              qty: c.effektive_jahresmenge.toLocaleString("de-DE"),
+                            })}
+                            {c.losgroesse != null ? t("assemblies.lotInfo", { lot: c.losgroesse }) : ""}
+                            {c.anzahl_lose != null
+                              ? t("assemblies.lotsInfo", { lots: c.anzahl_lose })
+                              : c.losgroesse != null
+                                ? ")"
+                                : ""}
                           </li>
                         ))}
                         {projectMix.aggregated_components.length > 12 && (
-                          <li>… und {projectMix.aggregated_components.length - 12} weitere</li>
+                          <li>{t("assemblies.andMore", { count: projectMix.aggregated_components.length - 12 })}</li>
                         )}
                       </ul>
                     </div>
@@ -1407,29 +1451,29 @@ export function BaugruppenPage() {
           )}
           <section className="rounded-lg border border-gray-200 bg-white p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-semibold text-gray-900">Gespeicherte Baugruppen</h3>
+              <h3 className="font-semibold text-gray-900">{t("assemblies.savedAssemblies")}</h3>
               <div className="flex rounded-md border border-gray-200 text-xs">
                 <button
                   type="button"
                   className={`px-2 py-1 ${listFilter === "aktiv" ? "bg-slate-800 text-white" : "bg-white text-gray-700"}`}
                   onClick={() => setListFilter("aktiv")}
                 >
-                  Aktiv
+                  {t("assemblies.filterActive")}
                 </button>
                 <button
                   type="button"
                   className={`px-2 py-1 ${listFilter === "archiviert" ? "bg-slate-800 text-white" : "bg-white text-gray-700"}`}
                   onClick={() => setListFilter("archiviert")}
                 >
-                  Archiviert
+                  {t("assemblies.filterArchived")}
                 </button>
               </div>
             </div>
             {list.length === 0 ? (
               <p className="text-sm text-gray-500">
                 {listFilter === "aktiv"
-                  ? "Noch keine aktiven Baugruppen."
-                  : "Keine archivierten Baugruppen."}
+                  ? t("assemblies.noActiveAssemblies")
+                  : t("assemblies.noArchivedAssemblies")}
               </p>
             ) : (
               <ul className="space-y-2 text-sm">
@@ -1446,7 +1490,7 @@ export function BaugruppenPage() {
                       <span className="font-medium">{item.name}</span>
                       {!item.aktiv && (
                         <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-900">
-                          Archiviert
+                          {t("assemblies.archivedBadge")}
                         </span>
                       )}
                       <span className="ml-2 text-gray-500">
@@ -1454,7 +1498,7 @@ export function BaugruppenPage() {
                       </span>
                       {item.variant_share_pct != null && (
                         <span className="ml-2 text-xs text-slate-600">
-                          Anteil {item.variant_share_pct.toLocaleString("de-DE")} %
+                          {t("assemblies.sharePct", { pct: item.variant_share_pct.toLocaleString("de-DE") })}
                         </span>
                       )}
                     </button>
@@ -1466,7 +1510,7 @@ export function BaugruppenPage() {
                             className="text-xs text-amber-800"
                             onClick={() => handleArchive(item.id)}
                           >
-                            Archivieren
+                            {t("assemblies.archive")}
                           </button>
                         )}
                         <button
@@ -1474,7 +1518,7 @@ export function BaugruppenPage() {
                           className="text-xs font-medium text-red-600"
                           onClick={() => handleDelete(item.id)}
                         >
-                          Löschen
+                          {t("common.delete")}
                         </button>
                       </div>
                     )}
@@ -1485,17 +1529,17 @@ export function BaugruppenPage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold text-gray-900">Ergebnis</h3>
+            <h3 className="mb-3 font-semibold text-gray-900">{t("assemblies.result")}</h3>
             {!zusammenfassung ? (
-              <p className="text-sm text-gray-500">Noch keine Berechnung. „Berechnen“ wählen.</p>
+              <p className="text-sm text-gray-500">{t("assemblies.noResultYet")}</p>
             ) : (
               <div className="space-y-4">
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                   <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
-                    Zusammenfassung
+                    {t("assemblies.summary")}
                   </h4>
                   <dl className="space-y-1 text-sm">
-                    {ZUSAMMENFASSUNG.map(({ key, label, highlight }) => {
+                    {zusammenfassungRows(t).map(({ key, label, highlight }) => {
                       const value = (zusammenfassung as Record<string, number>)[key];
                       if (value == null) return null;
                       const display =
@@ -1522,51 +1566,55 @@ export function BaugruppenPage() {
                     })}
                   </dl>
                   <p className="mt-3 text-xs text-amber-800">
-                    Investitionen sind nicht im Stückpreis enthalten.
+                    {t("assemblies.investmentsNotInUnitPrice")}
                   </p>
                 </div>
 
                 {ergebnis?.einzelteile?.length ? (
-                  <DetailBlock title="Einzelteile" rows={ergebnis.einzelteile.map((p) => [
+                  <DetailBlock title={t("assemblies.moldedParts")} rows={ergebnis.einzelteile.map((p) => [
                     p.bezeichnung,
                     p.detail.teilenummer,
                     String(p.menge),
                     euro(p.einzelpreis),
                     euro(p.zwischensumme),
-                  ])} headers={["Bezeichnung", "Teilenummer", "Menge", "Einzelpreis", "Summe"]} />
+                  ])} headers={[t("assemblies.colDesignation"), t("assemblies.partNumber"), t("assemblies.quantity"), t("assemblies.colUnitPrice"), t("assemblies.sum")]} />
                 ) : null}
 
                 {ergebnis?.kaufteile?.length ? (
-                  <DetailBlock title="Kaufteile" rows={ergebnis.kaufteile.map((p) => [
+                  <DetailBlock title={t("assemblies.purchasedParts")} rows={ergebnis.kaufteile.map((p) => [
                     p.bezeichnung,
                     p.detail.lieferant,
                     String(p.menge),
                     euro(p.einzelpreis),
                     euro(p.zwischensumme),
-                  ])} headers={["Bezeichnung", "Lieferant", "Menge", "Preis", "Summe"]} />
+                  ])} headers={[t("assemblies.colDesignation"), t("assemblies.colSupplier"), t("assemblies.quantity"), t("assemblies.price"), t("assemblies.sum")]} />
                 ) : null}
 
                 {ergebnis?.veredelungen?.length ? (
-                  <DetailBlock title="Montage / Veredelung" rows={ergebnis.veredelungen.map((p) => [
+                  <DetailBlock title={t("assemblies.finishingAssembly")} rows={ergebnis.veredelungen.map((p) => [
                     String(p.reihenfolge),
                     p.bezeichnung,
                     euro(p.kosten_je_stueck),
                     String(p.mengenfaktor),
                     euro(p.zwischensumme),
-                  ])} headers={["Reihenf.", "Bezeichnung", "Kosten/St.", "Faktor", "Summe"]} />
+                  ])} headers={[t("assemblies.colOrder"), t("assemblies.colDesignation"), t("assemblies.colCostPerPc"), t("assemblies.colFactor"), t("assemblies.sum")]} />
                 ) : null}
 
                 {(investitionen.length > 0 || (ergebnis?.investitionen?.length ?? 0) > 0) && (
                   <div>
-                    <h4 className="mb-2 text-sm font-semibold text-slate-600">Investitionen</h4>
-                    <p className="mb-2 text-xs text-amber-800">Separat, nicht im Stückpreis enthalten.</p>
+                    <h4 className="mb-2 text-sm font-semibold text-slate-600">{t("assemblies.investments")}</h4>
+                    <p className="mb-2 text-xs text-amber-800">{t("assemblies.investmentsSeparate")}</p>
                     <ul className="space-y-1 text-sm">
-                      {(ergebnis?.investitionen ?? investitionen).map((inv) => (
+                      {(ergebnis?.investitionen ?? investitionen).map((inv) => {
+                          const typeKey = INVESTMENT_TYPE_I18N[inv.investment_type];
+                          const typeLabel = typeKey ? t(typeKey) : inv.investment_type;
+                          return (
                         <li key={inv.id} className="flex justify-between rounded bg-amber-50 px-2 py-1">
-                          <span>{inv.bezeichnung} ({inv.investment_type})</span>
+                          <span>{inv.bezeichnung} ({typeLabel})</span>
                           <span className="tabular-nums font-medium">{euro(inv.amount)} €</span>
                         </li>
-                      ))}
+                          );
+                        })}
                     </ul>
                   </div>
                 )}
@@ -1598,6 +1646,7 @@ function PositionSection({
   disabled?: boolean;
   disabledHint?: string;
 }) {
+  const t = useT();
   const [selected, setSelected] = useState("");
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4">
@@ -1612,7 +1661,7 @@ function PositionSection({
           disabled={disabled}
           onChange={(e) => setSelected(e.target.value)}
         >
-          <option value="">– auswählen –</option>
+          <option value="">{t("project.selectOption")}</option>
           {options.map((o) => (
             <option key={o.id} value={o.id}>
               {o.label}
@@ -1667,6 +1716,7 @@ function PositionRow({
   onMoveDown: () => void;
   preisLabel: string;
 }) {
+  const t = useT();
   const [mengeRaw, setMengeRaw] = useState(() => formatDecimalForInputDe(menge));
   const [preisRaw, setPreisRaw] = useState(() => formatDecimalForInputDe(preis));
 
@@ -1702,7 +1752,7 @@ function PositionRow({
         <div className="text-xs text-gray-500">{subtitle}</div>
       </div>
       <label className="flex items-center gap-1">
-        Menge
+        {t("assemblies.quantity")}
         <input
           type="text"
           inputMode="decimal"
@@ -1729,11 +1779,11 @@ function PositionRow({
           <span className="tabular-nums">{euro(preis)} €</span>
         )}
       </label>
-      <span className="text-gray-600">Summe: {euro(zwischensumme)} €</span>
+      <span className="text-gray-600">{t("assemblies.sum")}: {euro(zwischensumme)} €</span>
       <div className="ml-auto flex gap-1">
         <button type="button" className="text-xs text-slate-600" onClick={onMoveUp}>↑</button>
         <button type="button" className="text-xs text-slate-600" onClick={onMoveDown}>↓</button>
-        <button type="button" className="text-xs text-red-600" onClick={onRemove}>Entfernen</button>
+        <button type="button" className="text-xs text-red-600" onClick={onRemove}>{t("common.remove")}</button>
       </div>
     </div>
   );

@@ -12,6 +12,7 @@ import {
 } from "../api/assemblyFamilies";
 import { CustomerProjectSelector } from "../components/hierarchy/CustomerProjectSelector";
 import type { CustomerProjectSelection } from "../components/hierarchy/customerProjectSelection";
+import { useT } from "../i18n";
 import type {
   AssemblyFamily,
   AssemblyFamilyMix,
@@ -42,6 +43,7 @@ const emptyVariantForm = () => ({
 });
 
 export function AssemblyFamilyPage() {
+  const t = useT();
   const [selection, setSelection] = useState<CustomerProjectSelection>({
     customer_id: null,
     program_id: null,
@@ -96,7 +98,7 @@ export function AssemblyFamilyPage() {
 
   async function handleCreateFamily() {
     if (projectId == null || !familyName.trim()) {
-      setError("Projekt und Familienname sind erforderlich.");
+      setError(t("assemblyFamily.errProjectName"));
       return;
     }
     setBusy(true);
@@ -110,7 +112,7 @@ export function AssemblyFamilyPage() {
       await loadFamilies();
       setSelectedFamilyId(created.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Familie konnte nicht angelegt werden.");
+      setError(err instanceof Error ? err.message : t("assemblyFamily.errCreateFamily"));
     } finally {
       setBusy(false);
     }
@@ -120,11 +122,11 @@ export function AssemblyFamilyPage() {
     if (selectedFamilyId == null) return;
     const anteil = coerceFormDecimal(variantForm.anteil_prozent);
     if (anteil == null || anteil < 0 || anteil > 100) {
-      setError("Variantenanteil muss zwischen 0 und 100 % liegen.");
+      setError(t("assemblyFamily.errShareRange"));
       return;
     }
     if (!variantForm.teilenummer.trim() || !variantForm.bezeichnung.trim()) {
-      setError("Teilenummer und Bezeichnung sind erforderlich.");
+      setError(t("assemblyFamily.errPartFields"));
       return;
     }
     setBusy(true);
@@ -146,7 +148,7 @@ export function AssemblyFamilyPage() {
       setEditingVariantId(null);
       await loadMix(selectedFamilyId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Variante konnte nicht gespeichert werden.");
+      setError(err instanceof Error ? err.message : t("assemblyFamily.errSaveVariant"));
     } finally {
       setBusy(false);
     }
@@ -154,14 +156,14 @@ export function AssemblyFamilyPage() {
 
   async function handleDeleteVariant(variantId: number) {
     if (selectedFamilyId == null) return;
-    if (!window.confirm("Variante wirklich löschen?")) return;
+    if (!window.confirm(t("assemblyFamily.deleteConfirm"))) return;
     setBusy(true);
     try {
       await deleteAssemblyVariant(selectedFamilyId, variantId);
       if (selectedVariantId === variantId) setSelectedVariantId(null);
       await loadMix(selectedFamilyId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen.");
+      setError(err instanceof Error ? err.message : t("assemblyFamily.errDelete"));
     } finally {
       setBusy(false);
     }
@@ -174,7 +176,7 @@ export function AssemblyFamilyPage() {
       const data = await recalculateAssemblyFamily(selectedFamilyId);
       setMix(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Neuberechnung fehlgeschlagen.");
+      setError(err instanceof Error ? err.message : t("assemblyFamily.errRecalculate"));
     } finally {
       setBusy(false);
     }
@@ -191,6 +193,15 @@ export function AssemblyFamilyPage() {
     });
   }
 
+  const mixStatusLabel =
+    mix?.mix_status === "complete"
+      ? t("assemblyFamily.mixComplete")
+      : mix?.mix_status === "overflow"
+        ? t("assemblyFamily.mixOverflow")
+        : mix?.mix_status === "empty"
+          ? t("assemblyFamily.mixEmpty")
+          : t("assemblyFamily.mixIncomplete");
+
   const mixWarningClass =
     mix?.mix_status === "complete"
       ? "border-emerald-200 bg-emerald-50 text-emerald-900"
@@ -201,15 +212,12 @@ export function AssemblyFamilyPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-semibold text-slate-900">Baugruppenfamilien</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Variantenmix mit Anteilen an der Projektstückzahl. Komponenten je Variante über die
-          bestehende Baugruppen-BOM pflegen.
-        </p>
+        <h2 className="text-2xl font-semibold text-slate-900">{t("assemblyFamily.title")}</h2>
+        <p className="mt-1 text-sm text-slate-600">{t("assemblyFamily.intro")}</p>
       </div>
 
       <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <h3 className="mb-3 font-semibold text-slate-800">Projekt</h3>
+        <h3 className="mb-3 font-semibold text-slate-800">{t("assemblyFamily.project")}</h3>
         <CustomerProjectSelector value={selection} onChange={setSelection} />
       </section>
 
@@ -221,11 +229,11 @@ export function AssemblyFamilyPage() {
 
       <section className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
         <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
-          <h3 className="font-semibold text-slate-800">Familien</h3>
+          <h3 className="font-semibold text-slate-800">{t("assemblyFamily.families")}</h3>
           <div className="flex gap-2">
             <input
               className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm"
-              placeholder="z. B. Stoßfänger BN7i"
+              placeholder={t("assemblyFamily.namePlaceholder")}
               value={familyName}
               onChange={(e) => setFamilyName(e.target.value)}
             />
@@ -235,7 +243,7 @@ export function AssemblyFamilyPage() {
               onClick={() => void handleCreateFamily()}
               className="rounded-md bg-slate-800 px-3 py-2 text-sm text-white disabled:opacity-50"
             >
-              Anlegen
+              {t("assemblyFamily.create")}
             </button>
           </div>
           <ul className="divide-y divide-slate-100">
@@ -253,7 +261,7 @@ export function AssemblyFamilyPage() {
               </li>
             ))}
             {!families.length ? (
-              <li className="px-2 py-3 text-sm text-slate-500">Keine Familien für dieses Projekt.</li>
+              <li className="px-2 py-3 text-sm text-slate-500">{t("assemblyFamily.noFamilies")}</li>
             ) : null}
           </ul>
         </div>
@@ -266,11 +274,16 @@ export function AssemblyFamilyPage() {
                   <div>
                     <h3 className="text-lg font-semibold text-slate-900">{mix.name}</h3>
                     <p className="mt-1 text-sm text-slate-600">
-                      Projektstückzahl:{" "}
-                      <strong>{qty(mix.project_jahresstueckzahl)} Stück/Jahr</strong>
+                      {t("assemblyFamily.projectVolume")}{" "}
+                      <strong>
+                        {t("assemblyFamily.pcsPerYear", {
+                          qty: qty(mix.project_jahresstueckzahl),
+                        })}
+                      </strong>
                     </p>
                     <p className="text-sm text-slate-600">
-                      Variantenanteile gesamt: <strong>{pct(mix.active_share_sum_pct)}</strong>
+                      {t("assemblyFamily.variantShareTotal")}{" "}
+                      <strong>{pct(mix.active_share_sum_pct)}</strong>
                     </p>
                   </div>
                   <button
@@ -279,45 +292,40 @@ export function AssemblyFamilyPage() {
                     onClick={() => void handleRecalculate()}
                     className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
                   >
-                    Neu berechnen
+                    {t("assemblyFamily.recalculate")}
                   </button>
                 </div>
                 <div className={`mt-3 rounded-md border px-3 py-2 text-sm ${mixWarningClass}`}>
                   <p className="font-medium">
-                    Status:{" "}
-                    {mix.mix_status === "complete"
-                      ? "vollständig"
-                      : mix.mix_status === "overflow"
-                        ? "überschritten"
-                        : mix.mix_status === "empty"
-                          ? "leer"
-                          : "unvollständig"}
+                    {t("assemblyFamily.mixStatus", { status: mixStatusLabel })}
                   </p>
                   <p className="mt-1">{mix.mix_message}</p>
                 </div>
                 {mix.gewichtete_kosten_pro_projektstueck != null ? (
                   <p className="mt-3 text-sm text-slate-700">
-                    Gewichtete Baugruppenkosten pro Projektstück:{" "}
+                    {t("assemblyFamily.weightedCost")}{" "}
                     <strong>{euro(mix.gewichtete_kosten_pro_projektstueck)}</strong>
                   </p>
                 ) : (
                   <p className="mt-3 text-sm text-slate-500">
-                    Gewichtete Gesamtkosten erst bei Summe 100 % verbindlich.
+                    {t("assemblyFamily.weightedCostPending")}
                   </p>
                 )}
               </section>
 
               <section className="rounded-lg border border-slate-200 bg-white p-4">
-                <h4 className="mb-3 font-semibold text-slate-800">Variantenübersicht</h4>
+                <h4 className="mb-3 font-semibold text-slate-800">
+                  {t("assemblyFamily.variantsOverview")}
+                </h4>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="border-b text-left text-slate-600">
-                        <th className="py-2 pr-3">Teilenr.</th>
-                        <th className="py-2 pr-3">Bezeichnung</th>
-                        <th className="py-2 pr-3 text-right">Anteil</th>
-                        <th className="py-2 pr-3 text-right">Jahresmenge</th>
-                        <th className="py-2">Aktiv</th>
+                        <th className="py-2 pr-3">{t("assemblyFamily.colPartNo")}</th>
+                        <th className="py-2 pr-3">{t("assemblyFamily.colDesignation")}</th>
+                        <th className="py-2 pr-3 text-right">{t("assemblyFamily.colShare")}</th>
+                        <th className="py-2 pr-3 text-right">{t("assemblyFamily.colAnnualQty")}</th>
+                        <th className="py-2">{t("assemblyFamily.colActive")}</th>
                         <th className="py-2" />
                       </tr>
                     </thead>
@@ -341,21 +349,23 @@ export function AssemblyFamilyPage() {
                           <td className="py-2 pr-3">{v.bezeichnung}</td>
                           <td className="py-2 pr-3 text-right tabular-nums">{pct(v.anteil_prozent)}</td>
                           <td className="py-2 pr-3 text-right tabular-nums">{qty(v.jahresmenge)}</td>
-                          <td className="py-2">{v.aktiv ? "ja" : "nein"}</td>
+                          <td className="py-2">
+                            {v.aktiv ? t("assemblyFamily.yes") : t("assemblyFamily.no")}
+                          </td>
                           <td className="py-2 text-right">
                             <button
                               type="button"
                               className="mr-2 text-xs text-slate-600 hover:underline"
                               onClick={() => startEdit(v)}
                             >
-                              Bearbeiten
+                              {t("common.edit")}
                             </button>
                             <button
                               type="button"
                               className="text-xs text-red-700 hover:underline"
                               onClick={() => void handleDeleteVariant(v.id)}
                             >
-                              Löschen
+                              {t("common.delete")}
                             </button>
                           </td>
                         </tr>
@@ -364,17 +374,21 @@ export function AssemblyFamilyPage() {
                   </table>
                 </div>
                 <p className="mt-2 text-sm text-slate-600">
-                  Summe aktiver Anteile: {pct(mix.active_share_sum_pct)}
+                  {t("assemblyFamily.activeShareSum", { pct: pct(mix.active_share_sum_pct) })}
                 </p>
               </section>
 
               <section className="rounded-lg border border-slate-200 bg-white p-4">
                 <h4 className="mb-3 font-semibold text-slate-800">
-                  {editingVariantId != null ? "Variante bearbeiten" : "Variante hinzufügen"}
+                  {editingVariantId != null
+                    ? t("assemblyFamily.editVariant")
+                    : t("assemblyFamily.addVariant")}
                 </h4>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <label className="text-sm">
-                    <span className="mb-1 block text-slate-600">Teilenummer</span>
+                    <span className="mb-1 block text-slate-600">
+                      {t("assemblyFamily.partNumber")}
+                    </span>
                     <input
                       className="w-full rounded-md border border-slate-300 px-3 py-2"
                       value={variantForm.teilenummer}
@@ -384,7 +398,9 @@ export function AssemblyFamilyPage() {
                     />
                   </label>
                   <label className="text-sm sm:col-span-2">
-                    <span className="mb-1 block text-slate-600">Bezeichnung</span>
+                    <span className="mb-1 block text-slate-600">
+                      {t("assemblyFamily.designation")}
+                    </span>
                     <input
                       className="w-full rounded-md border border-slate-300 px-3 py-2"
                       value={variantForm.bezeichnung}
@@ -394,7 +410,7 @@ export function AssemblyFamilyPage() {
                     />
                   </label>
                   <label className="text-sm">
-                    <span className="mb-1 block text-slate-600">Anteil %</span>
+                    <span className="mb-1 block text-slate-600">{t("assemblyFamily.sharePct")}</span>
                     <input
                       className="w-full rounded-md border border-slate-300 px-3 py-2"
                       value={variantForm.anteil_prozent}
@@ -411,7 +427,7 @@ export function AssemblyFamilyPage() {
                         setVariantForm((f) => ({ ...f, aktiv: e.target.checked }))
                       }
                     />
-                    Aktiv (zählt zur Summe)
+                    {t("assemblyFamily.activeCounts")}
                   </label>
                 </div>
                 <div className="mt-3 flex gap-2">
@@ -421,7 +437,9 @@ export function AssemblyFamilyPage() {
                     onClick={() => void handleSaveVariant()}
                     className="rounded-md bg-slate-800 px-4 py-2 text-sm text-white disabled:opacity-50"
                   >
-                    {editingVariantId != null ? "Speichern" : "Variante hinzufügen"}
+                    {editingVariantId != null
+                      ? t("common.save")
+                      : t("assemblyFamily.addVariant")}
                   </button>
                   {editingVariantId != null ? (
                     <button
@@ -432,7 +450,7 @@ export function AssemblyFamilyPage() {
                         setVariantForm(emptyVariantForm());
                       }}
                     >
-                      Abbrechen
+                      {t("common.cancel")}
                     </button>
                   ) : null}
                 </div>
@@ -443,28 +461,36 @@ export function AssemblyFamilyPage() {
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <h4 className="font-semibold text-slate-800">
-                        Variante {selectedVariant.teilenummer}
+                        {t("assemblyFamily.variantHeading", {
+                          partNo: selectedVariant.teilenummer,
+                        })}
                       </h4>
                       <p className="text-sm text-slate-600">{selectedVariant.bezeichnung}</p>
                       <p className="mt-1 text-sm text-slate-600">
-                        Anteil {pct(selectedVariant.anteil_prozent)} · Jahresmenge{" "}
-                        {qty(selectedVariant.jahresmenge)}
+                        {t("assemblyFamily.shareAndQty", {
+                          share: pct(selectedVariant.anteil_prozent),
+                          qty: qty(selectedVariant.jahresmenge),
+                        })}
                       </p>
                     </div>
                     <Link
                       to="/baugruppen"
                       className="text-sm font-medium text-blue-700 hover:underline"
                     >
-                      Komponenten in Baugruppen bearbeiten (ID {selectedVariant.id})
+                      {t("assemblyFamily.editComponents", { id: selectedVariant.id })}
                     </Link>
                   </div>
                   <div className="mt-3 overflow-x-auto">
                     <table className="min-w-full text-sm">
                       <thead>
                         <tr className="border-b text-left text-slate-600">
-                          <th className="py-2 pr-3">Komponente</th>
-                          <th className="py-2 pr-3 text-right">Menge je Variante</th>
-                          <th className="py-2 text-right">Effektive Jahresmenge</th>
+                          <th className="py-2 pr-3">{t("assemblyFamily.colComponent")}</th>
+                          <th className="py-2 pr-3 text-right">
+                            {t("assemblyFamily.colQtyPerVariant")}
+                          </th>
+                          <th className="py-2 text-right">
+                            {t("assemblyFamily.colEffectiveAnnualQty")}
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -487,7 +513,7 @@ export function AssemblyFamilyPage() {
                         {!selectedVariant.komponenten.length ? (
                           <tr>
                             <td colSpan={3} className="py-4 text-center text-slate-500">
-                              Noch keine Komponenten. Bitte in der Baugruppenmaske zuordnen.
+                              {t("assemblyFamily.noComponents")}
                             </td>
                           </tr>
                         ) : null}
@@ -500,16 +526,18 @@ export function AssemblyFamilyPage() {
               {mix.aggregated_components.length ? (
                 <section className="rounded-lg border border-slate-200 bg-white p-4">
                   <h4 className="mb-3 font-semibold text-slate-800">
-                    Aggregierte Komponentenmengen (alle Varianten)
+                    {t("assemblyFamily.aggregatedComponents")}
                   </h4>
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-sm">
                       <thead>
                         <tr className="border-b text-left text-slate-600">
-                          <th className="py-2 pr-3">Komponente</th>
-                          <th className="py-2 pr-3 text-right">Effektive Jahresmenge</th>
-                          <th className="py-2 pr-3 text-right">Losgröße</th>
-                          <th className="py-2 text-right">Anzahl Lose</th>
+                          <th className="py-2 pr-3">{t("assemblyFamily.colComponent")}</th>
+                          <th className="py-2 pr-3 text-right">
+                            {t("assemblyFamily.colEffectiveAnnualQty")}
+                          </th>
+                          <th className="py-2 pr-3 text-right">{t("assemblyFamily.colLotSize")}</th>
+                          <th className="py-2 text-right">{t("assemblyFamily.colLotCount")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -538,7 +566,7 @@ export function AssemblyFamilyPage() {
             </>
           ) : (
             <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-600">
-              Projekt wählen und eine Baugruppenfamilie auswählen oder anlegen.
+              {t("assemblyFamily.emptyState")}
             </div>
           )}
         </div>

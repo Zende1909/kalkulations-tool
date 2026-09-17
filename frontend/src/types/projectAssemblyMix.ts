@@ -58,15 +58,15 @@ export interface ProjectAssemblyMix {
   gewichtete_kosten_pro_projektstueck: number | null;
 }
 
-export function mixStatusLabel(status: ProjectAssemblyMixStatus): string {
+export function mixStatusKey(status: ProjectAssemblyMixStatus): string {
   switch (status) {
     case "complete":
-      return "vollständig";
+      return "assemblies.mixComplete";
     case "incomplete":
-      return "unvollständig";
+      return "assemblies.mixIncomplete";
     case "overflow":
-      return "überschritten";
+      return "assemblies.mixOverflow";
     case "empty":
-      return "leer";
+      return "assemblies.mixEmpty";
   }
 }

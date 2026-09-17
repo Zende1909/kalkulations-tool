@@ -361,6 +361,14 @@ def test_business_case_api_requires_hierarchy_ids(api_client: TestClient):
     assert api_client.get("/api/v1/business-cases").status_code == 422
 
 
+def test_format_revenue_compact_keeps_mio_period():
+    from app.services.business_case_export import format_integer_de, format_revenue_compact
+
+    assert format_revenue_compact(4_080_000) == "4,08 Mio. €"
+    assert format_revenue_compact(815_000) == "815,0 k€"
+    assert format_integer_de(200000.0) == "200.000"
+
+
 def test_business_case_excel_export(api_client: TestClient):
     resp = api_client.get(
         "/api/v1/reports/business-case.xlsx",
@@ -368,6 +376,20 @@ def test_business_case_excel_export(api_client: TestClient):
     )
     assert resp.status_code == 200
     assert "spreadsheetml" in resp.headers["content-type"]
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    wb = load_workbook(BytesIO(resp.content))
+    assert wb.sheetnames[0] == "Dashboard"
+    assert "Umsatzentwicklung" in wb.sheetnames
+    assert "Szenario" in wb.sheetnames
+    assert "Materialpositionen" in wb.sheetnames
+    dash = wb["Dashboard"]
+    assert "Business Case" in str(dash["A1"].value)
+    assert "KPI-Übersicht" in str(dash["A4"].value)
+    assert "Operative Wirtschaftlichkeit" in str(dash["A14"].value)
+    assert "Kapitalbindung" in str(dash["A21"].value)
 
 
 def test_business_case_pdf_export(api_client: TestClient):
@@ -377,6 +399,33 @@ def test_business_case_pdf_export(api_client: TestClient):
     )
     assert resp.status_code == 200
     assert resp.content[:4] == b"%PDF"
+    # PDF enthält komprimierten Content; Größe und Magic reichen als Smoke.
+    assert len(resp.content) > 2000
+
+
+def test_business_case_pdf_export_en_locale(api_client: TestClient):
+    resp = api_client.get(
+        "/api/v1/reports/business-case.pdf",
+        params={
+            "customer_id": 1,
+            "program_id": 10,
+            "linked_project_id": 100,
+            "lang": "en",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.content[:4] == b"%PDF"
+    text = resp.content.decode("latin-1", errors="ignore")
+    lowered = text.lower()
+    assert "kpi overview" in lowered or "operating performance" in lowered
+    assert "operative wirtschaftlichkeit" not in lowered
+
+
+def test_format_revenue_compact_en():
+    from app.services.business_case_export import format_integer_de, format_revenue_compact
+
+    assert format_revenue_compact(4_080_000, "en") == "4.08m EUR"
+    assert format_integer_de(200000.0, "en") == "200,000"
 
 
 def test_cost_from_nested_ergebnis_bloecke():

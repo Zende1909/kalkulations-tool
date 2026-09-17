@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { useT } from "../../i18n";
 import { Button } from "../ui/Button";
 import { ValidationMessage } from "../ui/ValidationMessage";
 import { parseDecimalInput } from "../../utils/decimalInput";
@@ -55,6 +56,8 @@ export function StammdatenFormModal({
   footerExtra?: ReactNode;
   extraContent?: ReactNode;
 }) {
+  const t = useT();
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-2 sm:p-4">
       <div
@@ -71,7 +74,7 @@ export function StammdatenFormModal({
             type="button"
             onClick={onClose}
             className="rounded-app p-2 text-app-muted transition-colors hover:bg-slate-100 hover:text-app-heading"
-            aria-label="Schließen"
+            aria-label={t("common.close")}
           >
             ✕
           </button>
@@ -125,7 +128,7 @@ export function StammdatenFormModal({
                         {field.label}
                         {field.readOnly ? (
                           <span className="ml-2 text-sm font-normal text-app-muted">
-                            (berechnet, nicht editierbar)
+                            {t("masterData.calculatedReadOnly")}
                           </span>
                         ) : null}
                       </label>
@@ -192,10 +195,10 @@ export function StammdatenFormModal({
           <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-app-border bg-slate-50 px-5 py-4">
             {footerExtra}
             <Button variant="secondary" onClick={onClose}>
-              Abbrechen
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Speichern…" : "Speichern"}
+              {submitting ? t("common.saving") : t("common.save")}
             </Button>
           </footer>
         </form>

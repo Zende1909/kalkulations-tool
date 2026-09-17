@@ -16,16 +16,15 @@ describe("Baugruppen reactivation / hierarchy / Jahresstückzahl UI", () => {
   it("erlaubt Status Aktiv bei archivierten Baugruppen und reaktiviert nur bewusst", () => {
     expect(pageSrc).toMatch(/reactivating/);
     expect(pageSrc).toMatch(/status === "aktiv"/);
-    expect(pageSrc).toMatch(/Zum Reaktivieren/);
-    expect(pageSrc).toMatch(/Ohne Statusänderung bleibt die/);
+    expect(pageSrc).toMatch(/assemblies\.reactivateHint|assemblies\.archivedHint/);
     // Kein blindes aktiv: true beim Speichern archivierter Datensätze
     expect(pageSrc).toMatch(/aktiv: _omitAktiv/);
   });
 
   it("zeigt Kunde → Programm → Projekt Kaskade", () => {
-    expect(selectorSrc).toMatch(/>Kunde</);
-    expect(selectorSrc).toMatch(/>Programm</);
-    expect(selectorSrc).toMatch(/>Projekt</);
+    expect(selectorSrc).toMatch(/project\.customer/);
+    expect(selectorSrc).toMatch(/project\.program/);
+    expect(selectorSrc).toMatch(/project\.project/);
     expect(selectorSrc).toMatch(/formatStammdatenOptionLabel/);
     expect(selectorSrc).toMatch(/listPrograms/);
     expect(selectorSrc).toMatch(/value\.customer_id == null/);
@@ -33,12 +32,12 @@ describe("Baugruppen reactivation / hierarchy / Jahresstückzahl UI", () => {
   });
 
   it("zeigt Land → Werk Kaskade neben Kundenhierarchie", () => {
-    expect(pageSrc).toMatch(/Land \/ Region/);
-    expect(pageSrc).toMatch(/Werk \/ Standort/);
+    expect(pageSrc).toMatch(/assemblies\.countryRegion/);
+    expect(pageSrc).toMatch(/assemblies\.plantSite/);
     expect(pageSrc).toMatch(/filteredWerke/);
     expect(pageSrc).toMatch(/selectedLandId/);
     expect(pageSrc).toMatch(/werk_id: null/);
-    expect(pageSrc).toMatch(/\(inaktiv\)/);
+    expect(pageSrc).toMatch(/assemblies\.inactiveTag/);
     expect(pageSrc).toMatch(/api\.get<Land\[\]>\("\/laender"\)/);
     expect(pageSrc).toMatch(/api\.get<Werk\[\]>\("\/werke"\)/);
   });

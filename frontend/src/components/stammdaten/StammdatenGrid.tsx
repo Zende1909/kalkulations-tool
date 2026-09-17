@@ -11,6 +11,7 @@ import { PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 
 import { api, getApiBaseUrl, NetworkError } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { useT } from "../../i18n";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { PageHeader } from "../ui/PageHeader";
@@ -64,20 +65,22 @@ interface StammdatenGridProps<T extends { id: number }> {
   gridHeight?: number;
 }
 
-function formatFetchError(err: unknown, method: string, url: string): string {
+function formatFetchError(
+  err: unknown,
+  method: string,
+  url: string,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
   if (err instanceof NetworkError) {
     return err.message;
   }
   if (err instanceof TypeError) {
-    return (
-      `Netzwerkfehler bei ${method} ${url}. ` +
-      "Backend unter http://127.0.0.1:8000 erreichbar?"
-    );
+    return t("masterData.networkErrorHint", { method, url });
   }
   if (err instanceof Error) {
     return err.message;
   }
-  return "Unbekannter Fehler";
+  return t("masterData.unknownError");
 }
 
 function rowToFormValues<T extends { id: number }>(
@@ -139,6 +142,7 @@ export function StammdatenGrid<T extends { id: number }>({
   onFormValuesChange,
   gridHeight = 560,
 }: StammdatenGridProps<T>) {
+  const t = useT();
   const { canWrite } = useAuth();
   const [rows, setRows] = useState<T[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -176,7 +180,7 @@ export function StammdatenGrid<T extends { id: number }>({
         setRows(list);
         return list;
       } catch (err) {
-        setError(formatFetchError(err, "GET", apiUrl));
+        setError(formatFetchError(err, "GET", apiUrl, t));
         throw err;
       } finally {
         if (isInitial) {
@@ -186,7 +190,7 @@ export function StammdatenGrid<T extends { id: number }>({
         }
       }
     },
-    [apiUrl, listPath],
+    [apiUrl, listPath, t],
   );
 
   useEffect(() => {
@@ -255,11 +259,11 @@ export function StammdatenGrid<T extends { id: number }>({
         setShowForm(false);
         setEditingId(null);
         setFormMode("create");
-        setSuccess(`${entityLabel} erfolgreich aktualisiert.`);
+        setSuccess(t("masterData.updatedSuccess", { entity: entityLabel }));
       } else {
         await api.post<T>(endpoint, payload);
         setShowForm(false);
-        setSuccess(`${entityLabel} erfolgreich angelegt.`);
+        setSuccess(t("masterData.createdSuccess", { entity: entityLabel }));
       }
 
       try {
@@ -273,7 +277,7 @@ export function StammdatenGrid<T extends { id: number }>({
         formMode === "edit" && editingId != null
           ? `${getApiBaseUrl()}${endpoint}/${editingId}`
           : `${getApiBaseUrl()}${endpoint}`;
-      setFormError(formatFetchError(err, method, url));
+      setFormError(formatFetchError(err, method, url, t));
     } finally {
       setSubmitting(false);
     }
@@ -281,7 +285,7 @@ export function StammdatenGrid<T extends { id: number }>({
 
   const handleDelete = async () => {
     if (selectedId === null) {
-      setError("Bitte zuerst eine Zeile in der Tabelle auswählen.");
+      setError(t("masterData.selectRowFirst"));
       return;
     }
 
@@ -291,10 +295,10 @@ export function StammdatenGrid<T extends { id: number }>({
       await api.delete(`${endpoint}/${selectedId}`);
       setSelectedId(null);
       await loadData();
-      setSuccess("Eintrag erfolgreich gelöscht.");
+      setSuccess(t("masterData.deletedSuccess"));
     } catch (err) {
       setError(
-        formatFetchError(err, "DELETE", `${getApiBaseUrl()}${endpoint}/${selectedId}`),
+        formatFetchError(err, "DELETE", `${getApiBaseUrl()}${endpoint}/${selectedId}`, t),
       );
     }
   };
@@ -305,7 +309,7 @@ export function StammdatenGrid<T extends { id: number }>({
     const base = [...columnDefs];
     if (canWrite) {
       base.push({
-        headerName: "Aktion",
+        headerName: t("common.actions"),
         colId: "actions",
         width: 130,
         maxWidth: 140,
@@ -326,22 +330,24 @@ export function StammdatenGrid<T extends { id: number }>({
               }}
             >
               <PencilSimple className="size-3.5" weight="bold" aria-hidden />
-              Bearbeiten
+              {t("common.edit")}
             </Button>
           );
         },
       } as ColDef<T>);
     }
     return base;
-  }, [canWrite, columnDefs, openEditForm]);
+  }, [canWrite, columnDefs, openEditForm, t]);
 
   const formTitle =
-    formMode === "edit" ? `${entityLabel} bearbeiten` : `${entityLabel} anlegen`;
+    formMode === "edit"
+      ? t("masterData.editEntity", { entity: entityLabel })
+      : t("masterData.createEntity", { entity: entityLabel });
 
   const meta = (
     <>
-      {rows.length} {rows.length === 1 ? "Eintrag" : "Einträge"}
-      {refreshing ? " · Aktualisiere…" : ""}
+      {rows.length} {rows.length === 1 ? t("masterData.entry") : t("masterData.entries")}
+      {refreshing ? ` · ${t("masterData.refreshing")}` : ""}
     </>
   );
 
@@ -359,17 +365,17 @@ export function StammdatenGrid<T extends { id: number }>({
                 loadData().catch(() => undefined);
               }}
             >
-              Aktualisieren
+              {t("common.reload")}
             </Button>
             {canWrite && (
               <>
                 <Button onClick={openCreateForm}>
                   <Plus className="size-4" weight="bold" aria-hidden />
-                  Neu
+                  {t("masterData.new")}
                 </Button>
                 <Button variant="danger" onClick={handleDelete}>
                   <Trash className="size-4" weight="bold" aria-hidden />
-                  Ausgewählte löschen
+                  {t("masterData.deleteSelected")}
                 </Button>
               </>
             )}
@@ -391,16 +397,20 @@ export function StammdatenGrid<T extends { id: number }>({
       ) : null}
 
       {initialLoading ? (
-        <div className="app-card px-6 py-10 text-body-lg text-app-muted">Lade Daten…</div>
+        <div className="app-card px-6 py-10 text-body-lg text-app-muted">
+          {t("masterData.loadingData")}
+        </div>
       ) : rows.length === 0 ? (
         <EmptyState
-          title={`Keine ${title.toLowerCase()} vorhanden`}
-          description={`Legen Sie den ersten Datensatz an, um ${entityLabel.toLowerCase()}-Stammdaten zu pflegen.`}
+          title={t("masterData.emptyTitle", { title: title.toLowerCase() })}
+          description={t("masterData.emptyDescription", {
+            entity: entityLabel.toLowerCase(),
+          })}
           action={
             canWrite ? (
               <Button onClick={openCreateForm}>
                 <Plus className="size-4" weight="bold" aria-hidden />
-                {entityLabel} anlegen
+                {t("masterData.createEntity", { entity: entityLabel })}
               </Button>
             ) : undefined
           }

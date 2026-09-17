@@ -21,8 +21,8 @@ describe("Werk-Formular Dezimal / Payload", () => {
     expect(werkeSrc).toMatch(/transformSubmitValues/);
     expect(werkeSrc).toMatch(/transformLoadValues/);
     expect(werkeSrc).toMatch(/fx_to_eur/);
-    expect(werkeSrc).toMatch(/Arbeitstage\/Jahr/);
-    expect(werkeSrc).toMatch(/OEE \(0–1\)/);
-    expect(werkeSrc).toMatch(/Zinssatz \(%\)/);
+    expect(werkeSrc).toMatch(/masterData\.workdaysPerYear/);
+    expect(werkeSrc).toMatch(/masterData\.oee01/);
+    expect(werkeSrc).toMatch(/masterData\.interestRatePct/);
   });
 });

@@ -37,11 +37,11 @@
     --ag-background-color: #ffffff;
     --ag-foreground-color: #334155;
     --ag-border-color: #e2e8f0;
-    --ag-row-hover-color: #eff6ff;
-    --ag-selected-row-background-color: #dbeafe;
-    --ag-checkbox-checked-color: #2563eb;
-    --ag-range-selection-border-color: #2563eb;
-    --ag-input-focus-border-color: #2563eb;
+    --ag-row-hover-color: #ecfeff;
+    --ag-selected-row-background-color: #cffafe;
+    --ag-checkbox-checked-color: #0e7490;
+    --ag-range-selection-border-color: #0e7490;
+    --ag-input-focus-border-color: #0e7490;
   }
 
   .ag-theme-kalkulation .ag-header-cell-label {

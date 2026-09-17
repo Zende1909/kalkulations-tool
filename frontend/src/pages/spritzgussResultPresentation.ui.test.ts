@@ -6,11 +6,12 @@ import { describe, expect, it } from "vitest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pageSrc = readFileSync(resolve(__dirname, "./SpritzgussPage.tsx"), "utf-8");
+const labelsSrc = readFileSync(resolve(__dirname, "../i18n/spritzgussLabels.ts"), "utf-8");
 
 function overviewBlock(): string {
-  return pageSrc.slice(
-    pageSrc.indexOf("const ERGEBNISUEBERSICHT"),
-    pageSrc.indexOf("const FIELD_LABELS"),
+  return labelsSrc.slice(
+    labelsSrc.indexOf("export const ERGEBNISUEBERSICHT_DEF"),
+    labelsSrc.indexOf("export const DETAIL_BLOCK_ORDER"),
   );
 }
 
@@ -26,12 +27,13 @@ describe("Spritzguss Ergebnisdarstellung", () => {
     expect(block).not.toMatch(/key:\s*"nettokapazitaet"/);
   });
 
-  it("behält Kapazitätswerte im Detailbereich (FIELD_LABELS / Fertigung)", () => {
-    expect(pageSrc).toMatch(/bruttokapazitaet_exakt:\s*"Bruttokapazität exakt/);
-    expect(pageSrc).toMatch(/bruttokapazitaet:\s*"Bruttokapazität kalkulatorisch ROUND/);
-    expect(pageSrc).toMatch(/nettokapazitaet:\s*"Nettokapazität nach Ausschuss/);
-    expect(pageSrc).toMatch(/"fertigung"/);
-    expect(pageSrc).toMatch(/Detailbereiche/);
+  it("behält Kapazitätswerte im Detailbereich (FIELD_LABEL_KEYS / Fertigung)", () => {
+    expect(labelsSrc).toMatch(/bruttokapazitaet_exakt:\s*"spritzguss\.field\.bruttokapazitaet_exakt"/);
+    expect(labelsSrc).toMatch(/bruttokapazitaet:\s*"spritzguss\.field\.bruttokapazitaet"/);
+    expect(labelsSrc).toMatch(/nettokapazitaet:\s*"spritzguss\.field\.nettokapazitaet"/);
+    expect(labelsSrc).toMatch(/"fertigung"/);
+    expect(pageSrc).toMatch(/spritzguss\.detailSections/);
+    expect(pageSrc).toMatch(/fieldLabel\(t,\s*field\)/);
   });
 
   it("lässt Herstellkosten sichtbar, aber ohne Hervorhebung", () => {

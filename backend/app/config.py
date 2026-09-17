@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     )
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
-    COMPANY_NAME: str = "Kalkulations-Tool Automotive"
+    COMPANY_NAME: str = "ZC PartCalc"
     CORS_ALLOW_CREDENTIALS: bool = False
 
     # Local dev: only create an admin via explicit activation + explicit credentials.

@@ -6,6 +6,7 @@ import {
   listPrograms,
   listProjects,
 } from "../../api/hierarchy";
+import { useT } from "../../i18n";
 import type { Customer, Program, Project, ProjectVolumeProfile } from "../../types/hierarchy";
 
 export interface HierarchySelection {
@@ -28,6 +29,7 @@ const emptySelection = (): HierarchySelection => ({
 });
 
 export function HierarchySelector({ value, onChange, disabled, legacyText }: Props) {
+  const t = useT();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -68,20 +70,31 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
       .then(setVolumeProfile)
       .catch((err) => {
         setVolumeProfile(null);
-        setProfileError(err instanceof Error ? err.message : "Mengenprofil konnte nicht geladen werden.");
+        setProfileError(
+          err instanceof Error ? err.message : t("project.volumeProfileLoadFailed"),
+        );
       });
-  }, [value.project_id, projects]);
+  }, [value.project_id, projects, t]);
 
   if (legacyText) {
     return (
       <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-        <p className="font-medium">Historische Kalkulation (Freitext)</p>
-        <p>Kunde: {legacyText.kunde || "–"}</p>
-        <p>Projekt: {legacyText.projekt || "–"}</p>
+        <p className="font-medium">{t("project.historicalCalculation")}</p>
+        <p>
+          {t("project.customer")}: {legacyText.kunde || t("common.dash")}
+        </p>
+        <p>
+          {t("project.project")}: {legacyText.projekt || t("common.dash")}
+        </p>
         {legacyText.calculation_year != null && (
-          <p>Kalkulationsjahr: {legacyText.calculation_year}</p>
+          <p>
+            {t("project.calculationYear")}: {legacyText.calculation_year}
+          </p>
         )}
-        <p>Jahresstückzahl (historisch): {legacyText.jahresstueckzahl.toLocaleString("de-DE")}</p>
+        <p>
+          {t("project.historicalAnnualVolume")}:{" "}
+          {legacyText.jahresstueckzahl.toLocaleString("de-DE")}
+        </p>
       </div>
     );
   }
@@ -89,7 +102,7 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <label className="block text-sm">
-        <span className="font-medium text-gray-700">Kunde *</span>
+        <span className="font-medium text-gray-700">{t("project.customerRequired")}</span>
         <select
           disabled={disabled}
           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
@@ -99,7 +112,7 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
             onChange({ ...emptySelection(), customer_id: cid });
           }}
         >
-          <option value="">– auswählen –</option>
+          <option value="">{t("project.selectOption")}</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {c.customer_number} – {c.name}
@@ -109,7 +122,7 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
       </label>
 
       <label className="block text-sm">
-        <span className="font-medium text-gray-700">Programm *</span>
+        <span className="font-medium text-gray-700">{t("project.programRequired")}</span>
         <select
           disabled={disabled || value.customer_id == null}
           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
@@ -123,7 +136,7 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
             });
           }}
         >
-          <option value="">– auswählen –</option>
+          <option value="">{t("project.selectOption")}</option>
           {programs.map((p) => (
             <option key={p.id} value={p.id}>
               {p.program_number} – {p.name}
@@ -133,7 +146,7 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
       </label>
 
       <label className="block text-sm md:col-span-2">
-        <span className="font-medium text-gray-700">Projekt *</span>
+        <span className="font-medium text-gray-700">{t("project.projectRequired")}</span>
         <select
           disabled={disabled || value.program_id == null}
           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
@@ -149,7 +162,7 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
             setSelectedProject(proj ?? null);
           }}
         >
-          <option value="">– auswählen –</option>
+          <option value="">{t("project.selectOption")}</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.project_number} – {p.name}
@@ -161,7 +174,8 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
       {selectedProject && (
         <div className="md:col-span-2 rounded-md bg-slate-50 p-3 text-sm text-slate-800">
           <p>
-            Bauteilbereich: <strong>{selectedProject.component_area}</strong> · Anzahl pro Fahrzeug:{" "}
+            {t("project.componentArea")}: <strong>{selectedProject.component_area}</strong> ·{" "}
+            {t("project.quantityPerVehicle")}:{" "}
             <strong>{selectedProject.quantity_per_vehicle}</strong>
           </p>
         </div>
@@ -176,16 +190,16 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
       {volumeProfile && volumeProfile.rows.length > 0 && (
         <div className="md:col-span-2">
           <h4 className="mb-2 text-sm font-semibold text-gray-800">
-            Projektstückzahlen über die Projektlaufzeit
+            {t("project.volumeOverLifetime")}
           </h4>
           <div className="overflow-x-auto rounded-md border border-gray-200">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-left text-gray-600">
-                  <th className="px-3 py-2">Jahr</th>
-                  <th className="px-3 py-2">Programmfahrzeuge</th>
-                  <th className="px-3 py-2">Anzahl pro Fahrzeug</th>
-                  <th className="px-3 py-2">Projektstückzahl</th>
+                  <th className="px-3 py-2">{t("project.year")}</th>
+                  <th className="px-3 py-2">{t("project.programVehicles")}</th>
+                  <th className="px-3 py-2">{t("project.quantityPerVehicle")}</th>
+                  <th className="px-3 py-2">{t("businessCase.projectVolume")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -201,7 +215,7 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
               <tfoot>
                 <tr className="bg-slate-50 font-medium">
                   <td className="px-3 py-2" colSpan={3}>
-                    Gesamt über die Laufzeit
+                    {t("project.totalOverLifetime")}
                   </td>
                   <td className="px-3 py-2">
                     {volumeProfile.total_project_volume.toLocaleString("de-DE")}
@@ -210,9 +224,7 @@ export function HierarchySelector({ value, onChange, disabled, legacyText }: Pro
               </tfoot>
             </table>
           </div>
-          <p className="mt-1 text-xs text-gray-500">
-            Nur zur Information – der Teilepreis gilt für die gesamte Projektlaufzeit.
-          </p>
+          <p className="mt-1 text-xs text-gray-500">{t("project.volumeInfoNote")}</p>
         </div>
       )}
     </div>

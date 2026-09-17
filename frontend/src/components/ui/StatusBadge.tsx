@@ -7,7 +7,7 @@ const variantStyles: Record<StatusBadgeVariant, string> = {
   inactive: "border-slate-200 bg-slate-100 text-slate-600",
   warning: "border-orange-200 bg-warning-light text-warning-foreground",
   error: "border-red-200 bg-danger-light text-danger-foreground",
-  info: "border-blue-200 bg-brand-light text-blue-800",
+  info: "border-cyan-200 bg-brand-light text-cyan-800",
   manual: "border-orange-200 bg-warning-light text-warning-foreground",
 };
 

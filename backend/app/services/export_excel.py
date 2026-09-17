@@ -12,6 +12,8 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
+from app.services.branding import resolve_logo_path
+from app.services.i18n_export import Locale, normalize_locale, t, t_common
 from app.services.export_models import (
     BaugruppeExportData,
     DashboardExportData,
@@ -20,8 +22,9 @@ from app.services.export_models import (
 )
 
 EUR_FORMAT = '#,##0.00 "€"'
-HEADER_FILL = PatternFill("solid", fgColor="E2E8F0")
+HEADER_FILL = PatternFill("solid", fgColor="CFFAFE")
 BOLD = Font(bold=True)
+BRAND_TITLE = Font(bold=True, color="0e7490", size=14)
 
 INVESTMENT_SHEET_HEADERS = [
     "Bezeichnung",
@@ -37,11 +40,26 @@ INVESTMENT_SHEET_HEADERS = [
 ]
 
 
-def _write_investition_sheet(ws, investitionen) -> None:
-    if not investitionen:
-        ws["A1"] = "Keine Investitionen"
+def _add_brand_logo(ws, *, anchor: str = "E1", width: int = 110, height: int = 55) -> None:
+    path = resolve_logo_path()
+    if path is None:
         return
-    for c, h in enumerate(INVESTMENT_SHEET_HEADERS, 1):
+    try:
+        img = XLImage(str(path))
+        img.width = width
+        img.height = height
+        ws.add_image(img, anchor)
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _write_investition_sheet(ws, investitionen, *, locale: Locale = "de") -> None:
+    common = t_common(locale)
+    if not investitionen:
+        ws["A1"] = str(common["no_investments"])
+        return
+    headers = list(common["investment_sheet_headers"])
+    for c, h in enumerate(headers, 1):
         ws.cell(row=1, column=c, value=h).font = BOLD
     for i, inv in enumerate(investitionen, start=2):
         cost = inv.cost_amount if inv.cost_amount is not None else inv.betrag
@@ -120,36 +138,41 @@ def _write_kv(ws, start_row: int, title: str, rows: list[tuple[str, str]]) -> in
     return row + 1
 
 
-def render_spritzguss_excel(data: SpritzgussExportData) -> bytes:
+def render_spritzguss_excel(data: SpritzgussExportData, locale: Locale | str | None = "de") -> bytes:
+    loc = normalize_locale(locale)
+    common = t_common(loc)
     wb = Workbook()
     ws_over = wb.active
-    ws_over.title = "Übersicht"
+    ws_over.title = t(loc, "overview")
     ws_over["A1"] = data.company_name
-    ws_over["A1"].font = BOLD
-    ws_over["A2"] = "Einzelteil-Kalkulation"
+    ws_over["A1"].font = BRAND_TITLE
+    ws_over["A2"] = str(common["part_calculation"])
     ws_over["A2"].font = BOLD
+    _add_brand_logo(ws_over, anchor="D1")
+    ws_over.row_dimensions[1].height = 40
     meta = [
-        ("Kalkulations-ID", data.calculation_id),
-        ("Teilenummer", data.teilenummer),
-        ("Teilebezeichnung", data.teilebezeichnung),
-        ("Kunde", data.kunde),
-        ("Projekt", data.projekt),
-        ("Endpreis je Stück", data.endpreis),
-        ("Erstellt", data.created_at),
-        ("Geändert", data.updated_at),
+        (str(common["calculation_id"]), data.calculation_id),
+        (str(common["part_number"]), data.teilenummer),
+        (str(common["part_name"]), data.teilebezeichnung),
+        (str(common["customer"]), data.kunde),
+        (str(common["project"]), data.projekt),
+        (str(common["end_price_per_piece"]), data.endpreis),
+        (str(common["created"]), data.created_at),
+        (str(common["modified"]), data.updated_at),
     ]
     r = 4
+    end_label = str(common["end_price_per_piece"])
     for label, val in meta:
         ws_over.cell(row=r, column=1, value=label).font = BOLD
         cell = ws_over.cell(row=r, column=2, value=_cell_value(val))
-        if label == "Endpreis je Stück" and isinstance(val, (int, float)):
+        if label == end_label and isinstance(val, (int, float)):
             cell.number_format = EUR_FORMAT
             cell.font = BOLD
         r += 1
     if data.teilbild_mime and data.teilbild_data:
         try:
             img_bytes = base64.b64decode(data.teilbild_data, validate=True)
-            ws_over.cell(row=r, column=1, value="Teilbild").font = BOLD
+            ws_over.cell(row=r, column=1, value=str(common["part_image"])).font = BOLD
             img = XLImage(io.BytesIO(img_bytes))
             img.width = 180
             img.height = 135
@@ -161,13 +184,13 @@ def render_spritzguss_excel(data: SpritzgussExportData) -> bytes:
         ws_over.cell(row=r, column=1, value=data.werkzeug_hinweis).font = Font(color="FF0000", bold=True)
     _autosize(ws_over)
 
-    ws_in = wb.create_sheet("Eingaben")
-    _write_kv(ws_in, 1, "Eingabedaten", [(r.label, r.value) for r in data.inputs])
+    ws_in = wb.create_sheet(str(common["inputs_sheet"]))
+    _write_kv(ws_in, 1, str(common["input_data"]), [(r.label, r.value) for r in data.inputs])
     _autosize(ws_in)
 
-    ws_k = wb.create_sheet("Kostenaufstellung")
-    ws_k.cell(row=1, column=1, value="Position").font = BOLD
-    ws_k.cell(row=1, column=2, value="Betrag (€)").font = BOLD
+    ws_k = wb.create_sheet(str(common["cost_sheet"]))
+    ws_k.cell(row=1, column=1, value=str(common["position"])).font = BOLD
+    ws_k.cell(row=1, column=2, value=str(common["amount_eur"])).font = BOLD
     for i, row in enumerate(data.kosten, start=2):
         ws_k.cell(row=i, column=1, value=row.label)
         c = ws_k.cell(row=i, column=2, value=row.amount)
@@ -176,20 +199,20 @@ def render_spritzguss_excel(data: SpritzgussExportData) -> bytes:
             c.font = BOLD
     _autosize(ws_k)
 
-    ws_v = wb.create_sheet("Veredelung")
+    ws_v = wb.create_sheet(str(common["finishing_sheet"]))
     if data.veredelung_steps:
-        ws_v.cell(row=1, column=1, value="Schritt").font = BOLD
-        ws_v.cell(row=1, column=2, value="Kosten").font = BOLD
+        ws_v.cell(row=1, column=1, value=str(common["step"])).font = BOLD
+        ws_v.cell(row=1, column=2, value=str(common["cost"])).font = BOLD
         for i, step in enumerate(data.veredelung_steps, start=2):
             ws_v.cell(row=i, column=1, value=step.label)
             c = ws_v.cell(row=i, column=2, value=step.amount)
             c.number_format = EUR_FORMAT
     else:
-        ws_v["A1"] = "Keine Veredelungsschritte"
+        ws_v["A1"] = str(common["no_finishing_steps"])
     _autosize(ws_v)
 
-    ws_i = wb.create_sheet("Investitionen")
-    _write_investition_sheet(ws_i, data.investitionen)
+    ws_i = wb.create_sheet(str(common["investments_sheet"]))
+    _write_investition_sheet(ws_i, data.investitionen, locale=loc)
     _autosize(ws_i)
 
     ws_h = wb.create_sheet("Rechenhinweise")
@@ -209,19 +232,23 @@ def render_spritzguss_excel(data: SpritzgussExportData) -> bytes:
     return buffer.getvalue()
 
 
-def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
+def render_baugruppe_excel(data: BaugruppeExportData, locale: Locale | str | None = "de") -> bytes:
     from app.services.baugruppe_export_detail import (
         BaugruppeDetailKalkulation,
         excel_safe_sheet_name,
     )
 
+    loc = normalize_locale(locale)
+    common = t_common(loc)
     wb = Workbook()
     ws = wb.active
-    ws.title = "Deckblatt"
+    ws.title = t(loc, "cover")
     ws["A1"] = data.company_name
-    ws["A1"].font = BOLD
-    ws["A2"] = "Baugruppen-Detailkalkulation"
+    ws["A1"].font = BRAND_TITLE
+    ws["A2"] = str(common["assembly_detail_calculation"])
     ws["A2"].font = BOLD
+    _add_brand_logo(ws, anchor="E1")
+    ws.row_dimensions[1].height = 40
     export_date = data.export_date or datetime.now()
     summary = [
         ("Baugruppen-ID", data.assembly_id),
@@ -458,11 +485,11 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
             extra += 1
     _autosize(ws_v)
 
-    ws_i = wb.create_sheet("Investitionen")
+    ws_i = wb.create_sheet(str(common.get("investments_sheet", "Investitionen")))
     if data.investitionen:
-        _write_investition_sheet(ws_i, data.investitionen)
+        _write_investition_sheet(ws_i, data.investitionen, locale=loc)
     else:
-        ws_i["A1"] = "Keine Investitionen – separat, nicht im Stückpreis enthalten"
+        ws_i["A1"] = str(common["no_investments"])
     _autosize(ws_i)
 
     if data.zuschlagssaetze is not None:
@@ -551,26 +578,32 @@ def render_baugruppe_excel(data: BaugruppeExportData) -> bytes:
     return buffer.getvalue()
 
 
-def render_dashboard_excel(data: DashboardExportData) -> bytes:
+def render_dashboard_excel(data: DashboardExportData, locale: Locale | str | None = "de") -> bytes:
+    loc = normalize_locale(locale)
+    common = t_common(loc)
     wb = Workbook()
     ws = wb.active
-    ws.title = "KPI-Übersicht"
+    ws.title = str(common["kpi_overview_sheet"])
     ws["A1"] = data.company_name
-    ws["A1"].font = BOLD
-    ws["A2"] = "Dashboard-Bericht"
-    ws["A3"] = f"Erstellt: {data.generated_at.strftime('%d.%m.%Y %H:%M')}"
+    ws["A1"].font = BRAND_TITLE
+    ws["A2"] = str(common["dashboard_report"])
+    ws["A3"] = f"{common['generated']}: {data.generated_at.strftime('%d.%m.%Y %H:%M')}"
+    _add_brand_logo(ws, anchor="E1")
+    ws.row_dimensions[1].height = 40
     filt = []
     if data.filter_project:
-        filt.append(f"Projekt: {data.filter_project}")
+        filt.append(f"{common['project']}: {data.filter_project}")
     if data.filter_customer:
-        filt.append(f"Kunde: {data.filter_customer}")
+        filt.append(f"{common['customer']}: {data.filter_customer}")
     if data.filter_status:
-        filt.append(f"Status: {data.filter_status}")
+        filt.append(f"{common['status']}: {data.filter_status}")
     if data.filter_date_from or data.filter_date_to:
-        filt.append(f"Zeitraum: {data.filter_date_from or '–'} bis {data.filter_date_to or '–'}")
+        filt.append(
+            f"{common['period']}: {data.filter_date_from or '–'} {common['period_to']} {data.filter_date_to or '–'}"
+        )
     if data.filter_kalkulationsart:
-        filt.append(f"Kalkulationsart: {data.filter_kalkulationsart}")
-    ws["A4"] = "Filter: " + (", ".join(filt) if filt else "Keine")
+        filt.append(f"{common['calculation_type']}: {data.filter_kalkulationsart}")
+    ws["A4"] = f"{common['filter']}: " + (", ".join(filt) if filt else str(common["filter_none_overview"]))
     if data.empty_message:
         ws["A5"] = data.empty_message
     r = 6

@@ -20,12 +20,8 @@ import { useActiveProject } from "../context/ActiveProjectContext";
 import { useAuth } from "../context/AuthContext";
 import type { Customer, Program, Project } from "../types/hierarchy";
 import {
-  ASSIGNMENT_TYPE_LABELS,
   ASSIGNMENT_TYPES,
-  CAPEX_HINWEIS,
   emptyInvestitionForm,
-  ENTWICKLUNG_HINWEIS,
-  EINMALZAHLUNG_HINWEIS,
   INVESTMENT_TYPES,
   isCapexPayment,
   PAYMENT_TYPES,
@@ -36,6 +32,7 @@ import {
 } from "../types/investition";
 import { coerceFormDecimal, formatDecimalForInputDe } from "../utils/decimalInput";
 import { DecimalInputField } from "../components/DecimalInputField";
+import { useT } from "../i18n";
 
 type FormMode = "create" | "edit";
 
@@ -63,52 +60,80 @@ function setObjectIdForType(
   };
 }
 
+type TFn = (key: string, params?: Record<string, string | number | null | undefined>) => string;
+
+const ASSIGNMENT_I18N: Record<AssignmentType, string> = {
+  einzelteil: "investments.assignmentEinzelteil",
+  kaufteil: "investments.assignmentKaufteil",
+  baugruppe: "investments.assignmentBaugruppe",
+  gesamtprojekt: "investments.assignmentGesamtprojekt",
+};
+
+const PAYMENT_I18N: Record<string, string> = {
+  Amortisation: "investments.paymentAmortisation",
+  Einmalzahlung: "investments.paymentEinmalzahlung",
+  CAPEX: "investments.paymentCapex",
+  Entwicklung: "investments.paymentEntwicklung",
+};
+
+const INVESTMENT_TYPE_I18N: Record<string, string> = {
+  Werkzeug: "investments.typeWerkzeug",
+  Vorrichtung: "investments.typeVorrichtung",
+  Maschine: "investments.typeMaschine",
+  Prüfmittel: "investments.typePruefmittel",
+  Lehre: "investments.typeLehre",
+  Montageanlage: "investments.typeMontageanlage",
+  Sonstige: "investments.typeSonstige",
+};
+
 function validateForm(
   form: InvestitionPayload,
   hierarchy: HierarchySelection,
   assignmentType: AssignmentType | null,
+  t: TFn,
 ): string | null {
-  if (hierarchy.customer_id == null) return "Kunde ist erforderlich.";
-  if (hierarchy.program_id == null) return "Programm ist erforderlich.";
-  if (hierarchy.project_id == null) return "Projekt ist erforderlich.";
-  if (!assignmentType) return "Zuordnungstyp ist erforderlich.";
-  if (!form.name.trim()) return "Bezeichnung ist erforderlich.";
-  if (!form.payment_type) return "Zahlungsart ist erforderlich.";
-  if (form.cost_amount < 0) return "Kosten dürfen nicht negativ sein.";
+  if (hierarchy.customer_id == null) return t("investments.errCustomer");
+  if (hierarchy.program_id == null) return t("investments.errProgram");
+  if (hierarchy.project_id == null) return t("investments.errProject");
+  if (!assignmentType) return t("investments.errAssignmentType");
+  if (!form.name.trim()) return t("investments.errName");
+  if (!form.payment_type) return t("investments.errPaymentType");
+  if (form.cost_amount < 0) return t("investments.errCostNegative");
   if (form.bottom_price != null && form.bottom_price < 0) {
-    return "Bottom Price darf nicht negativ sein.";
+    return t("investments.errBottomNegative");
   }
   if (form.revenue_amount != null && form.revenue_amount < 0) {
-    return "Erlös darf nicht negativ sein.";
+    return t("investments.errRevenueNegative");
   }
   if (form.payment_type === "Amortisation") {
     const vol = form.amortization_volume;
     if (vol == null || !Number.isInteger(vol) || vol < 1) {
-      return "Amortisationsvolumen muss eine positive ganze Zahl sein.";
+      return t("investments.errAmortVolume");
     }
   }
   if (isCapexPayment(form.payment_type)) {
-    if (form.cost_amount <= 0) return "Bei CAPEX sind Kosten erforderlich und müssen größer als 0 sein.";
+    if (form.cost_amount <= 0) return t("investments.errCapexCost");
     if (form.bottom_price != null || form.revenue_amount != null) {
-      return "Bei CAPEX sind Bottom Price und Erlös nicht zulässig.";
+      return t("investments.errCapexNoBottomRevenue");
     }
   }
   if (form.payment_type === "Entwicklung" && form.cost_amount <= 0) {
-    return "Bei Entwicklung sind Kosten erforderlich und müssen größer als 0 sein.";
+    return t("investments.errDevCost");
   }
   if (assignmentType === "einzelteil" && !form.calculation_id) {
-    return "Bitte ein Einzelteil wählen.";
+    return t("investments.errSelectMolded");
   }
   if (assignmentType === "kaufteil" && !form.kaufteil_id) {
-    return "Bitte ein Kaufteil wählen.";
+    return t("investments.errSelectPurchased");
   }
   if (assignmentType === "baugruppe" && !form.baugruppe_id) {
-    return "Bitte eine Baugruppe wählen.";
+    return t("investments.errSelectAssembly");
   }
   return null;
 }
 
 export function InvestitionenPage() {
+  const t = useT();
   const { canWrite } = useAuth();
   const { selection, isComplete, formDefaults } = useActiveProject();
   const [rows, setRows] = useState<Investition[]>([]);
@@ -185,7 +210,7 @@ export function InvestitionenPage() {
 
   const loadProject = useCallback(async () => {
     if (filterHierarchy.project_id == null) {
-      setError("Bitte Kunde, Programm und Projekt auswählen.");
+      setError(t("investments.selectHierarchy"));
       return;
     }
     setBusy(true);
@@ -202,11 +227,11 @@ export function InvestitionenPage() {
       setFilterLabels(labels);
       setLoaded(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Laden fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("investments.loadFailed"));
     } finally {
       setBusy(false);
     }
-  }, [filterHierarchy, resolveLabels]);
+  }, [filterHierarchy, resolveLabels, t]);
 
   // Automatisch laden, wenn globales Projekt vollständig ist
   useEffect(() => {
@@ -279,7 +304,7 @@ export function InvestitionenPage() {
       .then(setTargets)
       .catch((err) => {
         setTargets([]);
-        setError(err instanceof Error ? err.message : "Zielobjekte konnten nicht geladen werden.");
+        setError(err instanceof Error ? err.message : t("investments.targetsLoadFailed"));
       })
       .finally(() => setTargetsLoading(false));
   }, [showForm, formHierarchy, assignmentType]);
@@ -317,7 +342,7 @@ export function InvestitionenPage() {
 
   const openCreate = () => {
     if (appliedHierarchy.project_id == null) {
-      setError("Bitte zuerst ein Projekt laden.");
+      setError(t("investments.loadProjectFirst"));
       return;
     }
     setFormMode("create");
@@ -412,7 +437,7 @@ export function InvestitionenPage() {
         revenueAmount = null;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ungültiger Betrag.");
+      setError(err instanceof Error ? err.message : t("investments.invalidAmount"));
       return;
     }
     const formWithAmounts = {
@@ -421,7 +446,7 @@ export function InvestitionenPage() {
       bottom_price: bottomPrice,
       revenue_amount: revenueAmount,
     };
-    const validationError = validateForm(formWithAmounts, formHierarchy, assignmentType);
+    const validationError = validateForm(formWithAmounts, formHierarchy, assignmentType, t);
     if (validationError) {
       setError(validationError);
       return;
@@ -445,11 +470,11 @@ export function InvestitionenPage() {
       };
       if (formMode === "create") await createInvestition(payload);
       else if (editingId != null) await updateInvestition(editingId, payload);
-      setSuccess("Investition gespeichert.");
+      setSuccess(t("investments.saved"));
       setShowForm(false);
       await loadProject();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("investments.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -457,62 +482,80 @@ export function InvestitionenPage() {
 
   const columnDefs = useMemo<ColDef<Investition>[]>(
     () => [
-      { field: "customer", headerName: "Kunde", width: 120 },
-      { field: "project", headerName: "Projekt", width: 120 },
+      { field: "customer", headerName: t("investments.colCustomer"), width: 120 },
+      { field: "project", headerName: t("investments.colProject"), width: 120 },
       {
-        field: "assignment_type_label",
-        headerName: "Zuordnungstyp",
+        field: "assignment_type",
+        headerName: t("investments.colAssignmentType"),
         width: 120,
+        valueFormatter: (p) => {
+          const key = p.value as AssignmentType | null;
+          return key && key in ASSIGNMENT_I18N ? t(ASSIGNMENT_I18N[key]) : (p.data?.assignment_type_label || "");
+        },
       },
       {
-        headerName: "Materialnr.",
+        headerName: t("investments.colMaterialNo"),
         width: 110,
         valueGetter: (p) =>
-          p.data?.assignment_type === "gesamtprojekt" ? "Gesamtprojekt" : p.data?.part_number || "–",
+          p.data?.assignment_type === "gesamtprojekt"
+            ? t("investments.overallProject")
+            : p.data?.part_number || t("common.dash"),
       },
-      { field: "zuordnung", headerName: "Zielobjekt", flex: 1, minWidth: 180 },
-      { field: "name", headerName: "Bezeichnung", flex: 1, minWidth: 160 },
-      { field: "investment_type", headerName: "Art", width: 120 },
-      { field: "payment_type", headerName: "Zahlungsart", width: 130 },
-      { field: "cost_amount", headerName: "Kosten (€)", width: 110, valueFormatter: (p) => euro(p.value as number) },
+      { field: "zuordnung", headerName: t("investments.colTarget"), flex: 1, minWidth: 180 },
+      { field: "name", headerName: t("investments.colDesignation"), flex: 1, minWidth: 160 },
+      {
+        field: "investment_type",
+        headerName: t("investments.colType"),
+        width: 120,
+        valueFormatter: (p) =>
+          p.value ? t(INVESTMENT_TYPE_I18N[String(p.value)] ?? String(p.value)) : "",
+      },
+      {
+        field: "payment_type",
+        headerName: t("investments.colPaymentType"),
+        width: 130,
+        valueFormatter: (p) =>
+          p.value ? t(PAYMENT_I18N[String(p.value)] ?? String(p.value)) : "",
+      },
+      { field: "cost_amount", headerName: t("investments.colCost"), width: 110, valueFormatter: (p) => euro(p.value as number) },
       {
         field: "bottom_price",
-        headerName: "Bottom Price (€)",
+        headerName: t("investments.colBottomPrice"),
         width: 130,
         valueFormatter: (p) => euro(p.value as number | null),
       },
       {
         field: "revenue_amount",
-        headerName: "Erlös (€)",
+        headerName: t("investments.colRevenue"),
         width: 110,
         valueFormatter: (p) => euro(p.value as number | null),
       },
       {
         field: "margin_revenue_minus_cost",
-        headerName: "Erlös − Kosten",
+        headerName: t("investments.colRevenueMinusCost"),
         width: 120,
         valueFormatter: (p) => euro(p.value as number | null),
       },
       {
         field: "cost_per_piece",
-        headerName: "Kosten/Stück",
+        headerName: t("investments.colCostPc"),
         width: 110,
         valueFormatter: (p) =>
-          p.data?.payment_type === "Amortisation" ? euro(p.value as number | null) : "–",
+          p.data?.payment_type === "Amortisation" ? euro(p.value as number | null) : t("common.dash"),
       },
-      { field: "description", headerName: "Bemerkung", flex: 1, minWidth: 140 },
+      { field: "description", headerName: t("investments.colNote"), flex: 1, minWidth: 140 },
       {
-        headerName: "Hinweis",
+        headerName: t("investments.colHint"),
         width: 220,
         cellRenderer: (p: ICellRendererParams<Investition>) =>
           p.data?.payment_type === "Einmalzahlung" ? (
-            <span className="text-amber-800">{EINMALZAHLUNG_HINWEIS}</span>
+            <span className="text-amber-800">{t("investments.hintOneTime")}</span>
           ) : (
             ""
           ),
       },
     ],
-    [],
+    [t],
   );
 
   const filterReady =
@@ -523,15 +566,12 @@ export function InvestitionenPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Investitionen</h2>
-        <p className="mt-1 text-sm text-gray-600">
-          Projektbezogene Investitionsplanung mit eindeutiger Zuordnung über Kunde, Programm,
-          Projekt und Materialnummer.
-        </p>
+        <h2 className="text-2xl font-bold text-gray-900">{t("nav.investments")}</h2>
+        <p className="mt-1 text-sm text-gray-600">{t("investments.intro")}</p>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="mb-3 text-sm font-semibold text-gray-900">Projektfilter</h3>
+        <h3 className="mb-3 text-sm font-semibold text-gray-900">{t("investments.projectFilter")}</h3>
         <HierarchySelector
           value={filterHierarchy}
           onChange={(next) => setFilterHierarchy(next)}
@@ -543,14 +583,14 @@ export function InvestitionenPage() {
             onClick={() => loadProject()}
             className="rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:opacity-50"
           >
-            Projekt laden
+            {t("investments.loadProject")}
           </button>
           <button
             type="button"
             onClick={resetFilters}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
           >
-            Filter zurücksetzen
+            {t("investments.resetFilters")}
           </button>
           {canWrite && loaded && (
             <button
@@ -558,7 +598,7 @@ export function InvestitionenPage() {
               onClick={openCreate}
               className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600"
             >
-              Neu
+              {t("investments.new")}
             </button>
           )}
         </div>
@@ -577,14 +617,13 @@ export function InvestitionenPage() {
 
       {!loaded && (
         <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center text-sm text-gray-600">
-          Bitte Kunde, Programm und Projekt wählen und „Projekt laden“ klicken.
+          {t("investments.emptyState")}
         </div>
       )}
 
       {loaded && rows.length === 0 && (
         <div className="rounded-lg border border-gray-200 bg-white px-4 py-8 text-center text-sm text-gray-600">
-          Für {filterLabels.customer} / {filterLabels.project} sind noch keine Investitionen
-          erfasst.
+          {t("investments.emptyForProject", { customer: filterLabels.customer, project: filterLabels.project })}
         </div>
       )}
 
@@ -606,11 +645,11 @@ export function InvestitionenPage() {
       {showForm && (
         <section className="rounded-lg border border-gray-200 bg-white p-4">
           <h3 className="mb-4 text-lg font-semibold">
-            {formMode === "create" ? "Neue Investition" : "Investition bearbeiten"}
+            {formMode === "create" ? t("investments.createTitle") : t("investments.editTitle")}
           </h3>
 
           <div className="mb-4 rounded border border-slate-200 bg-slate-50 p-3">
-            <p className="mb-2 text-sm font-medium text-slate-800">Zuordnung (Pflicht)</p>
+            <p className="mb-2 text-sm font-medium text-slate-800">{t("investments.assignmentRequired")}</p>
             <HierarchySelector
               value={formHierarchy}
               onChange={(next) => {
@@ -632,7 +671,7 @@ export function InvestitionenPage() {
               }}
             />
             <label className="mt-3 block text-sm">
-              <span className="text-gray-600">Zuordnungstyp *</span>
+              <span className="text-gray-600">{t("investments.assignmentType")}</span>
               <select
                 className="mt-1 block w-full max-w-md rounded border px-2 py-1.5 disabled:bg-gray-100"
                 disabled={formHierarchy.project_id == null}
@@ -650,10 +689,10 @@ export function InvestitionenPage() {
                   );
                 }}
               >
-                <option value="">Bitte wählen …</option>
-                {ASSIGNMENT_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {ASSIGNMENT_TYPE_LABELS[t]}
+                <option value="">{t("investments.pleaseSelect")}</option>
+                {ASSIGNMENT_TYPES.map((atype) => (
+                  <option key={atype} value={atype}>
+                    {t(ASSIGNMENT_I18N[atype])}
                   </option>
                 ))}
               </select>
@@ -661,8 +700,11 @@ export function InvestitionenPage() {
 
             {assignmentType === "gesamtprojekt" && formHierarchy.project_id != null && (
               <p className="mt-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                Gesamtprojekt: {formLabels.customer || "–"} / {formLabels.program || "–"} /{" "}
-                {formLabels.project || "–"}
+                {t("investments.overallProjectLine", {
+                  customer: formLabels.customer || t("common.dash"),
+                  program: formLabels.program || t("common.dash"),
+                  project: formLabels.project || t("common.dash"),
+                })}
               </p>
             )}
 
@@ -670,7 +712,7 @@ export function InvestitionenPage() {
               assignmentType !== "gesamtprojekt" &&
               formHierarchy.project_id != null && (
                 <label className="mt-3 block text-sm">
-                  <span className="text-gray-600">Zielobjekt *</span>
+                  <span className="text-gray-600">{t("investments.targetObject")}</span>
                   <select
                     className="mt-1 block w-full rounded border px-2 py-1.5"
                     disabled={targetsLoading}
@@ -682,7 +724,7 @@ export function InvestitionenPage() {
                     }}
                   >
                     <option value="">
-                      {targetsLoading ? "Lade …" : "Bitte wählen …"}
+                      {targetsLoading ? t("investments.loading") : t("investments.pleaseSelect")}
                     </option>
                     {targets.map((t) => (
                       <option key={t.object_id} value={t.object_id}>
@@ -694,7 +736,7 @@ export function InvestitionenPage() {
                   </select>
                   {!targetsLoading && targets.length === 0 && (
                     <p className="mt-1 text-xs text-amber-700">
-                      Keine passenden Objekte für diese Auswahl vorhanden.
+                      {t("investments.noTargets")}
                     </p>
                   )}
                 </label>
@@ -703,7 +745,7 @@ export function InvestitionenPage() {
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <label className="block text-sm md:col-span-2">
-              <span className="text-gray-600">Bezeichnung *</span>
+              <span className="text-gray-600">{t("investments.designationRequired")}</span>
               <input
                 className="mt-1 block w-full rounded border px-2 py-1.5"
                 value={form.name}
@@ -711,21 +753,21 @@ export function InvestitionenPage() {
               />
             </label>
             <label className="block text-sm">
-              <span className="text-gray-600">Investitionsart</span>
+              <span className="text-gray-600">{t("investments.investmentType")}</span>
               <select
                 className="mt-1 block w-full rounded border px-2 py-1.5"
                 value={form.investment_type}
                 onChange={(e) => setForm({ ...form, investment_type: e.target.value })}
               >
-                {INVESTMENT_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
+                {INVESTMENT_TYPES.map((itype) => (
+                  <option key={itype} value={itype}>
+                    {t(INVESTMENT_TYPE_I18N[itype] ?? itype)}
                   </option>
                 ))}
               </select>
             </label>
             <fieldset className="md:col-span-3 rounded border p-3">
-              <legend className="px-1 text-sm font-medium">Zahlungsart *</legend>
+              <legend className="px-1 text-sm font-medium">{t("investments.paymentType")}</legend>
               <div className="flex flex-wrap gap-4">
                 {PAYMENT_TYPES.map((pt) => (
                   <label key={pt} className="inline-flex items-center gap-2 text-sm">
@@ -744,22 +786,22 @@ export function InvestitionenPage() {
                         })
                       }
                     />
-                    {pt}
+                    {t(PAYMENT_I18N[pt] ?? pt)}
                   </label>
                 ))}
               </div>
               {form.payment_type === "CAPEX" && (
-                <p className="mt-2 text-xs text-gray-600">{CAPEX_HINWEIS}</p>
+                <p className="mt-2 text-xs text-gray-600">{t("investments.hintCapex")}</p>
               )}
               {form.payment_type === "Entwicklung" && (
-                <p className="mt-2 text-xs text-gray-600">{ENTWICKLUNG_HINWEIS}</p>
+                <p className="mt-2 text-xs text-gray-600">{t("investments.hintDevelopment")}</p>
               )}
               {form.payment_type === "Einmalzahlung" && (
-                <p className="mt-2 text-xs text-gray-600">{EINMALZAHLUNG_HINWEIS}</p>
+                <p className="mt-2 text-xs text-gray-600">{t("investments.hintOneTime")}</p>
               )}
             </fieldset>
             <DecimalInputField
-              label="Kosten (€) *"
+              label={t("investments.costRequired")}
               rawValue={costRaw}
               onRawChange={setCostRaw}
               className="mt-1 block w-full rounded border px-2 py-1.5"
@@ -767,13 +809,13 @@ export function InvestitionenPage() {
             {!isCapexPayment(form.payment_type) && (
               <>
                 <DecimalInputField
-                  label="Bottom Price (€)"
+                  label={t("investments.bottomPrice")}
                   rawValue={bottomPriceRaw}
                   onRawChange={setBottomPriceRaw}
                   className="mt-1 block w-full rounded border px-2 py-1.5"
                 />
                 <DecimalInputField
-                  label="Erlös (€)"
+                  label={t("investments.revenue")}
                   rawValue={revenueRaw}
                   onRawChange={setRevenueRaw}
                   className="mt-1 block w-full rounded border px-2 py-1.5"
@@ -791,7 +833,7 @@ export function InvestitionenPage() {
             )}
             {form.payment_type === "Amortisation" && (
               <label className="block text-sm">
-                <span className="text-gray-600">Amortisationsvolumen *</span>
+                <span className="text-gray-600">{t("investments.amortVolumeRequired")}</span>
                 <input
                   type="number"
                   min={1}
@@ -808,7 +850,7 @@ export function InvestitionenPage() {
               </label>
             )}
             <label className="block text-sm md:col-span-3">
-              <span className="text-gray-600">Bemerkung</span>
+              <span className="text-gray-600">{t("investments.note")}</span>
               <textarea
                 rows={2}
                 className="mt-1 block w-full rounded border px-2 py-1.5"
@@ -824,14 +866,14 @@ export function InvestitionenPage() {
               onClick={handleSave}
               className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
             >
-              Speichern
+              {t("common.save")}
             </button>
             <button
               type="button"
               onClick={() => setShowForm(false)}
               className="rounded-md border border-gray-300 px-4 py-2 text-sm"
             >
-              Abbrechen
+              {t("common.cancel")}
             </button>
             {formMode === "edit" && editingId != null && canWrite && (
               <button
@@ -843,7 +885,7 @@ export function InvestitionenPage() {
                 }}
                 className="rounded-md border border-red-300 px-4 py-2 text-sm text-red-700"
               >
-                Archivieren
+                {t("investments.archive")}
               </button>
             )}
           </div>

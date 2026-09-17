@@ -1,4 +1,5 @@
 import { Button } from "./ui/Button";
+import { useT } from "../i18n";
 
 interface ExportButtonsProps {
   onPdf: () => void;
@@ -15,9 +16,14 @@ export function ExportButtons({
   disabled = false,
   compact = false,
 }: ExportButtonsProps) {
+  const t = useT();
   const isDisabled = disabled || busy;
-  const pdfLabel = compact ? "PDF" : busy ? "Export …" : "PDF exportieren";
-  const xlsxLabel = compact ? "Excel" : busy ? "Export …" : "Excel exportieren";
+  const pdfLabel = compact ? t("export.pdf") : busy ? t("export.exporting") : t("export.pdfExport");
+  const xlsxLabel = compact
+    ? t("export.excel")
+    : busy
+      ? t("export.exporting")
+      : t("export.excelExport");
 
   return (
     <>

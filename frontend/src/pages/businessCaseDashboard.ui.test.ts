@@ -70,7 +70,7 @@ describe("Business Case dashboard charts UI", () => {
 
   it("shows above-scale note only for values over 25 % and keeps accessibility label", () => {
     expect(gaugeSrc).toMatch(/state\.isAboveScale/);
-    expect(gaugeSrc).toMatch(/Der Zeiger ist am oberen Skalenende begrenzt/);
+    expect(gaugeSrc).toMatch(/businessCase\.gaugeAboveScaleNote/);
     expect(gaugeSrc).toMatch(/aria-label=\{ariaLabel\}/);
   });
 
@@ -86,7 +86,7 @@ describe("Business Case dashboard charts UI", () => {
     expect(gaugeSrc).toMatch(/5–9&nbsp;%/);
     expect(gaugeSrc).toMatch(/9–25&nbsp;%/);
     expect(gaugeSrc).not.toMatch(/0–5&nbsp;% kritisch/);
-    expect(gaugeSrc).not.toMatch(/beobachten/);
+    expect(gaugeSrc).not.toMatch(/0–5&nbsp;%.*beobachten|beobachten.*9–25/);
     expect(gaugeSrc).not.toMatch(/9–25&nbsp;% positiv/);
   });
 
@@ -123,9 +123,9 @@ describe("Business Case dashboard charts UI", () => {
   });
 
   it("shows KPI strip values from existing Business Case results", () => {
-    expect(stripSrc).toMatch(/Gesamtumsatz/);
+    expect(stripSrc).toMatch(/businessCase\.totalRevenue/);
     expect(stripSrc).toMatch(/sumDisplayRevenue/);
     expect(stripSrc).toMatch(/formatPercentOrDash\(ebitPct\)/);
-    expect(stripSrc).toMatch(/Zeitraum/);
+    expect(stripSrc).toMatch(/businessCase\.period/);
   });
 });

@@ -8,6 +8,7 @@ import {
   listPrograms,
   listProjects,
 } from "../../api/hierarchy";
+import { useT } from "../../i18n";
 import type { Customer, Program, Project } from "../../types/hierarchy";
 import {
   applyCustomerProjectChange,
@@ -34,6 +35,7 @@ export function CustomerProjectSelector({
   legacyText,
   compact = false,
 }: Props) {
+  const t = useT();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -65,7 +67,7 @@ export function CustomerProjectSelector({
       } catch (err) {
         if (!cancelled) {
           setCustomers([]);
-          setCustomersError(err instanceof Error ? err.message : "Kunden konnten nicht geladen werden.");
+          setCustomersError(err instanceof Error ? err.message : t("project.loadCustomersFailed"));
         }
       } finally {
         if (!cancelled) setCustomersLoading(false);
@@ -75,7 +77,7 @@ export function CustomerProjectSelector({
     return () => {
       cancelled = true;
     };
-  }, [value.customer_id]);
+  }, [value.customer_id, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,7 +107,7 @@ export function CustomerProjectSelector({
       } catch (err) {
         if (!cancelled) {
           setPrograms([]);
-          setProgramsError(err instanceof Error ? err.message : "Programme konnten nicht geladen werden.");
+          setProgramsError(err instanceof Error ? err.message : t("project.loadProgramsFailed"));
         }
       } finally {
         if (!cancelled) setProgramsLoading(false);
@@ -115,7 +117,7 @@ export function CustomerProjectSelector({
     return () => {
       cancelled = true;
     };
-  }, [value.customer_id, value.program_id]);
+  }, [value.customer_id, value.program_id, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,7 +147,7 @@ export function CustomerProjectSelector({
       } catch (err) {
         if (!cancelled) {
           setProjects([]);
-          setProjectsError(err instanceof Error ? err.message : "Projekte konnten nicht geladen werden.");
+          setProjectsError(err instanceof Error ? err.message : t("project.loadProjectsFailed"));
         }
       } finally {
         if (!cancelled) setProjectsLoading(false);
@@ -155,7 +157,7 @@ export function CustomerProjectSelector({
     return () => {
       cancelled = true;
     };
-  }, [value.program_id, value.project_id]);
+  }, [value.program_id, value.project_id, t]);
 
   const emit = (partial: Partial<CustomerProjectSelection>) => {
     onChange(
@@ -177,21 +179,22 @@ export function CustomerProjectSelector({
               : "md:col-span-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
           }
         >
-          <p className="font-medium">Historische Freitext-Zuordnung</p>
-          <p>Kunde: {legacyText.kunde || "–"}</p>
-          <p>Projekt: {legacyText.projekt || "–"}</p>
+          <p className="font-medium">{t("project.historicalFreeText")}</p>
+          <p>
+            {t("project.customer")}: {legacyText.kunde || t("common.dash")}
+          </p>
+          <p>
+            {t("project.project")}: {legacyText.projekt || t("common.dash")}
+          </p>
           {!compact ? (
-            <p className="mt-1 text-xs">
-              Inhaltsänderungen können ohne neue Auswahl gespeichert werden. Optional Kunde, Programm und
-              Projekt aus den Stammdaten neu zuordnen.
-            </p>
+            <p className="mt-1 text-xs">{t("project.historicalAssignmentHint")}</p>
           ) : null}
         </div>
       )}
 
       <label className="block text-sm">
         <span className={compact ? "font-medium text-sidebar-muted" : "font-medium text-gray-700"}>
-          Kunde
+          {t("project.customer")}
         </span>
         <select
           disabled={disabled || customersLoading}
@@ -206,7 +209,7 @@ export function CustomerProjectSelector({
             emit({ customer_id: cid, program_id: null, project_id: null });
           }}
         >
-          <option value="">– auswählen –</option>
+          <option value="">{t("project.selectOption")}</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {formatStammdatenOptionLabel(`${c.customer_number} – ${c.name}`, c.active)}
@@ -222,7 +225,7 @@ export function CustomerProjectSelector({
 
       <label className="block text-sm">
         <span className={compact ? "font-medium text-sidebar-muted" : "font-medium text-gray-700"}>
-          Programm
+          {t("project.program")}
         </span>
         <select
           disabled={disabled || value.customer_id == null || programsLoading}
@@ -237,7 +240,7 @@ export function CustomerProjectSelector({
             emit({ program_id: pid, project_id: null });
           }}
         >
-          <option value="">– auswählen –</option>
+          <option value="">{t("project.selectOption")}</option>
           {programs.map((p) => (
             <option key={p.id} value={p.id}>
               {formatStammdatenOptionLabel(`${p.program_number} – ${p.name}`, p.active)}
@@ -253,7 +256,7 @@ export function CustomerProjectSelector({
 
       <label className={`block text-sm ${compact ? "" : "md:col-span-2"}`}>
         <span className={compact ? "font-medium text-sidebar-muted" : "font-medium text-gray-700"}>
-          Projekt
+          {t("project.project")}
         </span>
         <select
           disabled={disabled || value.program_id == null || projectsLoading}
@@ -268,7 +271,7 @@ export function CustomerProjectSelector({
             emit({ project_id: prid });
           }}
         >
-          <option value="">– auswählen –</option>
+          <option value="">{t("project.selectOption")}</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {formatStammdatenOptionLabel(`${p.project_number} – ${p.name}`, p.active)}

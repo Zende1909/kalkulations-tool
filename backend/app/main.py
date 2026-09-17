@@ -91,7 +91,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Kalkulations-Tool API",
+    title="ZC PartCalc API",
     description="API für Kunststoffmodul-Kalkulation in der Automotive-Zulieferindustrie",
     version="0.1.0",
     lifespan=lifespan,

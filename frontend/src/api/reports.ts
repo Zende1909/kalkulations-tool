@@ -1,17 +1,36 @@
 import { getApiBaseUrl, ApiError, getToken } from "./client";
+import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, normalizeLocale, type Locale } from "../i18n";
+
+export function getCurrentLocale(): Locale {
+  try {
+    return normalizeLocale(localStorage.getItem(LOCALE_STORAGE_KEY));
+  } catch {
+    return DEFAULT_LOCALE;
+  }
+}
+
+/** Appends lang=de|en to a report path for localized exports. */
+export function withLang(path: string, locale: Locale = getCurrentLocale()): string {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}lang=${locale}`;
+}
 
 export async function downloadReport(path: string, filename: string): Promise<void> {
   const token = getToken();
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const localizedPath = withLang(path);
+  const normalizedPath = localizedPath.startsWith("/") ? localizedPath : `/${localizedPath}`;
   const url = `${getApiBaseUrl()}${normalizedPath}`;
 
   const response = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      "Accept-Language": getCurrentLocale(),
+    },
     cache: "no-store",
   });
 
   if (!response.ok) {
-    let message = `Export fehlgeschlagen (HTTP ${response.status})`;
+    let message = `Export failed (HTTP ${response.status})`;
     try {
       const body = await response.json();
       if (body.detail) {

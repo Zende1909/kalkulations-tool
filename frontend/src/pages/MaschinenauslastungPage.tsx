@@ -13,6 +13,7 @@ import type {
 import { UTILIZATION_YEARS } from "../types/maschineAuslastung";
 import type { Werk } from "../types/stammdaten";
 import { formatPercentOrDash } from "./businessCaseFormatting";
+import { useT } from "../i18n";
 
 type YearSortKey =
   | "year"
@@ -62,20 +63,22 @@ function formatOee(value: number | null | undefined): string {
   return `${(value * 100).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
 }
 
-function restLabel(row: MaschineAuslastungYearRow): string {
+type TFn = (key: string, params?: Record<string, string | number | null | undefined>) => string;
+
+function restLabel(row: MaschineAuslastungYearRow, t: TFn): string {
   if (row.is_overloaded && row.overload_hours != null) {
-    return `Überlastung ${formatHours(row.overload_hours)} h`;
+    return t("machineUtilization.overloadHours", { hours: formatHours(row.overload_hours) });
   }
   if (row.remaining_hours != null) {
     return `${formatHours(row.remaining_hours)} h`;
   }
-  return "–";
+  return t("common.dash");
 }
 
-function utilizationCell(row: MaschineAuslastungYearRow | undefined): string {
+function utilizationCell(row: MaschineAuslastungYearRow | undefined, t: TFn): string {
   if (row == null) return formatPercentOrDash(0);
   if (row.utilization_pct != null) return formatPercentOrDash(row.utilization_pct);
-  if (row.has_demand) return "nicht berechenbar";
+  if (row.has_demand) return t("machineUtilization.notComputable");
   return formatPercentOrDash(0);
 }
 
@@ -115,6 +118,7 @@ function summaryForYear(data: MaschineAuslastungResponse, year: number) {
 }
 
 export function MaschinenauslastungPage() {
+  const t = useT();
   const [werke, setWerke] = useState<Werk[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
@@ -191,7 +195,7 @@ export function MaschinenauslastungPage() {
 
   const load = useCallback(async () => {
     if (plantId == null) {
-      setError("Bitte ein Werk auswählen.");
+      setError(t("machineUtilization.selectPlantError"));
       return;
     }
     setBusy(true);
@@ -214,7 +218,7 @@ export function MaschinenauslastungPage() {
       );
       setData(resp);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Laden fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("machineUtilization.loadFailed"));
       setData(null);
     } finally {
       setBusy(false);
@@ -232,7 +236,7 @@ export function MaschinenauslastungPage() {
     if (!data) return null;
     if (showAllYears) {
       return {
-        labelSuffix: "Alle Jahre",
+        labelSuffix: t("machineUtilization.allYears"),
         machineCount: data.summary.machine_count,
         average: data.summary.average_utilization_pct,
         maxPct: data.summary.max_utilization_pct,
@@ -249,7 +253,7 @@ export function MaschinenauslastungPage() {
       maxName: yearStats.maxName,
       overloaded: yearStats.overloaded,
     };
-  }, [data, selectedYear, showAllYears]);
+  }, [data, selectedYear, showAllYears, t]);
 
   const matrixRows = useMemo(() => {
     if (!data || !showAllYears) return [];
@@ -363,18 +367,15 @@ export function MaschinenauslastungPage() {
   return (
     <div className="space-y-6 p-4">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Maschinenauslastung</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Jahresauslastung 2026–2040: Laufzeit + Rüstzeit vs. verfügbare Stunden (Brutto × OEE).
-          Veredelung wird nicht berücksichtigt.
-        </p>
+        <h1 className="text-2xl font-semibold text-gray-900">{t("nav.machineUtilization")}</h1>
+        <p className="mt-1 text-sm text-gray-600">{t("machineUtilization.intro")}</p>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Filter</h2>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">{t("common.filter")}</h2>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
           <label className="block text-sm">
-            <span className="font-medium text-gray-700">Werk *</span>
+            <span className="font-medium text-gray-700">{t("machineUtilization.plantRequired")}</span>
             <select
               className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5"
               value={plantId ?? ""}
@@ -386,7 +387,7 @@ export function MaschinenauslastungPage() {
                 setSelectedProjectsById({});
               }}
             >
-              <option value="">– Werk wählen –</option>
+              <option value="">{t("machineUtilization.selectPlant")}</option>
               {werke.map((w) => (
                 <option key={w.id} value={w.id}>
                   {w.name} ({w.code})
@@ -395,7 +396,7 @@ export function MaschinenauslastungPage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="font-medium text-gray-700">Kunde</span>
+            <span className="font-medium text-gray-700">{t("project.customer")}</span>
             <select
               className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5"
               value={customerId ?? ""}
@@ -405,7 +406,7 @@ export function MaschinenauslastungPage() {
                 setProgramId(null);
               }}
             >
-              <option value="">– optional –</option>
+              <option value="">{t("machineUtilization.optional")}</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -414,7 +415,7 @@ export function MaschinenauslastungPage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="font-medium text-gray-700">Programm</span>
+            <span className="font-medium text-gray-700">{t("project.program")}</span>
             <select
               className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5"
               value={programId ?? ""}
@@ -423,7 +424,7 @@ export function MaschinenauslastungPage() {
                 setProgramId(e.target.value ? Number(e.target.value) : null);
               }}
             >
-              <option value="">– optional –</option>
+              <option value="">{t("machineUtilization.optional")}</option>
               {programs.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -432,14 +433,14 @@ export function MaschinenauslastungPage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="font-medium text-gray-700">Projektstatus</span>
+            <span className="font-medium text-gray-700">{t("machineUtilization.projectStatus")}</span>
             <select
               className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5"
               value={projectStatusFilter}
               disabled={plantId == null}
               onChange={(e) => setProjectStatusFilter(e.target.value)}
             >
-              <option value="">– alle –</option>
+              <option value="">{t("machineUtilization.allStatuses")}</option>
               {PROJECT_STATUSES.map((status) => (
                 <option key={status} value={status}>
                   {status}
@@ -448,11 +449,11 @@ export function MaschinenauslastungPage() {
             </select>
           </label>
           <div className="text-sm lg:col-span-2">
-            <span className="font-medium text-gray-700">Projekte hinzufügen</span>
+            <span className="font-medium text-gray-700">{t("machineUtilization.addProjects")}</span>
             <div className="mt-1 max-h-32 overflow-y-auto rounded border border-gray-300 p-2">
-              {programId == null && <p className="text-gray-500">Zuerst Programm wählen</p>}
+              {programId == null && <p className="text-gray-500">{t("machineUtilization.selectProgramFirst")}</p>}
               {programId != null && projects.length === 0 && (
-                <p className="text-gray-500">Keine Projekte für den Filter</p>
+                <p className="text-gray-500">{t("machineUtilization.noProjectsForFilter")}</p>
               )}
               {programId != null &&
                 projects.map((p) => (
@@ -471,7 +472,7 @@ export function MaschinenauslastungPage() {
             </div>
           </div>
           <label className="block text-sm">
-            <span className="font-medium text-gray-700">Jahr</span>
+            <span className="font-medium text-gray-700">{t("machineUtilization.year")}</span>
             <select
               className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5"
               value={selectedYear === "all" ? "all" : String(selectedYear)}
@@ -480,7 +481,7 @@ export function MaschinenauslastungPage() {
                 setSelectedYear(value === "all" ? "all" : Number(value));
               }}
             >
-              <option value="all">Alle Jahre</option>
+              <option value="all">{t("machineUtilization.allYears")}</option>
               {UTILIZATION_YEARS.map((y) => (
                 <option key={y} value={y}>
                   {y}
@@ -496,11 +497,11 @@ export function MaschinenauslastungPage() {
             disabled={plantId == null || busy}
             onClick={() => void load()}
           >
-            {busy ? "Lädt…" : "Aktualisieren"}
+            {busy ? t("machineUtilization.loading") : t("common.reload")}
           </button>
           <input
             type="search"
-            placeholder="Maschine filtern…"
+            placeholder={t("machineUtilization.filterMachine")}
             className="rounded border border-gray-300 px-2 py-1.5 text-sm"
             value={machineFilter}
             onChange={(e) => setMachineFilter(e.target.value)}
@@ -514,22 +515,22 @@ export function MaschinenauslastungPage() {
             }`}
             onClick={() => setShowEmptyMachines((value) => !value)}
           >
-            Leere anzeigen
+            {t("machineUtilization.showEmpty")}
           </button>
           {data?.uses_all_matching_projects && (
             <span className="text-sm text-blue-700">
-              Alle passenden Projekte einbezogen ({data.resolved_project_ids.length})
+              {t("machineUtilization.allMatchingProjects", { count: data.resolved_project_ids.length })}
             </span>
           )}
           {selectedProjectIds.length > 0 && (
             <span className="text-sm text-gray-600">
-              {selectedProjectIds.length} Projekt(e) manuell ausgewählt
+              {t("machineUtilization.manualProjectsSelected", { count: selectedProjectIds.length })}
             </span>
           )}
         </div>
         {selectedProjectIds.length > 0 && (
           <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-2 text-sm">
-            <div className="mb-1 font-medium text-gray-700">Ausgewählte Projekte (über alle Kunden)</div>
+            <div className="mb-1 font-medium text-gray-700">{t("machineUtilization.selectedProjects")}</div>
             <div className="flex flex-wrap gap-2">
               {selectedProjectIds.map((id) => {
                 const project = selectedProjectsById[id];
@@ -539,9 +540,9 @@ export function MaschinenauslastungPage() {
                     type="button"
                     className="rounded border border-gray-300 bg-white px-2 py-1 text-xs hover:bg-gray-100"
                     onClick={() => removeSelectedProject(id)}
-                    title="Aus Auswahl entfernen"
+                    title={t("machineUtilization.removeFromSelection")}
                   >
-                    {project?.name ?? `Projekt ${id}`} ×
+                    {project?.name ?? t("machineUtilization.projectFallback", { id })} ×
                   </button>
                 );
               })}
@@ -557,22 +558,22 @@ export function MaschinenauslastungPage() {
       )}
 
       {plantId == null && (
-        <p className="text-sm text-gray-500">Bitte Werk auswählen, um Maschinen anzuzeigen.</p>
+        <p className="text-sm text-gray-500">{t("machineUtilization.selectPlantHint")}</p>
       )}
 
       {data && plantId != null && kpiSummary && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard
-              label={`Maschinen gesamt (${kpiSummary.labelSuffix})`}
+              label={t("machineUtilization.kpiMachines", { suffix: kpiSummary.labelSuffix })}
               value={String(kpiSummary.machineCount)}
             />
             <KpiCard
-              label={`Ø Auslastung ${kpiSummary.labelSuffix}`}
+              label={t("machineUtilization.kpiAvgUtil", { suffix: kpiSummary.labelSuffix })}
               value={formatPercentOrDash(kpiSummary.average)}
             />
             <KpiCard
-              label={`Max. Auslastung ${kpiSummary.labelSuffix}`}
+              label={t("machineUtilization.kpiMaxUtil", { suffix: kpiSummary.labelSuffix })}
               value={formatPercentOrDash(kpiSummary.maxPct)}
               hint={kpiSummary.maxName ?? undefined}
               tone={
@@ -580,7 +581,7 @@ export function MaschinenauslastungPage() {
               }
             />
             <KpiCard
-              label={`Überlastungen ${kpiSummary.labelSuffix}`}
+              label={t("machineUtilization.kpiOverload", { suffix: kpiSummary.labelSuffix })}
               value={String(kpiSummary.overloaded)}
               tone={kpiSummary.overloaded > 0 ? "negative" : "positive"}
             />
@@ -589,7 +590,7 @@ export function MaschinenauslastungPage() {
           <p className="text-xs text-gray-500">
             {data.planning_period.label}: {data.planning_period.basis}
             {data.planning_period.oee_in_available_hours &&
-              " · OEE ist in den verfügbaren Stunden enthalten (nicht doppelt angewendet)."}
+              t("machineUtilization.oeeIncluded")}
           </p>
 
           {showAllYears ? (
@@ -597,8 +598,8 @@ export function MaschinenauslastungPage() {
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-left text-gray-600">
                   <tr>
-                    <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2">Maschine</th>
-                    <th className="px-3 py-2 text-right whitespace-nowrap">Verfügbar h</th>
+                    <th className="sticky left-0 z-10 bg-gray-50 px-3 py-2">{t("machineUtilization.colMachine")}</th>
+                    <th className="px-3 py-2 text-right whitespace-nowrap">{t("machineUtilization.colAvailableH")}</th>
                     {UTILIZATION_YEARS.map((year) => (
                       <th key={year} className="px-3 py-2 text-right whitespace-nowrap">
                         {year}
@@ -609,7 +610,7 @@ export function MaschinenauslastungPage() {
                 <tbody>
                   {aggregateMatrixByYear.length > 0 && (
                     <tr className="border-b-2 border-slate-200 bg-slate-50 font-semibold">
-                      <td className="sticky left-0 z-10 bg-slate-50 px-3 py-2">Gesamtauslastung</td>
+                      <td className="sticky left-0 z-10 bg-slate-50 px-3 py-2">{t("machineUtilization.totalUtilization")}</td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         {formatHours(matrixRows.reduce((sum, machine) => sum + (machine.available_hours ?? 0), 0))}
                       </td>
@@ -628,7 +629,7 @@ export function MaschinenauslastungPage() {
                       <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium">
                         {machine.bezeichnung}
                         <div className="text-xs text-gray-500">
-                          ID {machine.maschine_id} · {machine.maschinen_nr}
+                          {t("machineUtilization.machineIdLine", { id: machine.maschine_id, nr: machine.maschinen_nr })}
                         </div>
                       </td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
@@ -642,7 +643,7 @@ export function MaschinenauslastungPage() {
                             key={year}
                             className={`px-3 py-2 text-right whitespace-nowrap ${overloaded ? "bg-red-50 font-semibold text-red-700" : ""}`}
                           >
-                            {utilizationCell(yearRow)}
+                            {utilizationCell(yearRow, t)}
                           </td>
                         );
                       })}
@@ -657,43 +658,43 @@ export function MaschinenauslastungPage() {
                 <thead className="bg-gray-50 text-left text-gray-600">
                   <tr>
                     <th className="cursor-pointer px-3 py-2" onClick={() => toggleSort("year")}>
-                      Jahr{sortIndicator("year")}
+                      {t("machineUtilization.colYear")}{sortIndicator("year")}
                     </th>
                     <th className="cursor-pointer px-3 py-2" onClick={() => toggleSort("machine_name")}>
-                      Maschine{sortIndicator("machine_name")}
+                      {t("machineUtilization.colMachine")}{sortIndicator("machine_name")}
                     </th>
-                    <th className="px-3 py-2 text-right">Brutto h</th>
-                    <th className="px-3 py-2 text-right">OEE</th>
-                    <th className="px-3 py-2 text-right">Verfügbar h</th>
+                    <th className="px-3 py-2 text-right">{t("machineUtilization.colGrossH")}</th>
+                    <th className="px-3 py-2 text-right">{t("machineUtilization.colOee")}</th>
+                    <th className="px-3 py-2 text-right">{t("machineUtilization.colAvailableH")}</th>
                     <th className="cursor-pointer px-3 py-2 text-right" onClick={() => toggleSort("run_hours")}>
-                      Laufzeit{sortIndicator("run_hours")}
+                      {t("machineUtilization.colRun")}{sortIndicator("run_hours")}
                     </th>
                     <th className="cursor-pointer px-3 py-2 text-right" onClick={() => toggleSort("setup_hours")}>
-                      Rüstzeit{sortIndicator("setup_hours")}
+                      {t("machineUtilization.colSetup")}{sortIndicator("setup_hours")}
                     </th>
                     <th
                       className="cursor-pointer px-3 py-2 text-right"
                       onClick={() => toggleSort("required_hours")}
                     >
-                      Gesamtbedarf{sortIndicator("required_hours")}
+                      {t("machineUtilization.colDemand")}{sortIndicator("required_hours")}
                     </th>
                     <th
                       className="cursor-pointer px-3 py-2 text-right"
                       onClick={() => toggleSort("utilization_pct")}
                     >
-                      Auslastung %{sortIndicator("utilization_pct")}
+                      {t("machineUtilization.colUtilPct")}{sortIndicator("utilization_pct")}
                     </th>
-                    <th className="px-3 py-2 text-right">Rest / Überlast</th>
-                    <th className="px-3 py-2">Projekte</th>
+                    <th className="px-3 py-2 text-right">{t("machineUtilization.colRestOverload")}</th>
+                    <th className="px-3 py-2">{t("machineUtilization.colProjects")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {aggregateSingleYear && (
                     <tr className="border-b-2 border-slate-200 bg-slate-50 font-semibold">
                       <td className="px-3 py-2">{selectedYear}</td>
-                      <td className="px-3 py-2">Gesamtauslastung</td>
-                      <td className="px-3 py-2 text-right">–</td>
-                      <td className="px-3 py-2 text-right">–</td>
+                      <td className="px-3 py-2">{t("machineUtilization.totalUtilization")}</td>
+                      <td className="px-3 py-2 text-right">{t("common.dash")}</td>
+                      <td className="px-3 py-2 text-right">{t("common.dash")}</td>
                       <td className="px-3 py-2 text-right">{formatHours(aggregateSingleYear.totalAvailable)}</td>
                       <td className="px-3 py-2 text-right">{formatHours(aggregateSingleYear.totalRun)}</td>
                       <td className="px-3 py-2 text-right">{formatHours(aggregateSingleYear.totalSetup)}</td>
@@ -707,10 +708,14 @@ export function MaschinenauslastungPage() {
                         className={`px-3 py-2 text-right ${aggregateSingleYear.isOverloaded ? "text-red-700" : ""}`}
                       >
                         {aggregateSingleYear.isOverloaded
-                          ? `Überlastung ${formatHours(aggregateSingleYear.totalRequired - aggregateSingleYear.totalAvailable)} h`
+                          ? t("machineUtilization.overloadHours", {
+                              hours: formatHours(
+                                aggregateSingleYear.totalRequired - aggregateSingleYear.totalAvailable,
+                              ),
+                            })
                           : formatHours(aggregateSingleYear.totalAvailable - aggregateSingleYear.totalRequired)}
                       </td>
-                      <td className="px-3 py-2">–</td>
+                      <td className="px-3 py-2">{t("common.dash")}</td>
                     </tr>
                   )}
                   {filteredYearRows.map((row) => (
@@ -721,25 +726,29 @@ export function MaschinenauslastungPage() {
                       <td className="px-3 py-2">{row.year}</td>
                       <td className="px-3 py-2 font-medium">
                         {row.machine_name}
-                        <div className="text-xs text-gray-500">ID {row.machine_id} · {row.maschinen_nr}</div>
+                        <div className="text-xs text-gray-500">{t("machineUtilization.machineIdLine", { id: row.machine_id, nr: row.maschinen_nr })}</div>
                       </td>
                       <td className="px-3 py-2 text-right">{formatHours(row.gross_hours)}</td>
                       <td className="px-3 py-2 text-right">{formatOee(row.oee)}</td>
                       <td className="px-3 py-2 text-right">{formatHours(row.available_hours)}</td>
                       <td className="px-3 py-2 text-right">
-                        {row.has_demand ? formatHours(row.run_hours) : "kein Bedarf"}
+                        {row.has_demand ? formatHours(row.run_hours) : t("machineUtilization.noDemand")}
                       </td>
                       <td className="px-3 py-2 text-right">
-                        {row.setup_hours > 0 ? formatHours(row.setup_hours) : row.has_demand ? "0,00" : "–"}
+                        {row.setup_hours > 0
+                          ? formatHours(row.setup_hours)
+                          : row.has_demand
+                            ? "0,00"
+                            : t("common.dash")}
                       </td>
                       <td className="px-3 py-2 text-right">{formatHours(row.required_hours)}</td>
                       <td
                         className={`px-3 py-2 text-right font-semibold ${row.is_overloaded ? "text-red-700" : ""}`}
                       >
-                        {utilizationCell(row)}
+                        {utilizationCell(row, t)}
                       </td>
                       <td className={`px-3 py-2 text-right ${row.is_overloaded ? "text-red-700" : ""}`}>
-                        {row.has_demand ? restLabel(row) : "–"}
+                        {row.has_demand ? restLabel(row, t) : t("common.dash")}
                       </td>
                       <td className="px-3 py-2 text-xs">
                         {row.project_ids.length === 0 ? (
@@ -758,24 +767,29 @@ export function MaschinenauslastungPage() {
           {!showAllYears && (
           <details className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
             <summary className="cursor-pointer font-medium text-gray-800">
-              Maschinenübersicht (Jahresdetails je Maschine)
+              {t("machineUtilization.machineOverview")}
             </summary>
             <div className="mt-4 space-y-4">
               {data.machines.map((m) => (
                 <div key={m.maschine_id} className="border-t border-gray-100 pt-3">
                   <div className="font-medium">
-                    {m.bezeichnung} ({m.maschinen_nr}) · Brutto {formatHours(m.gross_hours)} h · OEE{" "}
-                    {formatOee(m.oee)} · Verfügbar {formatHours(m.available_hours)} h/Jahr
+                    {t("machineUtilization.machineDetailLine", {
+                      name: m.bezeichnung,
+                      nr: m.maschinen_nr,
+                      gross: formatHours(m.gross_hours),
+                      oee: formatOee(m.oee),
+                      available: formatHours(m.available_hours),
+                    })}
                   </div>
                   <div className="mt-2 overflow-x-auto">
                     <table className="min-w-full text-xs">
                       <thead>
                         <tr className="text-gray-500">
-                          <th className="py-1 pr-2 text-left">Jahr</th>
-                          <th className="py-1 pr-2 text-right">Laufzeit</th>
-                          <th className="py-1 pr-2 text-right">Rüstzeit</th>
-                          <th className="py-1 pr-2 text-right">Gesamt</th>
-                          <th className="py-1 text-right">Auslastung</th>
+                          <th className="py-1 pr-2 text-left">{t("machineUtilization.colYear")}</th>
+                          <th className="py-1 pr-2 text-right">{t("machineUtilization.colRun")}</th>
+                          <th className="py-1 pr-2 text-right">{t("machineUtilization.colSetup")}</th>
+                          <th className="py-1 pr-2 text-right">{t("machineUtilization.colTotal")}</th>
+                          <th className="py-1 text-right">{t("machineUtilization.colUtilization")}</th>
                         </tr>
                       </thead>
                       <tbody>

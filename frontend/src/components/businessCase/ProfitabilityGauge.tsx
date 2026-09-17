@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { useT } from "../../i18n";
 import { useEcharts, type EChartsCoreOption } from "../../hooks/useEcharts";
 import { formatPercentOrDash } from "../../pages/businessCaseFormatting";
 import {
@@ -7,6 +8,7 @@ import {
   GAUGE_COLOR_POSITIVE,
   GAUGE_COLOR_WATCH,
   getGaugeState,
+  type GaugeState,
 } from "../../utils/businessCaseGauge";
 import { buildProfitabilityGaugeOption } from "../../utils/businessCaseEchartsOptions";
 
@@ -19,14 +21,23 @@ function GaugeChartGeometry({ option }: { option: EChartsCoreOption }) {
   return <div {...containerProps} />;
 }
 
-function statusBadgeClass(zoneLabel: string, zone: string): string {
-  if (zoneLabel === "über Skala") return "border-slate-300 bg-slate-100 text-slate-800";
-  if (zone === "critical" || zoneLabel === "negativ") {
+function statusBadgeClass(state: GaugeState): string {
+  if (state.isAboveScale) return "border-slate-300 bg-slate-100 text-slate-800";
+  if (state.zone === "critical" || state.isBelowScale) {
     return "border-red-200 bg-red-50 text-red-800";
   }
-  if (zone === "watch") return "border-amber-200 bg-amber-50 text-amber-900";
-  if (zone === "positive") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  if (state.zone === "watch") return "border-amber-200 bg-amber-50 text-amber-900";
+  if (state.zone === "positive") return "border-emerald-200 bg-emerald-50 text-emerald-900";
   return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function translatedZoneLabel(state: GaugeState, t: (key: string) => string): string {
+  if (!state.isAvailable) return t("businessCase.gaugeUnavailable");
+  if (state.isBelowScale) return t("businessCase.gaugeNegative");
+  if (state.isAboveScale) return t("businessCase.gaugeAboveScale");
+  if (state.zone === "critical") return t("businessCase.gaugeCritical");
+  if (state.zone === "watch") return t("businessCase.gaugeWatch");
+  return t("businessCase.gaugePositive");
 }
 
 /**
@@ -49,6 +60,7 @@ export function EchartsProfitabilityGauge({
   formatValue?: (value: number | null | undefined) => string;
   "data-testid"?: string;
 }) {
+  const t = useT();
   const state = getGaugeState(valuePercent);
   const option = useMemo(
     () => buildProfitabilityGaugeOption(valuePercent),
@@ -56,9 +68,10 @@ export function EchartsProfitabilityGauge({
   );
 
   const displayValue = formatValue(state.actualValue);
+  const zoneLabel = translatedZoneLabel(state, t);
   const ariaLabel = state.isAvailable
-    ? `${label} ${displayValue}, Status ${state.zoneLabel}.`
-    : `${label} nicht verfügbar.`;
+    ? t("businessCase.gaugeStatusAria", { label, value: displayValue, status: zoneLabel })
+    : t("businessCase.gaugeUnavailableAria", { label });
 
   return (
     <div
@@ -74,10 +87,10 @@ export function EchartsProfitabilityGauge({
         </div>
         {state.isAvailable ? (
           <span
-            className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClass(state.zoneLabel, state.zone)}`}
+            className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClass(state)}`}
             data-testid="gauge-header-status"
           >
-            {state.zoneLabel}
+            {zoneLabel}
           </span>
         ) : null}
       </header>
@@ -91,10 +104,8 @@ export function EchartsProfitabilityGauge({
       {!state.isAvailable || option == null ? (
         <div className="mt-4 flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center">
           <div>
-            <p className="text-lg font-semibold text-slate-700">nicht verfügbar</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Kein berechenbarer Prozentwert im aktuellen Business Case.
-            </p>
+            <p className="text-lg font-semibold text-slate-700">{t("businessCase.gaugeUnavailable")}</p>
+            <p className="mt-1 text-xs text-slate-500">{t("businessCase.gaugeUnavailableDetail")}</p>
           </div>
         </div>
       ) : (
@@ -122,7 +133,7 @@ export function EchartsProfitabilityGauge({
               {label}
             </span>
             <span className="sr-only" data-testid="gauge-status">
-              {state.zoneLabel}
+              {zoneLabel}
             </span>
           </div>
 
@@ -131,7 +142,7 @@ export function EchartsProfitabilityGauge({
               className="gauge-note mt-2 text-center text-xs leading-snug text-slate-500"
               data-testid="gauge-above-scale-note"
             >
-              Der Zeiger ist am oberen Skalenende begrenzt.
+              {t("businessCase.gaugeAboveScaleNote")}
             </p>
           ) : null}
 

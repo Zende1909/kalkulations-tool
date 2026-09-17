@@ -92,9 +92,9 @@ describe("Werk absolute Dezimalpreise", () => {
   });
 
   it("WerkePage zeigt Einheiten an den Preisfeldern", () => {
-    expect(werkeSrc).toMatch(/Strompreis \(€\/kWh\)/);
-    expect(werkeSrc).toMatch(/Druckluftpreis \(€\/m³\)/);
-    expect(werkeSrc).toMatch(/Kühlwasserpreis \(€\/m³\)/);
-    expect(werkeSrc).toMatch(/Space-Satz \(€\/m²\/a\)/);
+    expect(werkeSrc).toMatch(/masterData\.electricityPrice/);
+    expect(werkeSrc).toMatch(/masterData\.compressedAirPrice/);
+    expect(werkeSrc).toMatch(/masterData\.coolingWaterPrice/);
+    expect(werkeSrc).toMatch(/masterData\.spaceCostRate/);
   });
 });

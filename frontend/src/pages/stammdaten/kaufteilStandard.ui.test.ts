@@ -25,8 +25,8 @@ describe("Standardkaufteile UI", () => {
   });
 
   it("OptionalHierarchySelector erklärt Standardkaufteile", () => {
-    expect(optionalHierarchySrc).toMatch(/Ohne Projektzuordnung ist dieses Kaufteil ein Standardkaufteil/);
-    expect(optionalHierarchySrc).toMatch(/Standardkaufteil \(alle Projekte\)/);
+    expect(optionalHierarchySrc).toMatch(/project\.standardPurchasedPartHint/);
+    expect(optionalHierarchySrc).toMatch(/project\.standardPurchasedPartAllProjects/);
   });
 
   it("Submit ohne Projekt setzt project_id auf null", () => {
@@ -60,8 +60,8 @@ describe("Standardkaufteile UI", () => {
 
   it("BaugruppenPage kennzeichnet Standard- und Fremdprojekt-Kaufteile", () => {
     expect(baugruppenSrc).toMatch(/kaufteilListLabel/);
-    expect(baugruppenSrc).toMatch(/\(Standard\)/);
-    expect(baugruppenSrc).toMatch(/\(anderes Projekt\)/);
+    expect(baugruppenSrc).toMatch(/assemblies\.standardTag/);
+    expect(baugruppenSrc).toMatch(/assemblies\.otherProjectTag/);
     expect(baugruppenSrc).toMatch(/loadedKaufteilIdsRef/);
   });
 

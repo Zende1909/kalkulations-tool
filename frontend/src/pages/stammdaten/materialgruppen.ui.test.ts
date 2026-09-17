@@ -12,7 +12,7 @@ const appSrc = readFileSync(resolve(__dirname, "../../App.tsx"), "utf-8");
 
 describe("Materialgruppen Stammdatenseite", () => {
   it("nutzt StammdatenGrid mit allen thermischen Kennwerten", () => {
-    expect(pageSrc).toMatch(/title="Materialgruppen"/);
+    expect(pageSrc).toMatch(/nav\.materialGroups/);
     expect(pageSrc).toMatch(/endpoint="\/materialgruppen"/);
     expect(pageSrc).toMatch(/schmelzdichte_kg_m3/);
     expect(pageSrc).toMatch(/waermekapazitaet_j_kg_k/);
@@ -24,7 +24,7 @@ describe("Materialgruppen Stammdatenseite", () => {
 
   it("ist in Navigation und Routing eingetragen", () => {
     expect(navSrc).toMatch(/\/stammdaten\/materialgruppen/);
-    expect(navSrc).toMatch(/Materialgruppen/);
+    expect(navSrc).toMatch(/nav\.materialGroups/);
     expect(appSrc).toMatch(/MaterialgruppenPage/);
     expect(appSrc).toMatch(/stammdaten\/materialgruppen/);
   });

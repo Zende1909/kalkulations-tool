@@ -23,6 +23,7 @@ import {
 } from "../../api/hierarchy";
 import { StammdatenFormModal, type FormField } from "../../components/stammdaten/StammdatenFormModal";
 import { useAuth } from "../../context/AuthContext";
+import { useT } from "../../i18n";
 import {
   COMPONENT_AREAS,
   PROGRAM_STATUSES,
@@ -36,51 +37,12 @@ import {
 
 type Tab = "customers" | "programs" | "projects";
 
-const customerFields: FormField[] = [
-  { name: "customer_number", label: "Kundennummer", type: "text", required: true },
-  { name: "name", label: "Name", type: "text", required: true },
-  { name: "notes", label: "Notizen", type: "text" },
-  { name: "active", label: "Aktiv", type: "checkbox" },
-];
-
-const programFields: FormField[] = [
-  { name: "program_number", label: "Programmnummer", type: "text", required: true },
-  { name: "name", label: "Name", type: "text", required: true },
-  { name: "vehicle_series", label: "Fahrzeugserie", type: "text" },
-  { name: "sop", label: "SOP", type: "date" },
-  { name: "eop", label: "EOP", type: "date" },
-  { name: "status", label: "Status", type: "select", required: true, options: [...PROGRAM_STATUSES] },
-  { name: "production_plant", label: "Produktionswerk", type: "text" },
-  { name: "notes", label: "Notizen", type: "text" },
-  { name: "active", label: "Aktiv", type: "checkbox" },
-];
-
-const volumeFields: FormField[] = [
-  { name: "calendar_year", label: "Kalenderjahr", type: "number", required: true, step: "1" },
-  { name: "vehicle_volume", label: "Fahrzeugstückzahl", type: "number", required: true, step: "1" },
-];
-
-const projectFields: FormField[] = [
-  { name: "project_number", label: "Projektnummer", type: "text", required: true },
-  { name: "name", label: "Projektname", type: "text", required: true },
-  {
-    name: "component_area",
-    label: "Bauteilbereich",
-    type: "select",
-    required: true,
-    options: [...COMPONENT_AREAS],
-  },
-  { name: "quantity_per_vehicle", label: "Anzahl pro Fahrzeug (z. B. 2 bei zwei Teilen pro Fahrzeug)", type: "number", required: true, step: "0.01" },
-  { name: "status", label: "Projektstatus", type: "select", required: true, options: [...PROJECT_STATUSES] },
-  { name: "notes", label: "Notizen", type: "text" },
-  { name: "active", label: "Aktiv", type: "checkbox" },
-];
-
-function errMsg(err: unknown): string {
-  return err instanceof Error ? err.message : "Unbekannter Fehler";
+function errMsg(err: unknown, fallback: string): string {
+  return err instanceof Error ? err.message : fallback;
 }
 
 export function KundenProgrammeProjektePage() {
+  const t = useT();
   const { canWrite } = useAuth();
   const [tab, setTab] = useState<Tab>("customers");
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -108,11 +70,93 @@ export function KundenProgrammeProjektePage() {
   const [projectPreviewVolumes, setProjectPreviewVolumes] = useState<ProgramVolume[]>([]);
   const [sopEopConfirmPending, setSopEopConfirmPending] = useState<boolean>(false);
 
+  const customerFields = useMemo(
+    (): FormField[] => [
+      { name: "customer_number", label: t("masterData.customerNumber"), type: "text", required: true },
+      { name: "name", label: t("masterData.name"), type: "text", required: true },
+      { name: "notes", label: t("masterData.notes"), type: "text" },
+      { name: "active", label: t("common.active"), type: "checkbox" },
+    ],
+    [t],
+  );
+
+  const programFields = useMemo(
+    (): FormField[] => [
+      { name: "program_number", label: t("masterData.programNumber"), type: "text", required: true },
+      { name: "name", label: t("masterData.name"), type: "text", required: true },
+      { name: "vehicle_series", label: t("masterData.vehicleSeries"), type: "text" },
+      { name: "sop", label: t("masterData.sop"), type: "date" },
+      { name: "eop", label: t("masterData.eop"), type: "date" },
+      {
+        name: "status",
+        label: t("masterData.statusLabel"),
+        type: "select",
+        required: true,
+        options: [...PROGRAM_STATUSES],
+      },
+      { name: "production_plant", label: t("masterData.productionPlant"), type: "text" },
+      { name: "notes", label: t("masterData.notes"), type: "text" },
+      { name: "active", label: t("common.active"), type: "checkbox" },
+    ],
+    [t],
+  );
+
+  const volumeFields = useMemo(
+    (): FormField[] => [
+      {
+        name: "calendar_year",
+        label: t("masterData.calendarYear"),
+        type: "number",
+        required: true,
+        step: "1",
+      },
+      {
+        name: "vehicle_volume",
+        label: t("masterData.vehicleVolume"),
+        type: "number",
+        required: true,
+        step: "1",
+      },
+    ],
+    [t],
+  );
+
+  const projectFields = useMemo(
+    (): FormField[] => [
+      { name: "project_number", label: t("masterData.projectNumber"), type: "text", required: true },
+      { name: "name", label: t("masterData.projectName"), type: "text", required: true },
+      {
+        name: "component_area",
+        label: t("project.componentArea"),
+        type: "select",
+        required: true,
+        options: [...COMPONENT_AREAS],
+      },
+      {
+        name: "quantity_per_vehicle",
+        label: t("masterData.quantityPerVehicleLong"),
+        type: "number",
+        required: true,
+        step: "0.01",
+      },
+      {
+        name: "status",
+        label: t("masterData.projectStatus"),
+        type: "select",
+        required: true,
+        options: [...PROJECT_STATUSES],
+      },
+      { name: "notes", label: t("masterData.notes"), type: "text" },
+      { name: "active", label: t("common.active"), type: "checkbox" },
+    ],
+    [t],
+  );
+
   const filteredCustomers = useMemo(() => {
     if (!search.trim()) return customers;
-    const t = search.toLowerCase();
+    const q = search.toLowerCase();
     return customers.filter(
-      (c) => c.name.toLowerCase().includes(t) || c.customer_number.toLowerCase().includes(t),
+      (c) => c.name.toLowerCase().includes(q) || c.customer_number.toLowerCase().includes(q),
     );
   }, [customers, search]);
 
@@ -122,9 +166,9 @@ export function KundenProgrammeProjektePage() {
       rows = rows.filter((p) => p.customer_id === selectedCustomerId);
     }
     if (search.trim()) {
-      const t = search.toLowerCase();
+      const q = search.toLowerCase();
       rows = rows.filter(
-        (p) => p.name.toLowerCase().includes(t) || p.program_number.toLowerCase().includes(t),
+        (p) => p.name.toLowerCase().includes(q) || p.program_number.toLowerCase().includes(q),
       );
     }
     return rows;
@@ -136,9 +180,9 @@ export function KundenProgrammeProjektePage() {
       rows = rows.filter((p) => p.program_id === selectedProgramId);
     }
     if (search.trim()) {
-      const t = search.toLowerCase();
+      const q = search.toLowerCase();
       rows = rows.filter(
-        (p) => p.name.toLowerCase().includes(t) || p.project_number.toLowerCase().includes(t),
+        (p) => p.name.toLowerCase().includes(q) || p.project_number.toLowerCase().includes(q),
       );
     }
     return rows;
@@ -157,11 +201,11 @@ export function KundenProgrammeProjektePage() {
       setPrograms(p);
       setProjects(j);
     } catch (err) {
-      setError(errMsg(err));
+      setError(errMsg(err, t("masterData.unknownError")));
     } finally {
       setLoading(false);
     }
-  }, [selectedCustomerId, selectedProgramId]);
+  }, [selectedCustomerId, selectedProgramId, t]);
 
   useEffect(() => {
     reloadAll();
@@ -186,7 +230,7 @@ export function KundenProgrammeProjektePage() {
       setFormValues({ customer_number: "", name: "", notes: "", active: true });
     } else if (kind === "program") {
       if (selectedCustomerId === "") {
-        setError("Bitte zuerst einen Kunden auswählen.");
+        setError(t("masterData.selectCustomerFirst"));
         return;
       }
       setFormValues({
@@ -207,7 +251,7 @@ export function KundenProgrammeProjektePage() {
       setFormValues({ calendar_year: new Date().getFullYear(), vehicle_volume: 0 });
     } else {
       if (selectedProgramId === "") {
-        setError("Bitte zuerst ein Programm auswählen.");
+        setError(t("masterData.selectProgramFirst"));
         return;
       }
       setFormValues({
@@ -310,12 +354,10 @@ export function KundenProgrammeProjektePage() {
           try {
             await updateProgramWithSopConfirm(editId, payload, sopEopConfirmPending);
           } catch (err) {
-            const msg = errMsg(err);
+            const msg = errMsg(err, t("masterData.unknownError"));
             if (msg.includes("sop_eop_shrink") || msg.includes("außerhalb des neuen")) {
               setSopEopConfirmPending(true);
-              setFormError(
-                `${msg} Klicken Sie erneut auf Speichern, um die Änderung zu bestätigen.`,
-              );
+              setFormError(t("masterData.sopEopConfirmRetry", { msg }));
               setSubmitting(false);
               return;
             }
@@ -326,7 +368,7 @@ export function KundenProgrammeProjektePage() {
           await createProgram(payload);
         }
       } else if (formKind === "volume") {
-        setFormError("Bitte die Mengen im Programm-Dialog speichern.");
+        setFormError(t("masterData.saveVolumesInProgramDialog"));
         setSubmitting(false);
         return;
       } else {
@@ -350,10 +392,10 @@ export function KundenProgrammeProjektePage() {
         }
       }
       setFormOpen(false);
-      setSuccess("Erfolgreich gespeichert.");
+      setSuccess(t("masterData.savedSuccess"));
       await reloadAll();
     } catch (err) {
-      setFormError(errMsg(err));
+      setFormError(errMsg(err, t("masterData.unknownError")));
     } finally {
       setSubmitting(false);
     }
@@ -365,10 +407,10 @@ export function KundenProgrammeProjektePage() {
       if (kind === "customer") await deactivateCustomer(id);
       else if (kind === "program") await deactivateProgram(id);
       else await deactivateProject(id);
-      setSuccess("Erfolgreich deaktiviert.");
+      setSuccess(t("masterData.deactivatedSuccess"));
       await reloadAll();
     } catch (err) {
-      setError(errMsg(err));
+      setError(errMsg(err, t("masterData.unknownError")));
     }
   };
 
@@ -413,9 +455,9 @@ export function KundenProgrammeProjektePage() {
           vehicle_volume: r.vehicle_volume,
         })),
       );
-      setSuccess("Jahreszeilen aus SOP/EOP erzeugt.");
+      setSuccess(t("masterData.yearsGenerated"));
     } catch (err) {
-      setVolumeModalError(errMsg(err));
+      setVolumeModalError(errMsg(err, t("masterData.unknownError")));
     } finally {
       setVolumeModalBusy(false);
     }
@@ -428,18 +470,18 @@ export function KundenProgrammeProjektePage() {
     try {
       const years = modalVolumeRows.map((r) => r.calendar_year);
       if (new Set(years).size !== years.length) {
-        throw new Error("Doppelte Kalenderjahre sind nicht erlaubt.");
+        throw new Error(t("masterData.duplicateYears"));
       }
       for (const row of modalVolumeRows) {
         if (row.vehicle_volume < 0) {
-          throw new Error("Fahrzeugstückzahlen dürfen nicht negativ sein.");
+          throw new Error(t("masterData.volumesNegative"));
         }
       }
       await bulkSaveProgramVolumes(volumesModalProgram.id, modalVolumeRows);
-      setSuccess("Fahrzeugstückzahlen gespeichert.");
+      setSuccess(t("masterData.volumesSaved"));
       await reloadModalVolumes();
     } catch (err) {
-      setVolumeModalError(errMsg(err));
+      setVolumeModalError(errMsg(err, t("masterData.unknownError")));
     } finally {
       setVolumeModalBusy(false);
     }
@@ -463,26 +505,38 @@ export function KundenProgrammeProjektePage() {
           ? volumeFields
           : projectFields;
 
+  const entityLabel =
+    formKind === "customer"
+      ? t("masterData.entityCustomer")
+      : formKind === "program"
+        ? t("masterData.entityProgram")
+        : formKind === "volume"
+          ? t("masterData.entityAnnualVolume")
+          : t("masterData.entityProject");
+
   const formTitle =
     formMode === "edit"
-      ? `${formKind === "customer" ? "Kunde" : formKind === "program" ? "Programm" : formKind === "volume" ? "Jahresstückzahl" : "Projekt"} bearbeiten`
-      : `${formKind === "customer" ? "Kunde" : formKind === "program" ? "Programm" : formKind === "volume" ? "Jahresstückzahl" : "Projekt"} anlegen`;
+      ? t("masterData.editEntity", { entity: entityLabel })
+      : t("masterData.createEntity", { entity: entityLabel });
+
+  const tabItems = [
+    ["customers", t("masterData.tabCustomers")],
+    ["programs", t("masterData.tabPrograms")],
+    ["projects", t("masterData.tabProjects")],
+  ] as const;
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Kunden, Programme & Projekte</h2>
-        <p className="mt-1 text-sm text-gray-600">
-          Zentrale Hierarchie: Kunde → Programm → Projekt. Projektstückzahlen werden aus
-          Programmstückzahl × Anzahl pro Fahrzeug berechnet.
-        </p>
+        <h2 className="text-2xl font-bold text-gray-900">{t("nav.hierarchy")}</h2>
+        <p className="mt-1 text-sm text-gray-600">{t("masterData.hierarchyIntro")}</p>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="mb-3 text-sm font-semibold text-gray-700">Kaskadische Auswahl</h3>
+        <h3 className="mb-3 text-sm font-semibold text-gray-700">{t("masterData.cascadeSelection")}</h3>
         <div className="flex flex-wrap gap-3">
           <label className="block text-sm">
-            <span className="text-gray-600">Kunde</span>
+            <span className="text-gray-600">{t("project.customer")}</span>
             <select
               className="mt-1 block min-w-[200px] rounded border px-2 py-1.5"
               value={selectedCustomerId}
@@ -493,7 +547,7 @@ export function KundenProgrammeProjektePage() {
                 setSelectedProjectId("");
               }}
             >
-              <option value="">Alle</option>
+              <option value="">{t("common.all")}</option>
               {customers.filter((c) => c.active).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.customer_number} – {c.name}
@@ -502,7 +556,7 @@ export function KundenProgrammeProjektePage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="text-gray-600">Programm</span>
+            <span className="text-gray-600">{t("project.program")}</span>
             <select
               className="mt-1 block min-w-[200px] rounded border px-2 py-1.5"
               value={selectedProgramId}
@@ -513,7 +567,7 @@ export function KundenProgrammeProjektePage() {
               }}
               disabled={selectedCustomerId === ""}
             >
-              <option value="">Alle</option>
+              <option value="">{t("common.all")}</option>
               {programs
                 .filter((p) => p.active && (selectedCustomerId === "" || p.customer_id === selectedCustomerId))
                 .map((p) => (
@@ -524,14 +578,14 @@ export function KundenProgrammeProjektePage() {
             </select>
           </label>
           <label className="block text-sm">
-            <span className="text-gray-600">Projekt</span>
+            <span className="text-gray-600">{t("project.project")}</span>
             <select
               className="mt-1 block min-w-[200px] rounded border px-2 py-1.5"
               value={selectedProjectId}
               onChange={(e) => setSelectedProjectId(e.target.value ? Number(e.target.value) : "")}
               disabled={selectedProgramId === ""}
             >
-              <option value="">Alle</option>
+              <option value="">{t("common.all")}</option>
               {projects
                 .filter((p) => p.active && (selectedProgramId === "" || p.program_id === selectedProgramId))
                 .map((p) => (
@@ -544,15 +598,15 @@ export function KundenProgrammeProjektePage() {
           {selectedProjectId !== "" && projectVolumeProfile && projectVolumeProfile.rows.length > 0 && (
             <div className="mt-4 w-full overflow-x-auto">
               <h4 className="mb-2 text-sm font-semibold text-gray-700">
-                Projektstückzahlen über die Projektlaufzeit
+                {t("project.volumeOverLifetime")}
               </h4>
               <table className="min-w-full text-xs">
                 <thead>
                   <tr className="border-b text-left text-gray-600">
-                    <th className="py-1 pr-3">Jahr</th>
-                    <th className="py-1 pr-3">Programmfahrzeuge</th>
-                    <th className="py-1 pr-3">Anzahl pro Fahrzeug</th>
-                    <th className="py-1">Projektstückzahl</th>
+                    <th className="py-1 pr-3">{t("project.year")}</th>
+                    <th className="py-1 pr-3">{t("masterData.programVehicles")}</th>
+                    <th className="py-1 pr-3">{t("project.quantityPerVehicle")}</th>
+                    <th className="py-1">{t("masterData.projectVolume")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -572,13 +626,7 @@ export function KundenProgrammeProjektePage() {
       </section>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 pb-2">
-        {(
-          [
-            ["customers", "Kunden"],
-            ["programs", "Programme"],
-            ["projects", "Projekte"],
-          ] as const
-        ).map(([key, label]) => (
+        {tabItems.map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -592,7 +640,7 @@ export function KundenProgrammeProjektePage() {
         ))}
         <input
           type="search"
-          placeholder="Suchen…"
+          placeholder={t("common.search")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="ml-auto rounded border px-3 py-1.5 text-sm"
@@ -605,7 +653,7 @@ export function KundenProgrammeProjektePage() {
             }
             className="rounded-md bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-600"
           >
-            Neu
+            {t("masterData.new")}
           </button>
         )}
       </div>
@@ -622,16 +670,21 @@ export function KundenProgrammeProjektePage() {
       )}
 
       {loading ? (
-        <p className="text-gray-600">Lade Daten…</p>
+        <p className="text-gray-600">{t("masterData.loadingData")}</p>
       ) : (
         <>
           {tab === "customers" && (
             <DataTable
-              headers={["Nr.", "Name", "Aktiv", "Aktionen"]}
+              headers={[
+                t("masterData.numberCol"),
+                t("masterData.name"),
+                t("common.active"),
+                t("common.actions"),
+              ]}
               rows={filteredCustomers.map((c) => [
                 c.customer_number,
                 c.name,
-                c.active ? "Ja" : "Nein",
+                c.active ? t("common.yes") : t("common.no"),
                 c,
               ])}
               canWrite={canWrite}
@@ -643,17 +696,19 @@ export function KundenProgrammeProjektePage() {
           {tab === "programs" && (
             <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
               {filteredPrograms.length === 0 ? (
-                <div className="px-4 py-10 text-center text-sm text-gray-600">Keine Programme vorhanden.</div>
+                <div className="px-4 py-10 text-center text-sm text-gray-600">
+                  {t("masterData.noPrograms")}
+                </div>
               ) : (
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b bg-gray-50 text-left text-gray-600">
-                      <th className="px-4 py-2">Nr.</th>
-                      <th className="px-4 py-2">Name</th>
-                      <th className="px-4 py-2">Serie</th>
-                      <th className="px-4 py-2">Status</th>
-                      <th className="px-4 py-2">Aktiv</th>
-                      <th className="px-4 py-2">Aktionen</th>
+                      <th className="px-4 py-2">{t("masterData.numberCol")}</th>
+                      <th className="px-4 py-2">{t("masterData.name")}</th>
+                      <th className="px-4 py-2">{t("masterData.series")}</th>
+                      <th className="px-4 py-2">{t("masterData.statusLabel")}</th>
+                      <th className="px-4 py-2">{t("common.active")}</th>
+                      <th className="px-4 py-2">{t("common.actions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -663,14 +718,14 @@ export function KundenProgrammeProjektePage() {
                         <td className="px-4 py-2">{p.name}</td>
                         <td className="px-4 py-2">{p.vehicle_series}</td>
                         <td className="px-4 py-2">{p.status}</td>
-                        <td className="px-4 py-2">{p.active ? "Ja" : "Nein"}</td>
+                        <td className="px-4 py-2">{p.active ? t("common.yes") : t("common.no")}</td>
                         <td className="px-4 py-2 space-x-2">
                           <button
                             type="button"
                             className="text-slate-800 underline"
                             onClick={() => openVolumesModal(p)}
                           >
-                            Stückzahlen
+                            {t("masterData.volumes")}
                           </button>
                           {canWrite && (
                             <>
@@ -679,14 +734,14 @@ export function KundenProgrammeProjektePage() {
                                 className="text-blue-700 underline"
                                 onClick={() => openEdit("program", p)}
                               >
-                                Bearbeiten
+                                {t("common.edit")}
                               </button>
                               <button
                                 type="button"
                                 className="text-amber-800 underline"
                                 onClick={() => handleDeactivate("program", p.id)}
                               >
-                                Deaktivieren
+                                {t("masterData.deactivate")}
                               </button>
                             </>
                           )}
@@ -701,14 +756,22 @@ export function KundenProgrammeProjektePage() {
 
           {tab === "projects" && (
             <DataTable
-              headers={["Nr.", "Name", "Bauteil", "Anzahl/Fzg.", "Status", "Aktiv", "Aktionen"]}
+              headers={[
+                t("masterData.numberCol"),
+                t("masterData.name"),
+                t("masterData.partArea"),
+                t("masterData.qtyPerVehicleShort"),
+                t("masterData.statusLabel"),
+                t("common.active"),
+                t("common.actions"),
+              ]}
               rows={filteredProjects.map((p) => [
                 p.project_number,
                 p.name,
                 p.component_area,
                 String(p.quantity_per_vehicle),
                 p.status,
-                p.active ? "Ja" : "Nein",
+                p.active ? t("common.yes") : t("common.no"),
                 p,
               ])}
               canWrite={canWrite}
@@ -737,14 +800,14 @@ export function KundenProgrammeProjektePage() {
           {formKind === "project" && projectPreviewVolumes.length > 0 && (
             <div className="fixed inset-0 z-40 flex items-end justify-center pointer-events-none">
               <div className="pointer-events-auto mb-8 w-full max-w-lg rounded-lg border bg-white p-4 shadow-lg">
-                <h4 className="mb-2 text-sm font-semibold">Mengenübersicht (berechnet)</h4>
+                <h4 className="mb-2 text-sm font-semibold">{t("masterData.volumeOverviewCalculated")}</h4>
                 <table className="min-w-full text-xs">
                   <thead>
                     <tr className="border-b text-left text-gray-600">
-                      <th className="py-1 pr-2">Jahr</th>
-                      <th className="py-1 pr-2">Fahrzeug-STZ.</th>
-                      <th className="py-1 pr-2">Anzahl/Fzg.</th>
-                      <th className="py-1">Projekt-STZ.</th>
+                      <th className="py-1 pr-2">{t("project.year")}</th>
+                      <th className="py-1 pr-2">{t("masterData.vehicleStz")}</th>
+                      <th className="py-1 pr-2">{t("masterData.qtyPerVehicleShort")}</th>
+                      <th className="py-1">{t("masterData.projectStz")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -773,17 +836,18 @@ export function KundenProgrammeProjektePage() {
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold">Fahrzeugstückzahlen je Kalenderjahr</h3>
+                <h3 className="text-lg font-semibold">{t("masterData.volumesByYear")}</h3>
                 <p className="text-sm text-gray-600">{volumesModalProgram.name}</p>
                 <p className="text-xs text-gray-500">
-                  SOP: {volumesModalProgram.sop?.slice(0, 10) ?? "–"} · EOP:{" "}
-                  {volumesModalProgram.eop?.slice(0, 10) ?? "–"}
+                  {t("masterData.sop")}: {volumesModalProgram.sop?.slice(0, 10) ?? t("common.dash")} ·{" "}
+                  {t("masterData.eop")}: {volumesModalProgram.eop?.slice(0, 10) ?? t("common.dash")}
                 </p>
               </div>
               <button
                 type="button"
                 className="text-gray-400 hover:text-gray-600"
                 onClick={() => setVolumesModalProgram(null)}
+                aria-label={t("common.close")}
               >
                 ✕
               </button>
@@ -804,7 +868,7 @@ export function KundenProgrammeProjektePage() {
                     className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
                     onClick={handleGenerateYears}
                   >
-                    Jahre aus SOP/EOP erzeugen
+                    {t("masterData.generateYearsFromSopEop")}
                   </button>
                   <button
                     type="button"
@@ -812,7 +876,7 @@ export function KundenProgrammeProjektePage() {
                     className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
                     onClick={handleAddVolumeYear}
                   >
-                    Jahr hinzufügen
+                    {t("masterData.addYear")}
                   </button>
                   <button
                     type="button"
@@ -820,24 +884,21 @@ export function KundenProgrammeProjektePage() {
                     className="rounded bg-slate-700 px-3 py-1.5 text-sm text-white hover:bg-slate-600 disabled:opacity-50"
                     onClick={handleBulkSaveVolumes}
                   >
-                    Mengen speichern
+                    {t("masterData.saveVolumes")}
                   </button>
                 </>
               )}
             </div>
 
             {modalVolumeRows.length === 0 ? (
-              <p className="text-sm text-gray-600">
-                Keine Jahreszeilen vorhanden. Bitte SOP/EOP pflegen und „Jahre aus SOP/EOP erzeugen“
-                klicken.
-              </p>
+              <p className="text-sm text-gray-600">{t("masterData.noYearRows")}</p>
             ) : (
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-gray-600">
-                    <th className="py-2 pr-4">Kalenderjahr</th>
-                    <th className="py-2 pr-4">Fahrzeugstückzahl</th>
-                    {canWrite && <th className="py-2">Löschen</th>}
+                    <th className="py-2 pr-4">{t("masterData.calendarYear")}</th>
+                    <th className="py-2 pr-4">{t("masterData.vehicleVolume")}</th>
+                    {canWrite && <th className="py-2">{t("common.delete")}</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -896,7 +957,7 @@ export function KundenProgrammeProjektePage() {
                               }
                             }}
                           >
-                            Löschen
+                            {t("common.delete")}
                           </button>
                         </td>
                       )}
@@ -925,10 +986,11 @@ function DataTable({
   onEdit: (row: Customer | Program | Project) => void;
   onDeactivate: (row: Customer | Program | Project) => void;
 }) {
+  const t = useT();
   if (rows.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center text-sm text-gray-600">
-        Keine Einträge vorhanden.
+        {t("masterData.noEntries")}
       </div>
     );
   }
@@ -958,14 +1020,14 @@ function DataTable({
                 {canWrite && (
                   <td className="px-4 py-2 space-x-2">
                     <button type="button" className="text-blue-700 underline" onClick={() => onEdit(entity)}>
-                      Bearbeiten
+                      {t("common.edit")}
                     </button>
                     <button
                       type="button"
                       className="text-amber-800 underline"
                       onClick={() => onDeactivate(entity)}
                     >
-                      Deaktivieren
+                      {t("masterData.deactivate")}
                     </button>
                   </td>
                 )}

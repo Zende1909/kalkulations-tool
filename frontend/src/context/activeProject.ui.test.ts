@@ -80,7 +80,7 @@ describe("Active project UI wiring", () => {
     const { resolve } = await import("node:path");
     const src = readFileSync(resolve(__dirname, "../components/layout/Sidebar.tsx"), "utf-8");
     expect(src).toMatch(/active-project-bar/);
-    expect(src).toMatch(/Alle Projekte/);
+    expect(src).toMatch(/project\.allProjects/);
     expect(src).toMatch(/useActiveProject/);
     expect(src).toMatch(/CustomerProjectSelector/);
     expect(src).toMatch(/compact/);

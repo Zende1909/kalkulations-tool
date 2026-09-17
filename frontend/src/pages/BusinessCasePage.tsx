@@ -18,6 +18,7 @@ import { RevenueDevelopmentChart } from "../components/businessCase/RevenueDevel
 import { DecimalInputField } from "../components/DecimalInputField";
 import { useActiveProject } from "../context/ActiveProjectContext";
 import { useAuth } from "../context/AuthContext";
+import { useT } from "../i18n";
 import { EINMALZAHLUNG_HINWEIS } from "../types/investition";
 import type {
   BusinessCaseAssemblyRow,
@@ -80,39 +81,40 @@ function toneFromValue(value: number | null | undefined): "positive" | "negative
 }
 
 function ScenarioComparisonTable({ summary }: { summary: BusinessCaseKpiSummary }) {
+  const t = useT();
   const rows = [
     {
-      label: "Umsatz",
+      label: t("businessCase.revenue"),
       bottom: summary.operating.bottom_price_revenue_total,
       actual: summary.operating.actual_revenue_total,
       isRevenue: true,
     },
     {
-      label: "Operative Kosten",
+      label: t("businessCase.operatingCost"),
       bottom: summary.operating.cost_total,
       actual: summary.operating.cost_total,
       isCost: true,
     },
     {
-      label: "EBIT",
+      label: t("businessCase.ebit"),
       bottom: summary.operating.ebit_bottom,
       actual: summary.operating.ebit_actual,
       isMoney: true,
     },
     {
-      label: "EBIT %",
+      label: t("businessCase.ebitPct"),
       bottom: summary.operating.ebit_bottom_pct,
       actual: summary.operating.ebit_actual_pct,
       isPercent: true,
     },
     {
-      label: "ROI inkl. CAPEX",
+      label: t("businessCase.roiInclCapex"),
       bottom: summary.capital.roi_incl_capex_bottom_pct,
       actual: summary.capital.roi_incl_capex_actual_pct,
       isPercent: true,
     },
     {
-      label: "Operativer ROI ohne CAPEX",
+      label: t("businessCase.operatingRoiExCapex"),
       bottom: summary.operating.roi_operating_bottom_pct,
       actual: summary.operating.roi_operating_actual_pct,
       isPercent: true,
@@ -122,7 +124,7 @@ function ScenarioComparisonTable({ summary }: { summary: BusinessCaseKpiSummary 
     value: number | null | undefined,
     opts: { isRevenue?: boolean; isCost?: boolean; isMoney?: boolean; isPercent?: boolean },
   ) => {
-    if (value == null) return "–";
+    if (value == null) return t("common.dash");
     if (opts.isPercent) return formatPercentOrDash(value);
     if (opts.isRevenue) return formatRevenueEuro(value);
     if (opts.isCost) return formatCost(value, true);
@@ -134,9 +136,9 @@ function ScenarioComparisonTable({ summary }: { summary: BusinessCaseKpiSummary 
       <table className="min-w-full text-sm">
         <thead>
           <tr className="border-b text-left text-gray-600">
-            <th className="py-2 pr-4">KPI</th>
-            <th className="py-2 pr-4 text-right">Bottom Price</th>
-            <th className="py-2 text-right">Tatsächlicher Preis</th>
+            <th className="py-2 pr-4">{t("businessCase.kpi")}</th>
+            <th className="py-2 pr-4 text-right">{t("businessCase.bottomPrice")}</th>
+            <th className="py-2 text-right">{t("businessCase.actualPriceColumn")}</th>
           </tr>
         </thead>
         <tbody>
@@ -184,43 +186,56 @@ function BreakdownList({
 }
 
 function InvestmentDashboardHead({ summary }: { summary: BusinessCaseKpiSummary }) {
+  const t = useT();
   const inv = summary.investments_operating;
   return (
     <div className="mb-4 grid gap-3 lg:grid-cols-2">
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
-        <h4 className="font-semibold text-amber-900">Operative Investitionen (ohne CAPEX)</h4>
+        <h4 className="font-semibold text-amber-900">
+          {t("businessCase.operatingInvestmentsExCapex")}
+        </h4>
         <div className="mt-2 grid gap-1">
-          <div>Kosten: {formatEuro(summary.capital.operative_investment_cost_total)}</div>
           <div>
-            Bottom-Price-Erlös:{" "}
+            {t("businessCase.costColon", {
+              value: formatEuro(summary.capital.operative_investment_cost_total),
+            })}
+          </div>
+          <div>
+            {t("businessCase.bottomPriceProceeds")}:{" "}
             {summary.revenue_breakdown.investments_bottom_price_revenue != null
               ? formatRevenueEuro(summary.revenue_breakdown.investments_bottom_price_revenue)
-              : "–"}
+              : t("common.dash")}
           </div>
           <div>
-            Tatsächlicher Erlös:{" "}
+            {t("businessCase.actualProceeds")}:{" "}
             {summary.revenue_breakdown.investments_actual_revenue != null
               ? formatRevenueEuro(summary.revenue_breakdown.investments_actual_revenue)
-              : "–"}
+              : t("common.dash")}
           </div>
           <div className={valueColorClass(inv.ebit_bottom)}>
-            EBIT Bottom: {formatEbitWithPercent(inv.ebit_bottom, inv.ebit_bottom_pct)}
+            {t("businessCase.ebitBottomShort")}:{" "}
+            {formatEbitWithPercent(inv.ebit_bottom, inv.ebit_bottom_pct)}
           </div>
           <div className={valueColorClass(inv.ebit_actual)}>
-            EBIT tatsächlich: {formatEbitWithPercent(inv.ebit_actual, inv.ebit_actual_pct)}
+            {t("businessCase.ebitActualShort")}:{" "}
+            {formatEbitWithPercent(inv.ebit_actual, inv.ebit_actual_pct)}
           </div>
         </div>
       </div>
       <div className="rounded-lg border border-slate-300 bg-slate-50 p-4 text-sm">
-        <h4 className="font-semibold text-slate-800">CAPEX / Werksinvestitionen</h4>
+        <h4 className="font-semibold text-slate-800">{t("businessCase.capexPlantInvestments")}</h4>
         <div className="mt-2 grid gap-1">
-          <div>Kosten einmalig: {formatEuro(summary.capex.cost_total)}</div>
+          <div>
+            {t("businessCase.costOnceColon", { value: formatEuro(summary.capex.cost_total) })}
+          </div>
           <div className="text-xs text-slate-600">{summary.capex.note}</div>
           <div>
-            Anteil gebundenes Kapital:{" "}
+            {t("businessCase.boundCapitalShare")}:{" "}
             {formatPercentOrDash(summary.capex.bound_capital_share_pct)}
           </div>
-          <div>Gebundenes Projektkapital gesamt: {formatEuro(summary.capital.bound_capital_total)}</div>
+          <div>
+            {t("businessCase.boundCapitalTotal")}: {formatEuro(summary.capital.bound_capital_total)}
+          </div>
         </div>
       </div>
     </div>
@@ -234,6 +249,7 @@ function InvestmentTable({
   rows: BusinessCaseInvestmentRow[];
   mode: "capex" | "entwicklung" | "other";
 }) {
+  const t = useT();
   if (rows.length === 0) return null;
   const showMargins = mode !== "capex";
   return (
@@ -241,15 +257,15 @@ function InvestmentTable({
       <table className="min-w-full text-sm">
         <thead>
           <tr className="border-b text-left text-gray-600">
-            <th className="py-2 pr-3">Bezeichnung</th>
-            <th className="py-2 pr-3">Zuordnung</th>
-            {mode === "capex" && <th className="py-2 pr-3">Zahlungsart</th>}
-            <th className="py-2 pr-3">Kosten einmalig</th>
-            {showMargins && <th className="py-2 pr-3">Bottom Price einmalig</th>}
-            {showMargins && <th className="py-2 pr-3">Erlös einmalig</th>}
-            {showMargins && <th className="py-2 pr-3">Erlös−Kosten</th>}
-            {showMargins && <th className="py-2 pr-3">Erlös−Bottom</th>}
-            <th className="py-2">Hinweis</th>
+            <th className="py-2 pr-3">{t("businessCase.designation")}</th>
+            <th className="py-2 pr-3">{t("businessCase.assignment")}</th>
+            {mode === "capex" && <th className="py-2 pr-3">{t("businessCase.paymentType")}</th>}
+            <th className="py-2 pr-3">{t("businessCase.costOnce")}</th>
+            {showMargins && <th className="py-2 pr-3">{t("businessCase.bottomPriceOnce")}</th>}
+            {showMargins && <th className="py-2 pr-3">{t("businessCase.revenueOnce")}</th>}
+            {showMargins && <th className="py-2 pr-3">{t("businessCase.revenueMinusCost")}</th>}
+            {showMargins && <th className="py-2 pr-3">{t("businessCase.revenueMinusBottom")}</th>}
+            <th className="py-2">{t("businessCase.note")}</th>
           </tr>
         </thead>
         <tbody>
@@ -272,7 +288,7 @@ function InvestmentTable({
                         inv.margin_revenue_minus_cost,
                         inv.margin_revenue_minus_cost_pct,
                       )
-                    : "–"}
+                    : t("common.dash")}
                 </td>
               )}
               {showMargins && (
@@ -282,12 +298,12 @@ function InvestmentTable({
                         inv.margin_revenue_minus_bottom_price,
                         inv.margin_revenue_minus_bottom_price_pct,
                       )
-                    : "–"}
+                    : t("common.dash")}
                 </td>
               )}
               <td className="py-2 text-xs text-amber-800">
                 {[
-                  mode === "capex" ? "nicht EBIT-wirksam, kapitalbindend" : "",
+                  mode === "capex" ? t("businessCase.notEbitCapitalBindingLower") : "",
                   inv.hinweis,
                   ...(inv.amount_warnings ?? []),
                 ]
@@ -322,26 +338,33 @@ function CategorySummary({
   showMargins?: boolean;
   note?: string;
 }) {
+  const t = useT();
   return (
     <div className="rounded border border-gray-200 p-3 text-sm">
       <h4 className="mb-2 font-semibold">{title}</h4>
       {note && <p className="mb-2 text-xs text-slate-600">{note}</p>}
       <div className="grid gap-1 sm:grid-cols-2">
-        <div>Anzahl: {block.count}</div>
-        <div>Kosten: {formatEuro(block.cost_amount_total)}</div>
+        <div>{t("businessCase.countColon", { count: block.count })}</div>
+        <div>
+          {t("businessCase.costColon", { value: formatEuro(block.cost_amount_total) })}
+        </div>
         {showMargins && (
           <>
-            <div>Bottom Price: {formatEuro(block.bottom_price_total ?? 0)}</div>
-            <div>Erlös: {formatEuro(block.revenue_amount_total ?? 0)}</div>
+            <div>
+              {t("businessCase.bottomPrice")}: {formatEuro(block.bottom_price_total ?? 0)}
+            </div>
+            <div>
+              {t("businessCase.proceeds")}: {formatEuro(block.revenue_amount_total ?? 0)}
+            </div>
             <div className={marginClass(block.margin_revenue_minus_cost_total ?? null)}>
-              Erlös − Kosten:{" "}
+              {t("businessCase.revenueMinusCostSpaced")}:{" "}
               {formatMarginWithPercent(
                 block.margin_revenue_minus_cost_total ?? null,
                 block.margin_revenue_minus_cost_pct ?? null,
               )}
             </div>
             <div className={marginClass(block.margin_revenue_minus_bottom_price_total ?? null)}>
-              Erlös − Bottom:{" "}
+              {t("businessCase.revenueMinusBottomSpaced")}:{" "}
               {formatMarginWithPercent(
                 block.margin_revenue_minus_bottom_price_total ?? null,
                 block.margin_revenue_minus_bottom_price_pct ?? null,
@@ -367,6 +390,7 @@ function PriceEditDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useT();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [bottomRaw, setBottomRaw] = useState(
     target.row.bottom_price_per_piece != null
@@ -394,8 +418,12 @@ function PriceEditDialog({
     setBusy(true);
     setError(null);
     try {
-      const bottom = bottomRaw.trim() ? coerceFormDecimal(bottomRaw, "Bottom Price") : null;
-      const actual = actualRaw.trim() ? coerceFormDecimal(actualRaw, "Tatsächlicher Preis") : null;
+      const bottom = bottomRaw.trim()
+        ? coerceFormDecimal(bottomRaw, t("businessCase.bottomPrice"))
+        : null;
+      const actual = actualRaw.trim()
+        ? coerceFormDecimal(actualRaw, t("businessCase.actualPriceColumn"))
+        : null;
       await upsertManualPrice({
         customer_id: filter.customer_id,
         program_id: filter.program_id,
@@ -408,7 +436,7 @@ function PriceEditDialog({
       onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("businessCase.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -431,13 +459,13 @@ function PriceEditDialog({
       >
         <header className="flex shrink-0 items-center justify-between border-b px-4 py-3 sm:px-6">
           <h3 id="bc-price-dialog-title" className="text-lg font-semibold">
-            Preise bearbeiten
+            {t("businessCase.editPrices")}
           </h3>
           <button
             type="button"
             onClick={onClose}
             className="rounded p-1 text-gray-400 hover:bg-gray-100"
-            aria-label="Schließen"
+            aria-label={t("common.close")}
           >
             ✕
           </button>
@@ -447,12 +475,13 @@ function PriceEditDialog({
             {target.label} · {target.materialNumber}
           </p>
           <p className="text-sm">
-            Kosten/Stück:{" "}
+            {t("businessCase.costPerPiece")}:{" "}
             {formatCost(target.row.cost_per_piece, target.row.has_cost_per_piece)}
           </p>
           <p className="text-xs text-gray-500">
-            Richtpreis (15 %): {formatEuro(target.row.guide_price_per_piece)} – nur Anzeige, wird nicht
-            übernommen
+            {t("businessCase.guidePriceDisplayOnly", {
+              value: formatEuro(target.row.guide_price_per_piece),
+            })}
           </p>
           {error && (
             <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -462,20 +491,20 @@ function PriceEditDialog({
           {canWrite ? (
             <>
               <DecimalInputField
-                label="Bottom Price (€ / Stück)"
+                label={t("businessCase.bottomPricePerPcEuro")}
                 rawValue={bottomRaw}
                 onRawChange={setBottomRaw}
                 className="w-full rounded border px-2 py-1.5 text-sm"
               />
               <DecimalInputField
-                label="Tatsächlicher Preis (€ / Stück)"
+                label={t("businessCase.actualPricePerPcEuro")}
                 rawValue={actualRaw}
                 onRawChange={setActualRaw}
                 className="w-full rounded border px-2 py-1.5 text-sm"
               />
             </>
           ) : (
-            <p className="text-sm text-gray-600">Keine Schreibberechtigung.</p>
+            <p className="text-sm text-gray-600">{t("businessCase.noWritePermission")}</p>
           )}
           {target.row.price_warnings.length > 0 && (
             <ul className="list-disc pl-5 text-xs text-amber-800">
@@ -491,7 +520,7 @@ function PriceEditDialog({
             onClick={onClose}
             className="rounded border px-3 py-1.5 text-sm hover:bg-gray-50"
           >
-            Abbrechen
+            {t("common.cancel")}
           </button>
           {canWrite && (
             <button
@@ -500,7 +529,7 @@ function PriceEditDialog({
               onClick={() => void save()}
               className="rounded bg-slate-700 px-3 py-1.5 text-sm text-white disabled:opacity-50"
             >
-              Speichern
+              {t("common.save")}
             </button>
           )}
         </footer>
@@ -510,6 +539,7 @@ function PriceEditDialog({
 }
 
 export function BusinessCasePage() {
+  const t = useT();
   const { canWrite } = useAuth();
   const { selection, isComplete, formDefaults } = useActiveProject();
   const [filterHierarchy, setFilterHierarchy] = useState<HierarchySelection>(() => formDefaults());
@@ -534,7 +564,7 @@ export function BusinessCasePage() {
 
   const loadBusinessCase = useCallback(async () => {
     if (!filterReady) {
-      setError("Bitte Kunde, Programm und Projekt auswählen.");
+      setError(t("businessCase.selectHierarchy"));
       return;
     }
     setLoading(true);
@@ -547,12 +577,12 @@ export function BusinessCasePage() {
       });
       setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Business Case konnte nicht geladen werden.");
+      setError(err instanceof Error ? err.message : t("businessCase.loadFailed"));
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, [filterHierarchy, filterReady]);
+  }, [filterHierarchy, filterReady, t]);
 
   useEffect(() => {
     if (!isComplete || !filterReady) return;
@@ -588,7 +618,7 @@ export function BusinessCasePage() {
         `business_case_${data.project.replace(/\W+/g, "_")}.xlsx`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("common.exportFailed"));
     } finally {
       setExportBusy(false);
     }
@@ -607,7 +637,7 @@ export function BusinessCasePage() {
         `business_case_${data.project.replace(/\W+/g, "_")}.pdf`,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
+      setError(err instanceof Error ? err.message : t("common.exportFailed"));
     } finally {
       setExportBusy(false);
     }
@@ -615,16 +645,16 @@ export function BusinessCasePage() {
 
   const priceColumns = (
     <>
-      <th className="py-2 pr-3">Kosten/Stück</th>
-      <th className="py-2 pr-3">Bottom Price/Stück</th>
-      <th className="py-2 pr-3">Tatsächlicher Preis/Stück</th>
-      <th className="py-2 pr-3">Richtpreis (15 %)</th>
-      <th className="py-2 pr-3">Projektstückzahl</th>
-      <th className="py-2 pr-3">Bottom-Umsatz</th>
-      <th className="py-2 pr-3">Tatsächlicher Umsatz</th>
-      <th className="py-2 pr-3">Kosten gesamt</th>
-      <th className="py-2 pr-3">Bottom-Marge</th>
-      <th className="py-2 pr-3">Tatsächliche Marge</th>
+      <th className="py-2 pr-3">{t("businessCase.costPerPiece")}</th>
+      <th className="py-2 pr-3">{t("businessCase.bottomPerPiece")}</th>
+      <th className="py-2 pr-3">{t("businessCase.actualPerPiece")}</th>
+      <th className="py-2 pr-3">{t("businessCase.guidePrice")}</th>
+      <th className="py-2 pr-3">{t("businessCase.projectVolume")}</th>
+      <th className="py-2 pr-3">{t("businessCase.bottomRevenue")}</th>
+      <th className="py-2 pr-3">{t("businessCase.actualRevenue")}</th>
+      <th className="py-2 pr-3">{t("businessCase.costTotal")}</th>
+      <th className="py-2 pr-3">{t("businessCase.bottomMargin")}</th>
+      <th className="py-2 pr-3">{t("businessCase.actualMargin")}</th>
     </>
   );
 
@@ -637,18 +667,17 @@ export function BusinessCasePage() {
       <td className="py-2 pr-3">
         {formatManualPrice(row.actual_price_per_piece, row.has_manual_actual_price)}
       </td>
-      <td
-        className="py-2 pr-3 text-gray-600"
-        title="Kalkulatorischer Richtwert, nicht der tatsächliche Kundenpreis"
-      >
+      <td className="py-2 pr-3 text-gray-600" title={t("businessCase.guidePriceTooltip")}>
         {formatEuro(row.guide_price_per_piece)}
       </td>
       <td className="py-2 pr-3">{formatInteger(row.project_volume)}</td>
       <td className="py-2 pr-3">
-        {row.bottom_price_revenue != null ? formatRevenueEuro(row.bottom_price_revenue) : "–"}
+        {row.bottom_price_revenue != null
+          ? formatRevenueEuro(row.bottom_price_revenue)
+          : t("common.dash")}
       </td>
       <td className="py-2 pr-3">
-        {row.actual_revenue != null ? formatRevenueEuro(row.actual_revenue) : "–"}
+        {row.actual_revenue != null ? formatRevenueEuro(row.actual_revenue) : t("common.dash")}
       </td>
       <td className="py-2 pr-3">{formatCost(row.cost_total, row.has_cost_per_piece)}</td>
       <td className={`py-2 pr-3 ${marginClass(row.margin_bottom_price_total)}`}>
@@ -681,11 +710,11 @@ export function BusinessCasePage() {
               })
             }
           >
-            Preise bearbeiten
+            {t("businessCase.editPrices")}
           </button>
         )}
         <Link to={linkTo} className="text-sm text-blue-700 underline">
-          Öffnen
+          {t("businessCase.open")}
         </Link>
       </div>
     </td>
@@ -694,15 +723,12 @@ export function BusinessCasePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Business Case</h2>
-        <p className="mt-1 text-sm text-gray-600">
-          Projektbezogene Gesamtübersicht mit Verkaufspreis-Szenarien. Einzelteile in Baugruppen werden
-          nicht doppelt gezählt. Investitionen separat.
-        </p>
+        <h2 className="text-2xl font-bold text-gray-900">{t("businessCase.pageTitle")}</h2>
+        <p className="mt-1 text-sm text-gray-600">{t("businessCase.pageIntro")}</p>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="mb-3 text-sm font-semibold">Projektfilter</h3>
+        <h3 className="mb-3 text-sm font-semibold">{t("businessCase.projectFilter")}</h3>
         <HierarchySelector
           value={filterHierarchy}
           onChange={(next) => {
@@ -726,14 +752,14 @@ export function BusinessCasePage() {
             onClick={() => void loadBusinessCase()}
             className="rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:opacity-50"
           >
-            Business Case anzeigen
+            {t("businessCase.show")}
           </button>
           <button
             type="button"
             onClick={resetFilters}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
           >
-            Filter zurücksetzen
+            {t("businessCase.resetFilters")}
           </button>
         </div>
       </section>
@@ -750,7 +776,7 @@ export function BusinessCasePage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <h3 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
-                  Business-Case-Dashboard
+                  {t("businessCase.title")}
                 </h3>
                 <p className="mt-0.5 truncate text-sm text-slate-600">
                   {data.customer} / {data.program} / {data.project}
@@ -761,17 +787,19 @@ export function BusinessCasePage() {
                   type="button"
                   disabled={exportBusy}
                   onClick={() => void exportExcel()}
+                  title={t("export.managementReportExcel")}
                   className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
                 >
-                  Excel
+                  {t("export.excel")}
                 </button>
                 <button
                   type="button"
                   disabled={exportBusy}
                   onClick={() => void exportPdf()}
+                  title={t("export.managementReportPdf")}
                   className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50"
                 >
-                  PDF
+                  {t("export.pdf")}
                 </button>
               </div>
             </div>
@@ -784,27 +812,27 @@ export function BusinessCasePage() {
 
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 md:gap-4 lg:grid-cols-2">
               <ProfitabilityGauge
-                label="EBIT"
-                subtitle="tatsächlicher Preis"
+                label={t("businessCase.ebit")}
+                subtitle={t("businessCase.actualPrice")}
                 valuePercent={data.kpis.ebit_actual_total_pct}
-                description="EBIT % zum tatsächlichen Umsatz (bestehende Business-Case-Berechnung, CAPEX nicht enthalten)."
+                description={t("businessCase.ebitGaugeDesc")}
                 data-testid="gauge-ebit"
               />
               <ProfitabilityGauge
-                label="EBIT Bottom Price"
-                subtitle="Bottom Price"
+                label={t("businessCase.ebitBottom")}
+                subtitle={t("businessCase.bottomPrice")}
                 valuePercent={data.kpis.ebit_bottom_total_pct}
-                description="EBIT % zum Bottom-Price-Umsatz (bestehende Business-Case-Berechnung, CAPEX nicht enthalten)."
+                description={t("businessCase.ebitBottomGaugeDesc")}
                 data-testid="gauge-ebit-bottom"
               />
             </div>
 
             <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 md:gap-4 lg:grid-cols-2">
               <ProfitabilityGauge
-                label="ROI"
-                subtitle="Kapitalrendite"
+                label={t("businessCase.roi")}
+                subtitle={t("businessCase.capitalReturn")}
                 valuePercent={data.kpis.roi_incl_capex_actual_pct}
-                description="ROI % inkl. CAPEX zum tatsächlichen Preis (bestehende Business-Case-Berechnung)."
+                description={t("businessCase.roiGaugeDesc")}
                 data-testid="gauge-roi"
               />
               <RevenueDevelopmentChart
@@ -818,198 +846,203 @@ export function BusinessCasePage() {
                 <>
                   <div>
                     <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                      Operative Wirtschaftlichkeit
+                      {t("businessCase.operatingPerformance")}
                     </h4>
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       <KpiCard
-                        label="Bottom-Price-Umsatz"
+                        label={t("businessCase.bottomPriceRevenue")}
                         value={
                           data.kpis.bottom_price_revenue_total != null
                             ? formatRevenueEuro(data.kpis.bottom_price_revenue_total)
-                            : "–"
+                            : t("common.dash")
                         }
-                        hint="Teile + Nicht-CAPEX-Investitionen"
+                        hint={t("businessCase.partsPlusNonCapex")}
                       />
                       <KpiCard
-                        label="Tatsächlicher Umsatz"
+                        label={t("businessCase.actualRevenue")}
                         value={
                           data.kpis.actual_revenue_total != null
                             ? formatRevenueEuro(data.kpis.actual_revenue_total)
-                            : "–"
+                            : t("common.dash")
                         }
-                        hint="Teile + Nicht-CAPEX-Investitionen"
+                        hint={t("businessCase.partsPlusNonCapex")}
                       />
                       <KpiCard
-                        label="Operative Kosten"
+                        label={t("businessCase.operatingCost")}
                         value={formatCost(
                           data.kpis.operative_cost_total,
                           data.kpis.operative_cost_total != null,
                         )}
-                        hint="Teile + Entwicklung + Amortisation/Einmalzahlung"
+                        hint={t("businessCase.operativeCostHint")}
                       />
                       <KpiCard
-                        label="EBIT Bottom Price"
+                        label={t("businessCase.ebitBottom")}
                         value={formatEbitWithPercent(
                           data.kpis.ebit_bottom_total,
                           data.kpis.ebit_bottom_total_pct,
                         )}
                         tone={toneFromValue(data.kpis.ebit_bottom_total)}
-                        hint="CAPEX nicht enthalten"
+                        hint={t("businessCase.capexExcluded")}
                       />
                       <KpiCard
-                        label="EBIT tatsächlicher Preis"
+                        label={t("businessCase.ebitActual")}
                         value={formatEbitWithPercent(
                           data.kpis.ebit_actual_total,
                           data.kpis.ebit_actual_total_pct,
                         )}
                         tone={toneFromValue(data.kpis.ebit_actual_total)}
-                        hint="CAPEX nicht enthalten"
+                        hint={t("businessCase.capexExcluded")}
                       />
                       <KpiCard
-                        label="Projektstückzahl"
+                        label={t("businessCase.projectVolume")}
                         value={formatInteger(data.kpis.project_volume_total)}
-                        hint={`${data.kpis.anzahl_einzelteile} Einzelteile · ${data.kpis.anzahl_baugruppen} Baugruppen`}
+                        hint={t("businessCase.partsAssembliesHint", {
+                          parts: data.kpis.anzahl_einzelteile,
+                          assemblies: data.kpis.anzahl_baugruppen,
+                        })}
                       />
                     </div>
                   </div>
 
                   <div className="mt-6">
                     <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                      Kapitalbindung und Rendite
+                      {t("businessCase.capitalBinding")}
                     </h4>
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       <KpiCard
-                        label="CAPEX gesamt"
+                        label={t("businessCase.capexTotal")}
                         value={formatEuro(data.kpis.capex_cost_total)}
-                        hint="Nicht EBIT-wirksam, kapitalbindend"
+                        hint={t("businessCase.notEbitCapitalBinding")}
                       />
                       <KpiCard
-                        label="Sonstige Investitionskosten"
+                        label={t("businessCase.otherInvestmentCost")}
                         value={formatEuro(data.kpis.non_capex_investment_cost_total)}
-                        hint="Entwicklung + Amortisation/Einmalzahlung"
+                        hint={t("businessCase.developmentAmort")}
                       />
                       <KpiCard
-                        label="Gebundenes Projektkapital"
+                        label={t("businessCase.boundCapital")}
                         value={formatEuro(data.kpis.bound_capital_total)}
-                        hint="Operative Kosten + CAPEX"
+                        hint={t("businessCase.operativePlusCapex")}
                       />
                       <KpiCard
-                        label="ROI Bottom Price inkl. CAPEX"
+                        label={t("businessCase.roiBottomInclCapex")}
                         value={formatPercentOrDash(data.kpis.roi_incl_capex_bottom_pct)}
                         tone={toneFromValue(data.kpis.roi_incl_capex_bottom_pct)}
                       />
                       <KpiCard
-                        label="ROI tatsächlich inkl. CAPEX"
+                        label={t("businessCase.roiActualInclCapex")}
                         value={formatPercentOrDash(data.kpis.roi_incl_capex_actual_pct)}
                         tone={toneFromValue(data.kpis.roi_incl_capex_actual_pct)}
                       />
                       <KpiCard
-                        label="Operativer ROI ohne CAPEX"
+                        label={t("businessCase.operatingRoiExCapex")}
                         value={formatPercentOrDash(data.kpis.roi_operating_bottom_pct)}
                         tone={toneFromValue(data.kpis.roi_operating_bottom_pct)}
-                        hint={`tatsächlich: ${formatPercentOrDash(data.kpis.roi_operating_actual_pct)}`}
+                        hint={t("businessCase.actualColon", {
+                          value: formatPercentOrDash(data.kpis.roi_operating_actual_pct),
+                        })}
                       />
                     </div>
                   </div>
 
                   <div className="mt-6 grid gap-4 lg:grid-cols-2">
                     <BreakdownList
-                      title="Umsatzaufteilung"
+                      title={t("businessCase.revenueBreakdown")}
                       items={[
                         {
-                          label: "Teile Bottom Price",
+                          label: t("businessCase.partsBottomPrice"),
                           value:
                             data.kpi_summary.revenue_breakdown.parts_bottom_price_revenue != null
                               ? formatRevenueEuro(
                                   data.kpi_summary.revenue_breakdown.parts_bottom_price_revenue,
                                 )
-                              : "–",
+                              : t("common.dash"),
                         },
                         {
-                          label: "Teile tatsächlich",
+                          label: t("businessCase.partsActual"),
                           value:
                             data.kpi_summary.revenue_breakdown.parts_actual_revenue != null
                               ? formatRevenueEuro(data.kpi_summary.revenue_breakdown.parts_actual_revenue)
-                              : "–",
+                              : t("common.dash"),
                         },
                         {
-                          label: "Investitionen Bottom Price",
+                          label: t("businessCase.investmentsBottomPrice"),
                           value:
                             data.kpi_summary.revenue_breakdown.investments_bottom_price_revenue != null
                               ? formatRevenueEuro(
                                   data.kpi_summary.revenue_breakdown.investments_bottom_price_revenue,
                                 )
-                              : "–",
+                              : t("common.dash"),
                         },
                         {
-                          label: "Investitionen tatsächlich",
+                          label: t("businessCase.investmentsActual"),
                           value:
                             data.kpi_summary.revenue_breakdown.investments_actual_revenue != null
                               ? formatRevenueEuro(
                                   data.kpi_summary.revenue_breakdown.investments_actual_revenue,
                                 )
-                              : "–",
+                              : t("common.dash"),
                         },
                         {
-                          label: "Gesamtumsatz Bottom Price",
+                          label: t("businessCase.totalRevenueBottom"),
                           value:
                             data.kpi_summary.revenue_breakdown.total_bottom_price_revenue != null
                               ? formatRevenueEuro(
                                   data.kpi_summary.revenue_breakdown.total_bottom_price_revenue,
                                 )
-                              : "–",
+                              : t("common.dash"),
                         },
                         {
-                          label: "Gesamtumsatz tatsächlich",
+                          label: t("businessCase.totalRevenueActual"),
                           value:
                             data.kpi_summary.revenue_breakdown.total_actual_revenue != null
                               ? formatRevenueEuro(data.kpi_summary.revenue_breakdown.total_actual_revenue)
-                              : "–",
+                              : t("common.dash"),
                         },
                       ]}
                     />
                     <BreakdownList
-                      title="Kostenaufteilung"
+                      title={t("businessCase.costBreakdown")}
                       items={[
                         {
-                          label: "Freistehende Einzelteile",
+                          label: t("businessCase.standaloneParts"),
                           value: formatCost(
                             data.kpi_summary.cost_breakdown.parts_standalone,
                             data.kpi_summary.cost_breakdown.parts_standalone != null,
                           ),
                         },
                         {
-                          label: "Baugruppen",
+                          label: t("businessCase.detailsAssemblies"),
                           value: formatCost(
                             data.kpi_summary.cost_breakdown.assemblies,
                             data.kpi_summary.cost_breakdown.assemblies != null,
                           ),
                         },
                         {
-                          label: "CAPEX",
+                          label: t("businessCase.capex"),
                           value: formatEuro(data.kpi_summary.cost_breakdown.capex),
                         },
                         {
-                          label: "Entwicklung",
+                          label: t("businessCase.development"),
                           value: formatEuro(data.kpi_summary.cost_breakdown.entwicklung),
                         },
                         {
-                          label: "Amortisation / Einmalzahlung",
+                          label: t("businessCase.amortization"),
                           value: formatEuro(data.kpi_summary.cost_breakdown.legacy),
                         },
                         {
-                          label: "CAPEX (nicht EBIT-wirksam)",
+                          label: t("businessCase.capexNotEbit"),
                           value: formatEuro(data.kpi_summary.cost_breakdown.capex),
                         },
                         {
-                          label: "Operative Kosten gesamt",
+                          label: t("businessCase.operativeCostTotal"),
                           value: formatCost(
                             data.kpi_summary.cost_breakdown.operative_total,
                             data.kpi_summary.cost_breakdown.operative_total != null,
                           ),
                         },
                         {
-                          label: "Gebundenes Projektkapital",
+                          label: t("businessCase.boundCapital"),
                           value: formatEuro(data.kpi_summary.cost_breakdown.bound_capital),
                         },
                       ]}
@@ -1017,7 +1050,9 @@ export function BusinessCasePage() {
                   </div>
 
                   <div className="mt-6">
-                    <h4 className="mb-3 font-semibold text-gray-800">Szenariovergleich</h4>
+                    <h4 className="mb-3 font-semibold text-gray-800">
+                      {t("businessCase.scenarioComparison")}
+                    </h4>
                     <ScenarioComparisonTable summary={data.kpi_summary} />
                     <p className="mt-2 text-xs text-gray-500">{data.kpi_summary.ebit_note}</p>
                     <p className="mt-1 text-xs text-gray-500">{data.kpi_summary.roi_note}</p>
@@ -1029,18 +1064,18 @@ export function BusinessCasePage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold">Details – Einzelteile (ohne Baugruppen-Bestandteile)</h3>
+            <h3 className="mb-3 font-semibold">{t("businessCase.detailsParts")}</h3>
             {data.parts.length === 0 ? (
-              <p className="text-sm text-gray-600">Keine standalone Einzelteile für dieses Projekt.</p>
+              <p className="text-sm text-gray-600">{t("businessCase.noStandaloneParts")}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-gray-600">
-                      <th className="py-2 pr-3">Bezeichnung</th>
-                      <th className="py-2 pr-3">Materialnr.</th>
+                      <th className="py-2 pr-3">{t("businessCase.designation")}</th>
+                      <th className="py-2 pr-3">{t("businessCase.materialNumber")}</th>
                       {priceColumns}
-                      <th className="py-2">Aktionen</th>
+                      <th className="py-2">{t("common.actions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1059,18 +1094,18 @@ export function BusinessCasePage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold">Baugruppen</h3>
+            <h3 className="mb-3 font-semibold">{t("businessCase.detailsAssemblies")}</h3>
             {data.assemblies.length === 0 ? (
-              <p className="text-sm text-gray-600">Keine Baugruppen für dieses Projekt.</p>
+              <p className="text-sm text-gray-600">{t("businessCase.noAssemblies")}</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-gray-600">
-                      <th className="py-2 pr-3">Name</th>
-                      <th className="py-2 pr-3">Materialnr.</th>
+                      <th className="py-2 pr-3">{t("businessCase.name")}</th>
+                      <th className="py-2 pr-3">{t("businessCase.materialNumber")}</th>
                       {priceColumns}
-                      <th className="py-2">Aktionen</th>
+                      <th className="py-2">{t("common.actions")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1089,50 +1124,54 @@ export function BusinessCasePage() {
           </section>
 
           <section className="rounded-lg border border-gray-200 bg-white p-4">
-            <h3 className="mb-3 font-semibold">Details – Investitionen</h3>
+            <h3 className="mb-3 font-semibold">{t("businessCase.detailsInvestmentsFull")}</h3>
             {data.kpi_summary && <InvestmentDashboardHead summary={data.kpi_summary} />}
             {data.investment_financial_summary && (
               <div className="mb-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
                 <CategorySummary
-                  title="CAPEX / Werksinvestitionen"
+                  title={t("businessCase.capexPlantInvestments")}
                   block={data.investment_financial_summary.capex}
                   showMargins={false}
-                  note="Nicht EBIT-wirksam, kapitalbindend"
+                  note={t("businessCase.notEbitCapitalBinding")}
                 />
                 <CategorySummary
-                  title="Entwicklungsinvestitionen"
+                  title={t("businessCase.developmentInvestments")}
                   block={data.investment_financial_summary.entwicklung}
                 />
                 <CategorySummary
-                  title="Amortisation / Einmalzahlung"
+                  title={t("businessCase.amortization")}
                   block={data.investment_financial_summary.legacy}
                 />
                 <CategorySummary
-                  title="Gesamt Investitionskosten"
+                  title={t("businessCase.totalInvestmentCost")}
                   block={data.investment_financial_summary.totals}
                 />
               </div>
             )}
             {data.investments.length === 0 ? (
-              <p className="text-sm text-gray-600">Keine Investitionen.</p>
+              <p className="text-sm text-gray-600">{t("businessCase.noInvestmentsShort")}</p>
             ) : (
               <div className="space-y-6">
                 {(data.investments_capex?.length ?? 0) > 0 && (
                   <div>
-                    <h4 className="mb-2 font-semibold text-gray-800">CAPEX / Werksinvestitionen</h4>
+                    <h4 className="mb-2 font-semibold text-gray-800">
+                      {t("businessCase.capexPlantInvestments")}
+                    </h4>
                     <InvestmentTable rows={data.investments_capex} mode="capex" />
                   </div>
                 )}
                 {(data.investments_entwicklung?.length ?? 0) > 0 && (
                   <div>
-                    <h4 className="mb-2 font-semibold text-gray-800">Entwicklungsinvestitionen</h4>
+                    <h4 className="mb-2 font-semibold text-gray-800">
+                      {t("businessCase.developmentInvestments")}
+                    </h4>
                     <InvestmentTable rows={data.investments_entwicklung} mode="entwicklung" />
                   </div>
                 )}
                 {(data.investments_other?.length ?? 0) > 0 && (
                   <div>
                     <h4 className="mb-2 font-semibold text-gray-800">
-                      Amortisation / Einmalzahlung
+                      {t("businessCase.amortization")}
                     </h4>
                     <InvestmentTable rows={data.investments_other} mode="other" />
                   </div>
@@ -1146,7 +1185,7 @@ export function BusinessCasePage() {
 
       {!data && !loading && !error && (
         <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center text-sm text-gray-600">
-          Bitte Kunde, Programm und Projekt wählen und „Business Case anzeigen“ klicken.
+          {t("businessCase.emptyState")}
         </div>
       )}
 

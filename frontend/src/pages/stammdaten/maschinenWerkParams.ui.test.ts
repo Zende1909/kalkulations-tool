@@ -23,9 +23,9 @@ describe("Maschinen-Stammdatenmaske Plant-Costing UI", () => {
   });
 
   it("Werk ist Pflicht und zeigt inaktive Zuordnung", () => {
-    expect(pageSrc).toMatch(/Werk wählen/);
+    expect(pageSrc).toMatch(/masterData\.selectPlant/);
     expect(pageSrc).toMatch(/required: true/);
-    expect(pageSrc).toMatch(/\(inaktiv\)/);
+    expect(pageSrc).toMatch(/masterData\.plantInactive/);
     expect(pageSrc).toMatch(/w\.aktiv/);
   });
 
@@ -51,20 +51,20 @@ describe("Maschinen-Stammdatenmaske Plant-Costing UI", () => {
   });
 
   it("maschinenabhängige Felder und Readonly-Stundensatz bleiben", () => {
-    expect(pageSrc).toMatch(/Investment/);
-    expect(pageSrc).toMatch(/Schließkraft/);
-    expect(pageSrc).toMatch(/Setup-Zeit/);
-    expect(pageSrc).toMatch(/Setup-Mitarbeiteranzahl/);
-    expect(pageSrc).toMatch(/Stromverbrauch/);
+    expect(pageSrc).toMatch(/masterData\.investment/);
+    expect(pageSrc).toMatch(/masterData\.clampingForceT/);
+    expect(pageSrc).toMatch(/masterData\.setupTimeMin/);
+    expect(pageSrc).toMatch(/masterData\.setupOperators/);
+    expect(pageSrc).toMatch(/masterData\.powerConsumption/);
     expect(pageSrc).toMatch(/readOnly: true/);
-    expect(pageSrc).toMatch(/Stundensatz \(EUR\/h\)/);
-    expect(pageSrc).toMatch(/Kostenparameter werden aus Werk/);
+    expect(pageSrc).toMatch(/masterData\.hourlyRateEurH/);
+    expect(pageSrc).toMatch(/masterData\.plantParamsBanner/);
   });
 
   it("Werk-Stammdaten pflegen die Standortparameter", () => {
-    expect(werkeSrc).toMatch(/Arbeitstage\/Jahr/);
-    expect(werkeSrc).toMatch(/Space-Satz/);
-    expect(werkeSrc).toMatch(/Strompreis/);
+    expect(werkeSrc).toMatch(/masterData\.workdaysPerYear/);
+    expect(werkeSrc).toMatch(/masterData\.spaceCostRate/);
+    expect(werkeSrc).toMatch(/masterData\.electricityPrice/);
     expect(werkeSrc).toMatch(/oee/);
   });
 });

@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 
+import { useT } from "../../i18n";
+import { processTeilbildFile, TeilbildError, teilbildSrc } from "../../utils/teilbild";
 import { Button } from "../ui/Button";
 import { ValidationMessage } from "../ui/ValidationMessage";
-import { processTeilbildFile, teilbildSrc } from "../../utils/teilbild";
 
 export function TeilbildField({
   mime,
@@ -15,6 +16,7 @@ export function TeilbildField({
   onChange: (next: { mime: string | null; data: string | null }) => void;
   disabled?: boolean;
 }) {
+  const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -30,7 +32,11 @@ export function TeilbildField({
       const processed = await processTeilbildFile(file);
       onChange(processed);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Bild konnte nicht verarbeitet werden.");
+      if (err instanceof TeilbildError) {
+        setError(t(err.code));
+      } else {
+        setError(err instanceof Error ? err.message : t("spritzguss.imageProcessFailed"));
+      }
     } finally {
       setBusy(false);
     }
@@ -41,17 +47,19 @@ export function TeilbildField({
       <div className="flex flex-col gap-3 rounded-app border border-app-border bg-slate-50 p-4 sm:flex-row sm:items-start">
         <div className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-app border border-app-border bg-white">
           {preview ? (
-            <img src={preview} alt="Teilbild Vorschau" className="h-full w-full object-contain" />
+            <img
+              src={preview}
+              alt={t("spritzguss.partImagePreview")}
+              className="h-full w-full object-contain"
+            />
           ) : (
-            <span className="px-2 text-center text-xs text-app-muted">Kein Bild</span>
+            <span className="px-2 text-center text-xs text-app-muted">{t("spritzguss.noImage")}</span>
           )}
         </div>
         <div className="min-w-0 flex-1 space-y-2">
           <div>
-            <p className="text-body-lg font-medium text-app-heading">Teilbild</p>
-            <p className="text-sm text-app-muted">
-              Optional – wird in der Kalkulation, in der Liste und im PDF/Excel-Export angezeigt.
-            </p>
+            <p className="text-body-lg font-medium text-app-heading">{t("spritzguss.partImage")}</p>
+            <p className="text-sm text-app-muted">{t("spritzguss.partImageHint")}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -61,7 +69,11 @@ export function TeilbildField({
               disabled={disabled || busy}
               onClick={() => inputRef.current?.click()}
             >
-              {busy ? "Verarbeite…" : preview ? "Bild ersetzen" : "Bild hochladen"}
+              {busy
+                ? t("common.processing")
+                : preview
+                  ? t("spritzguss.replaceImage")
+                  : t("spritzguss.uploadImage")}
             </Button>
             {preview && !disabled ? (
               <Button
@@ -70,7 +82,7 @@ export function TeilbildField({
                 size="sm"
                 onClick={() => onChange({ mime: null, data: null })}
               >
-                Entfernen
+                {t("common.remove")}
               </Button>
             ) : null}
           </div>

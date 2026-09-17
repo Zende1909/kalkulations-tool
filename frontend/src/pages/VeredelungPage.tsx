@@ -32,6 +32,7 @@ import {
   loadVeredelungDecimalRaw,
   parseVeredelungDecimalFields,
 } from "../utils/veredelungFormDecimals";
+import { useT } from "../i18n";
 
 type FormMode = "create" | "edit";
 
@@ -43,35 +44,50 @@ function euro(value: number | null | undefined): string {
   });
 }
 
-function formatFetchError(err: unknown, method: string, url: string): string {
+type TFn = (key: string, params?: Record<string, string | number | null | undefined>) => string;
+
+function formatFetchError(err: unknown, method: string, url: string, t: TFn): string {
   if (err instanceof NetworkError) return err.message;
   if (err instanceof Error) return err.message;
-  return `Unbekannter Fehler bei ${method} ${url}`;
+  return t("finishing.unknownError", { method, url });
 }
 
-function validateForm(form: VeredelungsschrittPayload): string | null {
-  if (!form.bezeichnung.trim()) return "Bezeichnung ist erforderlich.";
+const FINISHING_ART_KEYS: Record<string, string> = {
+  Montage: "finishing.artMontage",
+  Ultraschallschweißen: "finishing.artUltraschallschweissen",
+  Vibrationsschweißen: "finishing.artVibrationsschweissen",
+  Lackieren: "finishing.artLackieren",
+  Bedrucken: "finishing.artBedrucken",
+  Kaschieren: "finishing.artKaschieren",
+  Clipsen: "finishing.artClipsen",
+  Schrauben: "finishing.artSchrauben",
+  Sonstige: "finishing.artSonstige",
+};
+
+function validateForm(form: VeredelungsschrittPayload, t: TFn): string | null {
+  if (!form.bezeichnung.trim()) return t("finishing.errName");
   if (!Number.isInteger(form.reihenfolge) || form.reihenfolge < 1) {
-    return "Reihenfolge muss eine positive ganze Zahl >= 1 sein.";
+    return t("finishing.errSequence");
   }
-  if (form.taktzeit_s < 0) return "Taktzeit darf nicht negativ sein.";
+  if (form.taktzeit_s < 0) return t("finishing.errCycleTime");
   if (!Number.isInteger(form.anzahl_mitarbeiter) || form.anzahl_mitarbeiter < 1) {
-    return "Anzahl Mitarbeiter muss mindestens 1 sein.";
+    return t("finishing.errStaff");
   }
-  if (form.lohnstundensatz < 0) return "Lohnstundensatz darf nicht negativ sein.";
+  if (form.lohnstundensatz < 0) return t("finishing.errLaborRate");
   if (form.maschinenstundensatz != null && form.maschinenstundensatz < 0) {
-    return "Maschinenstundensatz muss leer oder nicht negativ sein.";
+    return t("finishing.errMachineRate");
   }
   if (form.verbrauchskosten_je_stueck < 0) {
-    return "Verbrauchskosten dürfen nicht negativ sein.";
+    return t("finishing.errConsumables");
   }
   if (form.ausschussquote_pct < 0 || form.ausschussquote_pct >= 100) {
-    return "Ausschussquote muss >= 0 und < 100 % sein.";
+    return t("finishing.errScrap");
   }
   return null;
 }
 
 export function VeredelungPage() {
+  const t = useT();
   const { canWrite } = useAuth();
   const [rows, setRows] = useState<Veredelungsschritt[]>([]);
   const [lohnsaetze, setLohnsaetze] = useState<Lohnkosten[]>([]);
@@ -105,13 +121,13 @@ export function VeredelungPage() {
       const data = await listVeredelungsschritte();
       setRows(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError(formatFetchError(err, "GET", apiUrl));
+      setError(formatFetchError(err, "GET", apiUrl, t));
       throw err;
     } finally {
       if (isInitial) setInitialLoading(false);
       else setRefreshing(false);
     }
-  }, [apiUrl]);
+  }, [apiUrl, t]);
 
   useEffect(() => {
     loadData({ initial: true }).catch(() => undefined);
@@ -204,11 +220,11 @@ export function VeredelungPage() {
           ? err.message
           : err instanceof Error
             ? err.message
-            : "Ungültige Dezimalwerte.",
+            : t("finishing.invalidDecimals"),
       );
       return;
     }
-    const clientError = validateForm(formForValidation);
+    const clientError = validateForm(formForValidation, t);
     if (clientError) {
       setFormError(clientError);
       return;
@@ -229,11 +245,11 @@ export function VeredelungPage() {
         setShowForm(false);
         setEditingId(null);
         setFormMode("create");
-        setSuccess("Veredelungsschritt erfolgreich aktualisiert.");
+        setSuccess(t("finishing.updated"));
       } else {
         await createVeredelungsschritt(payload);
         setShowForm(false);
-        setSuccess("Veredelungsschritt erfolgreich angelegt.");
+        setSuccess(t("finishing.created"));
       }
 
       try {
@@ -245,7 +261,7 @@ export function VeredelungPage() {
       const method = formMode === "edit" ? "PUT" : "POST";
       const url =
         formMode === "edit" && editingId != null ? `${apiUrl}/${editingId}` : apiUrl;
-      setFormError(formatFetchError(err, method, url));
+      setFormError(formatFetchError(err, method, url, t));
     } finally {
       setSubmitting(false);
     }
@@ -253,7 +269,7 @@ export function VeredelungPage() {
 
   const handleDelete = async () => {
     if (selectedId === null) {
-      setError("Bitte zuerst eine Zeile in der Tabelle auswählen.");
+      setError(t("finishing.selectRow"));
       return;
     }
     setError(null);
@@ -262,47 +278,53 @@ export function VeredelungPage() {
       await deleteVeredelungsschritt(selectedId);
       setSelectedId(null);
       await loadData();
-      setSuccess("Veredelungsschritt erfolgreich gelöscht.");
+      setSuccess(t("finishing.deleted"));
     } catch (err) {
-      setError(formatFetchError(err, "DELETE", `${apiUrl}/${selectedId}`));
+      setError(formatFetchError(err, "DELETE", `${apiUrl}/${selectedId}`, t));
     }
   };
 
   const columnDefs = useMemo<ColDef<Veredelungsschritt>[]>(
     () => [
-      { field: "reihenfolge", headerName: "Reihenfolge", width: 110, sort: "asc" },
-      { field: "bezeichnung", headerName: "Bezeichnung", minWidth: 140 },
-      { field: "veredelungsart", headerName: "Art", minWidth: 140 },
-      { field: "taktzeit_s", headerName: "Taktzeit (s)", width: 120 },
-      { field: "anzahl_mitarbeiter", headerName: "MA", width: 80 },
+      { field: "reihenfolge", headerName: t("finishing.colSequence"), width: 110, sort: "asc" },
+      { field: "bezeichnung", headerName: t("finishing.colDesignation"), minWidth: 140 },
+      {
+        field: "veredelungsart",
+        headerName: t("finishing.colType"),
+        minWidth: 140,
+        valueFormatter: (p) =>
+          p.value ? t(FINISHING_ART_KEYS[String(p.value)] ?? String(p.value)) : "",
+      },
+      { field: "taktzeit_s", headerName: t("finishing.colCycleTime"), width: 120 },
+      { field: "anzahl_mitarbeiter", headerName: t("finishing.colStaff"), width: 80 },
       {
         field: "lohnkosten_je_stueck",
-        headerName: "Lohn/Stück",
+        headerName: t("finishing.colLaborPc"),
         valueFormatter: (p) => euro(p.value),
       },
       {
         field: "maschinenkosten_je_stueck",
-        headerName: "Maschine/Stück",
+        headerName: t("finishing.colMachinePc"),
         valueFormatter: (p) => euro(p.value),
       },
       {
         field: "kosten_vor_ausschuss",
-        headerName: "vor Ausschuss",
+        headerName: t("finishing.colBeforeScrap"),
         valueFormatter: (p) => euro(p.value),
       },
       {
         field: "kosten_inkl_ausschuss",
-        headerName: "inkl. Ausschuss",
+        headerName: t("finishing.colInclScrap"),
         valueFormatter: (p) => euro(p.value),
       },
       {
         field: "aktiv",
-        headerName: "Aktiv",
+        headerName: t("finishing.colActive"),
         width: 90,
-        valueFormatter: (p) => (p.value ? "Ja" : "Nein"),
+        valueFormatter: (p) => (p.value ? t("common.yes") : t("common.no")),
       },
     ],
-    [],
+    [t],
   );
 
   const cols = useMemo(() => {
@@ -328,7 +350,7 @@ export function VeredelungPage() {
                 openEditForm(params.data as Veredelungsschritt);
               }}
             >
-              Bearbeiten
+              {t("common.edit")}
             </button>
           );
         },
@@ -343,20 +365,18 @@ export function VeredelungPage() {
   );
 
   const formTitle =
-    formMode === "edit" ? "Veredelungsschritt bearbeiten" : "Veredelungsschritt anlegen";
+    formMode === "edit" ? t("finishing.editTitle") : t("finishing.createTitle");
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Veredelung</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Kalkulation von Veredelungs- und Nachbearbeitungsschritten.
-          </p>
+          <h2 className="text-2xl font-bold text-gray-900">{t("nav.finishing")}</h2>
+          <p className="mt-1 text-sm text-gray-600">{t("finishing.intro")}</p>
           <p className="mt-1 text-xs text-gray-500">
             API: {apiUrl}
-            {refreshing ? " · Aktualisiere Liste…" : ""}
-            {!initialLoading ? ` · ${rows.length} Einträge geladen` : ""}
+            {refreshing ? t("finishing.apiRefreshing") : ""}
+            {!initialLoading ? t("finishing.apiLoaded", { count: rows.length }) : ""}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -367,7 +387,7 @@ export function VeredelungPage() {
             }}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
-            Aktualisieren
+            {t("common.reload")}
           </button>
           {canWrite && (
             <>
@@ -376,14 +396,14 @@ export function VeredelungPage() {
                 onClick={openCreateForm}
                 className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
               >
-                Neu
+                {t("finishing.new")}
               </button>
               <button
                 type="button"
                 onClick={handleDelete}
                 className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
               >
-                Ausgewählte löschen
+                {t("finishing.deleteSelected")}
               </button>
             </>
           )}
@@ -400,17 +420,17 @@ export function VeredelungPage() {
       )}
 
       <div className="mb-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm">
-        <span className="text-gray-600">Gesamtkosten aller aktiven Schritte: </span>
+        <span className="text-gray-600">{t("finishing.totalActiveCost")} </span>
         <span className="font-semibold tabular-nums text-gray-900">
-          {euro(gesamtkostenAktiv)} € / Stück
+          {t("finishing.perPiece", { amount: euro(gesamtkostenAktiv) })}
         </span>
       </div>
 
       {initialLoading ? (
-        <p className="text-gray-600">Lade Daten...</p>
+        <p className="text-gray-600">{t("finishing.loading")}</p>
       ) : rows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-gray-500">
-          Keine Veredelungsschritte vorhanden. Mit „Neu“ anlegen.
+          {t("finishing.empty")}
         </div>
       ) : (
         <div className="ag-theme-quartz" style={{ height: 500, width: "100%" }}>
@@ -448,7 +468,7 @@ export function VeredelungPage() {
                 type="button"
                 onClick={closeForm}
                 className="text-gray-400 hover:text-gray-600"
-                aria-label="Schließen"
+                aria-label={t("common.close")}
               >
                 ✕
               </button>
@@ -468,7 +488,7 @@ export function VeredelungPage() {
               className="grid gap-4 md:grid-cols-2"
             >
               <label className="block text-sm md:col-span-2">
-                <span className="font-medium text-gray-700">Bezeichnung</span>
+                <span className="font-medium text-gray-700">{t("finishing.designation")}</span>
                 <input
                   required
                   value={form.bezeichnung}
@@ -480,7 +500,7 @@ export function VeredelungPage() {
               </label>
 
               <label className="block text-sm">
-                <span className="font-medium text-gray-700">Veredelungsart</span>
+                <span className="font-medium text-gray-700">{t("finishing.finishingType")}</span>
                 <select
                   required
                   value={form.veredelungsart}
@@ -494,14 +514,14 @@ export function VeredelungPage() {
                 >
                   {VEREDELUNGSARTEN.map((art) => (
                     <option key={art} value={art}>
-                      {art}
+                      {t(FINISHING_ART_KEYS[art] ?? art)}
                     </option>
                   ))}
                 </select>
               </label>
 
               <label className="block text-sm">
-                <span className="font-medium text-gray-700">Reihenfolge</span>
+                <span className="font-medium text-gray-700">{t("finishing.sequence")}</span>
                 <input
                   type="number"
                   required
@@ -519,7 +539,7 @@ export function VeredelungPage() {
               </label>
 
               <label className="block text-sm md:col-span-2">
-                <span className="font-medium text-gray-700">Beschreibung</span>
+                <span className="font-medium text-gray-700">{t("finishing.description")}</span>
                 <textarea
                   value={form.beschreibung}
                   onChange={(e) =>
@@ -532,7 +552,7 @@ export function VeredelungPage() {
 
               <FormDecimalInput
                 fieldKey="taktzeit_s"
-                label="Taktzeit (s / Stück)"
+                label={t("finishing.cycleTime")}
                 value={form.taktzeit_s}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
@@ -540,7 +560,7 @@ export function VeredelungPage() {
               />
 
               <label className="block text-sm">
-                <span className="font-medium text-gray-700">Anzahl Mitarbeiter</span>
+                <span className="font-medium text-gray-700">{t("finishing.staffCount")}</span>
                 <input
                   type="number"
                   required
@@ -558,15 +578,13 @@ export function VeredelungPage() {
               </label>
 
               <label className="block text-sm">
-                <span className="font-medium text-gray-700">
-                  Lohnstundensatz (Stammdaten)
-                </span>
+                <span className="font-medium text-gray-700">{t("finishing.laborFromMaster")}</span>
                 <select
                   value={form.lohnkosten_id ?? ""}
                   onChange={(e) => handleLohnSelect(e.target.value)}
                   className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
                 >
-                  <option value="">– manuell / wählen –</option>
+                  <option value="">{t("finishing.laborManual")}</option>
                   {lohnsaetze.map((lohn) => (
                     <option key={lohn.id} value={lohn.id}>
                       {lohn.bezeichnung} ({euro(lohn.kosten_pro_stunde)} €/h)
@@ -577,7 +595,7 @@ export function VeredelungPage() {
 
               <FormDecimalInput
                 fieldKey="lohnstundensatz"
-                label="Lohnstundensatz (€/h)"
+                label={t("finishing.laborRate")}
                 value={form.lohnstundensatz}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
@@ -586,7 +604,7 @@ export function VeredelungPage() {
 
               <FormDecimalInput
                 fieldKey="maschinenstundensatz"
-                label="Maschinenstundensatz (€/h, optional)"
+                label={t("finishing.machineRate")}
                 value={form.maschinenstundensatz ?? 0}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
@@ -595,7 +613,7 @@ export function VeredelungPage() {
 
               <FormDecimalInput
                 fieldKey="verbrauchskosten_je_stueck"
-                label="Verbrauchskosten je Stück (€)"
+                label={t("finishing.consumables")}
                 value={form.verbrauchskosten_je_stueck}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
@@ -604,7 +622,7 @@ export function VeredelungPage() {
 
               <FormDecimalInput
                 fieldKey="ausschussquote_pct"
-                label="Ausschussquote (%)"
+                label={t("finishing.scrapRate")}
                 value={form.ausschussquote_pct}
                 decimalRaw={decimalRaw}
                 onDecimalChange={handleDecimalChange}
@@ -620,14 +638,10 @@ export function VeredelungPage() {
                   }
                   className="h-4 w-4 rounded border-gray-300"
                 />
-                <span className="font-medium text-gray-700">Aktiv</span>
+                <span className="font-medium text-gray-700">{t("common.active")}</span>
               </label>
 
-              <p className="text-sm text-gray-600 md:col-span-2">
-                FGK wird zentral aus Stammdaten → Zuschlagssätze auf Maschinenkosten,
-                Fertigungslohn und direkte Veredelungskosten angewendet – nicht mehr in diesem
-                Formular.
-              </p>
+              <p className="text-sm text-gray-600 md:col-span-2">{t("finishing.fgkHint")}</p>
 
               <div className="flex justify-end gap-2 pt-2 md:col-span-2">
                 <button
@@ -635,14 +649,14 @@ export function VeredelungPage() {
                   onClick={closeForm}
                   className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
-                  Abbrechen
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
                   className="rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
                 >
-                  {submitting ? "Speichern..." : "Speichern"}
+                  {submitting ? t("common.saving") : t("common.save")}
                 </button>
               </div>
             </form>

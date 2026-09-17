@@ -3,33 +3,27 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../../api/client";
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
+import { useT } from "../../i18n";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import type { Land, Werk } from "../../types/stammdaten";
 import { WERK_RATE_FRACTION_FIELDS } from "../../utils/decimalInput";
 import { loadWerkFormValues, submitWerkFormValues } from "../../utils/werkFormDecimals";
 
-const RATE_HINT = "Eingabe als Prozentwert, z. B. 8 = 8 %";
+type TFn = (key: string, params?: Record<string, string | number>) => string;
 
-const columnDefs: ColDef<Werk>[] = [
-  { field: "code", headerName: "Code" },
-  { field: "name", headerName: "Name" },
-  { field: "land_id", headerName: "Land-ID" },
-  { field: "currency", headerName: "Währung" },
-  { field: "fx_to_eur", headerName: "FX → EUR" },
-  { field: "arbeitstage_pro_jahr", headerName: "Tage/Jahr" },
-  { field: "produktionsintervall_arbeitstage", headerName: "Prod.-Intervall" },
-  { field: "oee", headerName: "OEE (0–1)" },
-  { field: "aktiv", headerName: "Aktiv" },
-];
+function rateLabels(t: TFn): Record<string, string> {
+  return {
+    zinssatz: t("masterData.interestRate"),
+    versicherungssatz: t("masterData.insuranceRate"),
+    instandhaltungssatz: t("masterData.maintenanceRate"),
+  };
+}
 
 function rateFractionWarnings(
   values: Record<string, string | number | boolean>,
+  t: TFn,
 ): string[] {
-  const labels: Record<string, string> = {
-    zinssatz: "Zinssatz",
-    versicherungssatz: "Versicherungssatz",
-    instandhaltungssatz: "Instandhaltungssatz",
-  };
+  const labels = rateLabels(t);
   const warnings: string[] = [];
   for (const key of WERK_RATE_FRACTION_FIELDS) {
     const raw = values[key];
@@ -37,7 +31,7 @@ function rateFractionWarnings(
     const num = typeof raw === "number" ? raw : Number(raw);
     if (Number.isFinite(num) && num > 100) {
       warnings.push(
-        `${labels[key]}: Anzeigewert ${num} liegt außerhalb 0–100 %. Bitte Stammdaten manuell prüfen (keine Automatikkorrektur).`,
+        t("masterData.rateOutOfRangeUi", { label: labels[key], value: num }),
       );
     }
   }
@@ -45,20 +39,18 @@ function rateFractionWarnings(
 }
 
 /** Warnung anhand der API-Rohwerte (Anteil), bevor ×100. */
-export function warningsForStoredRateFractions(werk: Partial<Werk>): string[] {
-  const labels: Record<string, string> = {
-    zinssatz: "Zinssatz",
-    versicherungssatz: "Versicherungssatz",
-    instandhaltungssatz: "Instandhaltungssatz",
-  };
+export function warningsForStoredRateFractions(
+  werk: Partial<Werk>,
+  t: TFn,
+): string[] {
+  const labels = rateLabels(t);
   const out: string[] = [];
   for (const key of WERK_RATE_FRACTION_FIELDS) {
     const v = werk[key];
     if (v == null || !Number.isFinite(v)) continue;
     if (v < 0 || v > 1) {
       out.push(
-        `${labels[key]}: gespeicherter Anteil ${v} liegt außerhalb 0–1 ` +
-          `(erwartet z. B. 0,08 für 8 %). Bitte manuell korrigieren – keine automatische Anpassung.`,
+        t("masterData.rateOutOfRangeStored", { label: labels[key], value: v }),
       );
     }
   }
@@ -66,6 +58,7 @@ export function warningsForStoredRateFractions(werk: Partial<Werk>): string[] {
 }
 
 export function WerkePage() {
+  const t = useT();
   const [lands, setLands] = useState<Land[]>([]);
   const [formBannerExtra, setFormBannerExtra] = useState<string[]>([]);
 
@@ -73,116 +66,132 @@ export function WerkePage() {
     api.get<Land[]>("/laender").then(setLands).catch(() => setLands([]));
   }, []);
 
+  const columnDefs = useMemo(
+    (): ColDef<Werk>[] => [
+      { field: "code", headerName: t("masterData.code") },
+      { field: "name", headerName: t("masterData.name") },
+      { field: "land_id", headerName: t("masterData.landId") },
+      { field: "currency", headerName: t("masterData.currency") },
+      { field: "fx_to_eur", headerName: t("masterData.fxToEur") },
+      { field: "arbeitstage_pro_jahr", headerName: t("masterData.daysPerYear") },
+      { field: "produktionsintervall_arbeitstage", headerName: t("masterData.prodInterval") },
+      { field: "oee", headerName: t("masterData.oee01") },
+      { field: "aktiv", headerName: t("common.active") },
+    ],
+    [t],
+  );
+
   const formFields: FormField[] = useMemo(
     () => [
       {
         name: "land_id",
-        label: "Land",
+        label: t("masterData.country"),
         type: "select",
         required: true,
         options: lands.map((l) => ({ value: String(l.id), label: `${l.code} – ${l.name}` })),
       },
-      { name: "code", label: "Code", type: "text", required: true },
-      { name: "name", label: "Name", type: "text", required: true },
-      { name: "currency", label: "Quellwährung", type: "text", required: true },
+      { name: "code", label: t("masterData.code"), type: "text", required: true },
+      { name: "name", label: t("masterData.name"), type: "text", required: true },
+      { name: "currency", label: t("masterData.sourceCurrency"), type: "text", required: true },
       {
         name: "fx_to_eur",
-        label: "Wechselkurs → EUR",
+        label: t("masterData.fxToEurLabel"),
         type: "number",
         required: true,
         step: "0.0001",
       },
       {
         name: "arbeitstage_pro_jahr",
-        label: "Arbeitstage/Jahr",
+        label: t("masterData.workdaysPerYear"),
         type: "number",
         step: "1",
       },
       {
         name: "produktionsintervall_arbeitstage",
-        label: "Produktionsintervall (Arbeitstage)",
+        label: t("masterData.productionIntervalDays"),
         type: "number",
         step: "1",
-        hint: "Standard 30 Arbeitstage für automatische Losgröße – keine EOQ/Andler-Formel.",
+        hint: t("masterData.productionIntervalHint"),
       },
-      { name: "schichten_pro_tag", label: "Schichten/Tag", type: "number", step: "1" },
+      { name: "schichten_pro_tag", label: t("masterData.shiftsPerDay"), type: "number", step: "1" },
       {
         name: "stunden_pro_schicht",
-        label: "Stunden/Schicht",
+        label: t("masterData.hoursPerShift"),
         type: "number",
         step: "0.1",
       },
       {
         name: "oee",
-        label: "OEE (0–1)",
+        label: t("masterData.oee01"),
         type: "number",
         step: "0.0001",
-        hint: "Anteil, z. B. 0,9 = 90 %. Nicht als Prozentpunkt eingeben.",
+        hint: t("masterData.oeeHint"),
       },
       {
         name: "space_cost_satz_pro_sqm_jahr",
-        label: "Space-Satz (€/m²/a)",
+        label: t("masterData.spaceCostRate"),
         type: "number",
         step: "0.0001",
-        hint: "Absoluter Kostensatz in Quellwährung, z. B. 30 oder 30,5 – keine Prozentangabe.",
+        hint: t("masterData.spaceCostHint"),
       },
       {
         name: "abschreibungsdauer_jahre",
-        label: "Abschreibungsdauer (Jahre)",
+        label: t("masterData.depreciationYears"),
         type: "number",
         step: "1",
       },
       {
         name: "zinssatz",
-        label: "Zinssatz (%)",
+        label: t("masterData.interestRatePct"),
         type: "number",
         step: "0.0001",
-        hint: RATE_HINT,
+        hint: t("masterData.ratePercentHint"),
       },
       {
         name: "versicherungssatz",
-        label: "Versicherungssatz (%)",
+        label: t("masterData.insuranceRatePct"),
         type: "number",
         step: "0.0001",
-        hint: RATE_HINT,
+        hint: t("masterData.ratePercentHint"),
       },
       {
         name: "instandhaltungssatz",
-        label: "Instandhaltungssatz (%)",
+        label: t("masterData.maintenanceRatePct"),
         type: "number",
         step: "0.0001",
-        hint: RATE_HINT,
+        hint: t("masterData.ratePercentHint"),
       },
       {
         name: "strompreis",
-        label: "Strompreis (€/kWh)",
+        label: t("masterData.electricityPrice"),
         type: "number",
         step: "0.0001",
-        hint: "Dezimalwert, z. B. 0,06 oder 0.06 – keine Prozentumrechnung.",
+        hint: t("masterData.absoluteDecimalHint", { example: t("masterData.exampleEnergy") }),
       },
       {
         name: "druckluftpreis",
-        label: "Druckluftpreis (€/m³)",
+        label: t("masterData.compressedAirPrice"),
         type: "number",
         step: "0.0001",
-        hint: "Dezimalwert, z. B. 0,06 oder 0.06 – keine Prozentumrechnung.",
+        hint: t("masterData.absoluteDecimalHint", { example: t("masterData.exampleEnergy") }),
       },
       {
         name: "kuehlwasserpreis",
-        label: "Kühlwasserpreis (€/m³)",
+        label: t("masterData.coolingWaterPrice"),
         type: "number",
         step: "0.0001",
-        hint: "Dezimalwert, z. B. 0,03 oder 0.03 – keine Prozentumrechnung.",
+        hint: t("masterData.absoluteDecimalHint", { example: t("masterData.exampleCooling") }),
       },
-      { name: "aktiv", label: "Aktiv", type: "checkbox" },
+      { name: "aktiv", label: t("common.active"), type: "checkbox" },
     ],
-    [lands],
+    [lands, t],
   );
 
   return (
     <StammdatenGrid<Werk>
-      title="Werke / Standorte"
-      entityLabel="Werk"
+      title={t("nav.plants")}
+      description={t("pages.plantsDesc")}
+      entityLabel={t("masterData.plant")}
       endpoint="/werke"
       columnDefs={columnDefs}
       formFields={formFields}
@@ -190,7 +199,7 @@ export function WerkePage() {
       formBanner={
         formBannerExtra.length > 0 ? (
           <div className="space-y-1 text-amber-900">
-            <p className="font-medium">Auffällige gespeicherte Kostensätze</p>
+            <p className="font-medium">{t("masterData.unusualStoredRates")}</p>
             <ul className="list-disc pl-4 text-sm">
               {formBannerExtra.map((w) => (
                 <li key={w}>{w}</li>
@@ -223,7 +232,7 @@ export function WerkePage() {
       transformLoadValues={(values, mode) => {
         if (mode === "edit") {
           setFormBannerExtra(
-            warningsForStoredRateFractions(values as unknown as Partial<Werk>),
+            warningsForStoredRateFractions(values as unknown as Partial<Werk>, t),
           );
         } else {
           setFormBannerExtra([]);
@@ -231,7 +240,7 @@ export function WerkePage() {
         return loadWerkFormValues(values);
       }}
       transformSubmitValues={(values) => {
-        const uiWarnings = rateFractionWarnings(values);
+        const uiWarnings = rateFractionWarnings(values, t);
         if (uiWarnings.length) {
           setFormBannerExtra(uiWarnings);
         }

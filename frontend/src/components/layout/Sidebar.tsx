@@ -14,7 +14,9 @@ import {
 } from "@phosphor-icons/react";
 
 import { useActiveProject } from "../../context/ActiveProjectContext";
+import { useT } from "../../i18n";
 import { cn } from "../../lib/utils";
+import { BrandLogo } from "../BrandLogo";
 import { CustomerProjectSelector } from "../hierarchy/CustomerProjectSelector";
 import { Button } from "../ui/Button";
 import { isStammdatenSectionPath, navItems, type NavItem } from "./navConfig";
@@ -59,6 +61,7 @@ function linkClass(isActive: boolean) {
 }
 
 export function Sidebar() {
+  const t = useT();
   const location = useLocation();
   const isStammdatenActive = isStammdatenSectionPath(location.pathname);
   const [stammdatenOpen, setStammdatenOpen] = useState(isStammdatenActive);
@@ -76,8 +79,8 @@ export function Sidebar() {
   return (
     <aside className="flex w-72 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="border-b border-sidebar-border px-5 py-5">
-        <h1 className="text-xl font-bold tracking-tight text-white">Kalkulations-Tool</h1>
-        <p className="mt-1 text-sm text-sidebar-muted">Kunststoffmodule Automotive</p>
+        <BrandLogo size="sm" onDark showWordmark />
+        <p className="mt-2 text-sm text-sidebar-muted">{t("branding.tagline")}</p>
 
         <div
           className="mt-4 rounded-app border border-sidebar-border bg-black/20 p-3"
@@ -85,7 +88,7 @@ export function Sidebar() {
         >
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-muted">
-              Aktives Projekt
+              {t("project.activeProject")}
             </p>
             <span
               className={cn(
@@ -95,7 +98,7 @@ export function Sidebar() {
                   : "bg-white/10 text-sidebar-muted",
               )}
             >
-              {isComplete ? "Filter aktiv" : "Alle Projekte"}
+              {isComplete ? t("project.filterActive") : t("project.allProjects")}
             </span>
           </div>
           <CustomerProjectSelector compact value={selection} onChange={setSelection} />
@@ -107,16 +110,16 @@ export function Sidebar() {
             onClick={clearSelection}
             disabled={!hasAnySelection}
           >
-            Alle Projekte
+            {t("project.allProjects")}
           </Button>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Hauptnavigation">
+      <nav className="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Main navigation">
         {navItems.map((item) => {
           if ("children" in item) {
             return (
-              <div key={item.label}>
+              <div key={item.labelKey}>
                 <button
                   type="button"
                   onClick={() => setStammdatenOpen((open) => !open)}
@@ -130,7 +133,7 @@ export function Sidebar() {
                 >
                   <span className="flex items-center gap-2.5">
                     {navIcon(item)}
-                    {item.label}
+                    {t(item.labelKey)}
                   </span>
                   <span className="text-xs opacity-80" aria-hidden>
                     {stammdatenOpen ? "▾" : "▸"}
@@ -144,7 +147,7 @@ export function Sidebar() {
                         to={child.to}
                         className={({ isActive }) => linkClass(isActive)}
                       >
-                        {child.label}
+                        {t(child.labelKey)}
                       </NavLink>
                     ))}
                   </div>
@@ -161,7 +164,7 @@ export function Sidebar() {
               className={({ isActive }) => linkClass(isActive)}
             >
               {navIcon(item)}
-              {item.label}
+              {t(item.labelKey)}
             </NavLink>
           );
         })}

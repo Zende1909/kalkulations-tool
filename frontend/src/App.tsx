@@ -4,6 +4,7 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AppLayout } from "./components/layout/AppLayout";
 import { ActiveProjectProvider } from "./context/ActiveProjectContext";
 import { AuthProvider } from "./context/AuthContext";
+import { LocaleProvider } from "./i18n";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import {
@@ -27,37 +28,39 @@ import { ZuschlagssaetzePage } from "./pages/stammdaten/ZuschlagssaetzePage";
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ActiveProjectProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route element={<ProtectedRoute />}>
-              <Route element={<AppLayout />}>
-                <Route index element={<DashboardPage />} />
-                <Route path="stammdaten/materialgruppen" element={<MaterialgruppenPage />} />
-                <Route path="stammdaten/materialien" element={<MaterialienPage />} />
-                <Route path="stammdaten/laender" element={<LaenderPage />} />
-                <Route path="stammdaten/werke" element={<WerkePage />} />
-                <Route path="stammdaten/werk-zuschlaege" element={<WerkZuschlaegePage />} />
-                <Route path="stammdaten/maschinen" element={<MaschinenPage />} />
-                <Route path="stammdaten/lohnkosten" element={<LohnkostenPage />} />
-                <Route path="stammdaten/kaufteile" element={<KaufteilePage />} />
-                <Route path="stammdaten/zuschlagssaetze" element={<ZuschlagssaetzePage />} />
-                <Route path="stammdaten/hierarchie" element={<KundenProgrammeProjektePage />} />
-                <Route path="spritzguss" element={<SpritzgussPage />} />
-                <Route path="veredelung" element={<VeredelungPage />} />
-                <Route path="baugruppen" element={<BaugruppenPage />} />
-                <Route path="baugruppen/familien" element={<Navigate to="/baugruppen" replace />} />
-                <Route path="maschinenauslastung" element={<MaschinenauslastungPage />} />
-                <Route path="investitionen" element={<InvestitionenPage />} />
-                <Route path="business-case" element={<BusinessCasePage />} />
+    <LocaleProvider>
+      <AuthProvider>
+        <ActiveProjectProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route element={<ProtectedRoute />}>
+                <Route element={<AppLayout />}>
+                  <Route index element={<DashboardPage />} />
+                  <Route path="stammdaten/materialgruppen" element={<MaterialgruppenPage />} />
+                  <Route path="stammdaten/materialien" element={<MaterialienPage />} />
+                  <Route path="stammdaten/laender" element={<LaenderPage />} />
+                  <Route path="stammdaten/werke" element={<WerkePage />} />
+                  <Route path="stammdaten/werk-zuschlaege" element={<WerkZuschlaegePage />} />
+                  <Route path="stammdaten/maschinen" element={<MaschinenPage />} />
+                  <Route path="stammdaten/lohnkosten" element={<LohnkostenPage />} />
+                  <Route path="stammdaten/kaufteile" element={<KaufteilePage />} />
+                  <Route path="stammdaten/zuschlagssaetze" element={<ZuschlagssaetzePage />} />
+                  <Route path="stammdaten/hierarchie" element={<KundenProgrammeProjektePage />} />
+                  <Route path="spritzguss" element={<SpritzgussPage />} />
+                  <Route path="veredelung" element={<VeredelungPage />} />
+                  <Route path="baugruppen" element={<BaugruppenPage />} />
+                  <Route path="baugruppen/familien" element={<Navigate to="/baugruppen" replace />} />
+                  <Route path="maschinenauslastung" element={<MaschinenauslastungPage />} />
+                  <Route path="investitionen" element={<InvestitionenPage />} />
+                  <Route path="business-case" element={<BusinessCasePage />} />
+                </Route>
               </Route>
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </ActiveProjectProvider>
-    </AuthProvider>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </ActiveProjectProvider>
+      </AuthProvider>
+    </LocaleProvider>
   );
 }

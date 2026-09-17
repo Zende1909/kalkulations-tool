@@ -23,10 +23,10 @@ describe("Einzelteilkalkulation Teilbild & gespeicherte Liste", () => {
 
   it("nutzt verbesserte gespeicherte Liste mit Filter", () => {
     expect(pageSrc).toMatch(/SpritzgussSavedList/);
-    expect(savedListSrc).toMatch(/Gespeicherte Kalkulationen/);
-    expect(savedListSrc).toMatch(/Kunde/);
-    expect(savedListSrc).toMatch(/Programm/);
-    expect(savedListSrc).toMatch(/Projekt/);
+    expect(savedListSrc).toMatch(/spritzguss\.savedTitle/);
+    expect(savedListSrc).toMatch(/project\.customer/);
+    expect(savedListSrc).toMatch(/project\.program/);
+    expect(savedListSrc).toMatch(/project\.project/);
     expect(savedListSrc).toMatch(/teilbildSrc/);
   });
 

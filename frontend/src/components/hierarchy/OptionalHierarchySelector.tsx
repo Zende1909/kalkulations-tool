@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { listCustomers, listPrograms, listProjects } from "../../api/hierarchy";
+import { useT } from "../../i18n";
 import type { Customer, Program, Project } from "../../types/hierarchy";
 import type { HierarchySelection } from "./HierarchySelector";
 
@@ -18,6 +19,7 @@ const emptySelection = (): HierarchySelection => ({
 
 /** Optionale Kunde → Programm → Projekt-Kette (Projekt leer = Standardkaufteil). */
 export function OptionalHierarchySelector({ value, onChange, disabled }: Props) {
+  const t = useT();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -44,13 +46,10 @@ export function OptionalHierarchySelector({ value, onChange, disabled }: Props) 
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-600">
-        Ohne Projektzuordnung ist dieses Kaufteil ein Standardkaufteil und für alle Projekte
-        verfügbar.
-      </p>
+      <p className="text-sm text-slate-600">{t("project.standardPurchasedPartHint")}</p>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="block text-sm">
-          <span className="font-medium text-gray-700">Kunde (optional)</span>
+          <span className="font-medium text-gray-700">{t("project.customerOptional")}</span>
           <select
             disabled={disabled}
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
@@ -60,7 +59,7 @@ export function OptionalHierarchySelector({ value, onChange, disabled }: Props) 
               onChange({ ...emptySelection(), customer_id: cid });
             }}
           >
-            <option value="">– kein Kunde / Standardkaufteil –</option>
+            <option value="">{t("project.noCustomerStandardPart")}</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.customer_number} – {c.name}
@@ -70,7 +69,7 @@ export function OptionalHierarchySelector({ value, onChange, disabled }: Props) 
         </label>
 
         <label className="block text-sm">
-          <span className="font-medium text-gray-700">Programm (optional)</span>
+          <span className="font-medium text-gray-700">{t("project.programOptional")}</span>
           <select
             disabled={disabled || value.customer_id == null}
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
@@ -84,7 +83,7 @@ export function OptionalHierarchySelector({ value, onChange, disabled }: Props) 
               });
             }}
           >
-            <option value="">– kein Programm –</option>
+            <option value="">{t("project.noProgram")}</option>
             {programs.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.program_number} – {p.name}
@@ -94,7 +93,7 @@ export function OptionalHierarchySelector({ value, onChange, disabled }: Props) 
         </label>
 
         <label className="block text-sm md:col-span-2">
-          <span className="font-medium text-gray-700">Projekt (optional)</span>
+          <span className="font-medium text-gray-700">{t("project.projectOptional")}</span>
           <select
             disabled={disabled || value.program_id == null}
             className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
@@ -108,7 +107,7 @@ export function OptionalHierarchySelector({ value, onChange, disabled }: Props) 
               });
             }}
           >
-            <option value="">– Standardkaufteil (alle Projekte) –</option>
+            <option value="">{t("project.standardPurchasedPartAllProjects")}</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.project_number} – {p.name}

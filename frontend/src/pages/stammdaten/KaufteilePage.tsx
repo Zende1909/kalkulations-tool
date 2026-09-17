@@ -6,6 +6,7 @@ import type { HierarchySelection } from "../../components/hierarchy/HierarchySel
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import { useActiveProject } from "../../context/ActiveProjectContext";
+import { useT } from "../../i18n";
 import type { Kaufteil } from "../../types/baugruppe";
 import {
   loadKaufteilFormValues,
@@ -28,74 +29,6 @@ function hierarchyFromFormValues(
   };
 }
 
-function projectLabel(row: Kaufteil): string {
-  if (row.project_id == null) return "(Standard)";
-  return `Projekt #${row.project_id}`;
-}
-
-const columnDefs: ColDef<Kaufteil>[] = [
-  { field: "artikelnummer", headerName: "Artikel-Nr." },
-  { field: "bezeichnung", headerName: "Bezeichnung" },
-  {
-    field: "project_id",
-    headerName: "Projekt",
-    valueFormatter: (p) => projectLabel(p.data as Kaufteil),
-  },
-  {
-    field: "nominierung",
-    headerName: "Nominierung",
-    valueFormatter: (p) => {
-      if (p.value === "selbstnominiert") return "selbstnominiert";
-      if (p.value === "oem_nominiert") return "OEM-nominiert";
-      return "— nicht klassifiziert";
-    },
-  },
-  { field: "lieferant", headerName: "Lieferant" },
-  { field: "preis", headerName: "Preis" },
-  { field: "einheit", headerName: "Einheit" },
-  { field: "waehrung", headerName: "Währung" },
-  {
-    field: "aktiv",
-    headerName: "Aktiv",
-    valueFormatter: (p) => (p.value ? "Ja" : "Nein (inaktiv)"),
-  },
-];
-
-const formFields: FormField[] = [
-  { name: "artikelnummer", label: "Artikel-Nr.", type: "text", required: true },
-  { name: "bezeichnung", label: "Bezeichnung", type: "text", required: true },
-  { name: "beschreibung", label: "Beschreibung", type: "text" },
-  { name: "lieferant", label: "Lieferant", type: "text" },
-  { name: "einheit", label: "Einheit", type: "text", required: true },
-  { name: "preis", label: "Preis", type: "number", required: true, step: "0.0001", hint: "Dezimalwert, z. B. 0,10 oder 0.10" },
-  { name: "waehrung", label: "Währung", type: "text", required: true },
-  {
-    name: "nominierung",
-    label: "Nominierung (MGK)",
-    type: "select",
-    required: true,
-    options: [
-      { value: "selbstnominiert", label: "selbstnominiert (MGK aus Stammdaten)" },
-      { value: "oem_nominiert", label: "OEM-nominiert (MGK aus Stammdaten)" },
-    ],
-  },
-  {
-    name: "sga_override_aktiv",
-    label: "SG&A-Satz manuell überschreiben",
-    type: "checkbox",
-    hint: "Ohne Aktivierung gilt der zentrale Standard-SG&A-Satz für Kaufteile.",
-  },
-  {
-    name: "sga_satz_manuell",
-    label: "Manueller SG&A-Satz (%)",
-    type: "number",
-    step: "0.01",
-    hint: "Nur bei aktivierter Überschreibung. Basis: Einkauf + MGK + OEM-Handling.",
-  },
-  { name: "gueltig_ab", label: "Gültig ab", type: "date" },
-  { name: "aktiv", label: "Aktiv", type: "checkbox" },
-];
-
 const HIERARCHY_KEYS = ["customer_id", "program_id", "project_id"] as const;
 
 const baseEmptyFormValues = {
@@ -117,6 +50,7 @@ const baseEmptyFormValues = {
 };
 
 export function KaufteilePage() {
+  const t = useT();
   const { selection } = useActiveProject();
   const [hierarchy, setHierarchy] = useState<HierarchySelection>(() => ({
     customer_id: selection.customer_id,
@@ -153,17 +87,100 @@ export function KaufteilePage() {
     return params.toString();
   }, [hierarchy]);
 
+  const columnDefs = useMemo(
+    (): ColDef<Kaufteil>[] => [
+      { field: "artikelnummer", headerName: t("masterData.articleNo") },
+      { field: "bezeichnung", headerName: t("masterData.designation") },
+      {
+        field: "project_id",
+        headerName: t("masterData.projectLabel"),
+        valueFormatter: (p) => {
+          const row = p.data as Kaufteil;
+          if (row.project_id == null) return t("masterData.standardTag");
+          return t("masterData.projectHash", { id: row.project_id });
+        },
+      },
+      {
+        field: "nominierung",
+        headerName: t("masterData.nomination"),
+        valueFormatter: (p) => {
+          if (p.value === "selbstnominiert") return t("masterData.selfNominated");
+          if (p.value === "oem_nominiert") return t("masterData.oemNominated");
+          return t("masterData.notClassified");
+        },
+      },
+      { field: "lieferant", headerName: t("masterData.supplier") },
+      { field: "preis", headerName: t("masterData.price") },
+      { field: "einheit", headerName: t("masterData.unit") },
+      { field: "waehrung", headerName: t("masterData.currency") },
+      {
+        field: "aktiv",
+        headerName: t("common.active"),
+        valueFormatter: (p) => (p.value ? t("common.yes") : t("masterData.noInactive")),
+      },
+    ],
+    [t],
+  );
+
+  const formFields = useMemo(
+    (): FormField[] => [
+      { name: "artikelnummer", label: t("masterData.articleNo"), type: "text", required: true },
+      { name: "bezeichnung", label: t("masterData.designation"), type: "text", required: true },
+      { name: "beschreibung", label: t("masterData.description"), type: "text" },
+      { name: "lieferant", label: t("masterData.supplier"), type: "text" },
+      { name: "einheit", label: t("masterData.unit"), type: "text", required: true },
+      {
+        name: "preis",
+        label: t("masterData.price"),
+        type: "number",
+        required: true,
+        step: "0.0001",
+        hint: t("masterData.decimalHint", { example: t("masterData.exampleEnergy") }),
+      },
+      { name: "waehrung", label: t("masterData.currency"), type: "text", required: true },
+      {
+        name: "nominierung",
+        label: t("masterData.nominationMgk"),
+        type: "select",
+        required: true,
+        options: [
+          { value: "selbstnominiert", label: t("masterData.selfNominatedMgk") },
+          { value: "oem_nominiert", label: t("masterData.oemNominatedMgk") },
+        ],
+      },
+      {
+        name: "sga_override_aktiv",
+        label: t("masterData.sgaOverride"),
+        type: "checkbox",
+        hint: t("masterData.sgaOverrideHint"),
+      },
+      {
+        name: "sga_satz_manuell",
+        label: t("masterData.sgaManualPct"),
+        type: "number",
+        step: "0.01",
+        hint: t("masterData.sgaManualHint"),
+      },
+      { name: "gueltig_ab", label: t("masterData.validFrom"), type: "date" },
+      { name: "aktiv", label: t("common.active"), type: "checkbox" },
+    ],
+    [t],
+  );
+
   return (
     <StammdatenGrid<Kaufteil>
-      title="Kaufteile"
-      entityLabel="Kaufteil"
+      title={t("nav.purchasedParts")}
+      description={t("pages.purchasedPartsDesc")}
+      entityLabel={t("masterData.purchasedPart")}
       endpoint="/kaufteile"
       listQuery={listQuery}
       additionalFormKeys={[...HIERARCHY_KEYS, "sga_override_aktiv", "sga_satz_manuell"]}
       formMaxWidthClassName="max-w-2xl"
       formExtraContent={(values, onChange) => (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <h4 className="mb-2 text-sm font-semibold text-slate-800">Projektzuordnung</h4>
+          <h4 className="mb-2 text-sm font-semibold text-slate-800">
+            {t("masterData.projectAssignment")}
+          </h4>
           <OptionalHierarchySelector
             value={hierarchyFromFormValues(values)}
             onChange={(next) => {
@@ -176,12 +193,7 @@ export function KaufteilePage() {
       )}
       toolbarExtra={
         <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
-          <p className="mb-2 text-sm text-gray-600">
-            Filter: Kunde → Programm → Projekt (optional). Ohne Filter bleiben alle Kaufteile
-            sichtbar. Mit Projektfilter werden projektbezogene und Standardkaufteile angezeigt.
-            Altbestand ohne Nominierung bitte nachklassifizieren – sonst schlägt die
-            Baugruppenkalkulation mit Hinweis fehl (kein stiller Standardsatz).
-          </p>
+          <p className="mb-2 text-sm text-gray-600">{t("masterData.purchasedPartsFilterHint")}</p>
           <OptionalHierarchySelector value={hierarchy} onChange={setHierarchy} />
         </div>
       }

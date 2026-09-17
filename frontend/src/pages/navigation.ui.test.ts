@@ -22,38 +22,40 @@ const kaufteileSrc = readFileSync(
 );
 const baugruppenSrc = readFileSync(resolve(__dirname, "./BaugruppenPage.tsx"), "utf-8");
 
-function leafLabelsInOrder(): string[] {
-  const labels: string[] = [];
+function leafLabelKeysInOrder(): string[] {
+  const keys: string[] = [];
   for (const item of navItems) {
     if ("children" in item) {
-      labels.push(item.label);
+      keys.push(item.labelKey);
       for (const child of item.children) {
-        labels.push(child.label);
+        keys.push(child.labelKey);
       }
     } else {
-      labels.push(item.label);
+      keys.push(item.labelKey);
     }
   }
-  return labels;
+  return keys;
 }
 
 describe("Hauptnavigation Einzelteilkalkulation / Kaufteile", () => {
   it("zeigt Einzelteilkalkulation statt Spritzguss-Kalkulation", () => {
-    expect(spritzSrc).toMatch(/Einzelteilkalkulation/);
+    expect(spritzSrc).toMatch(/spritzguss\.title|nav\.partCalculation/);
     expect(spritzSrc).not.toMatch(/Spritzguss-Kalkulation/);
-    expect(navConfigSrc).toMatch(/Einzelteilkalkulation/);
+    expect(navConfigSrc).toMatch(/nav\.partCalculation/);
     expect(navConfigSrc).not.toMatch(/Spritzguss-Kalkulation/);
-    expect(baugruppenSrc).toMatch(/Einzelteilkalkulation hinzufügen/);
+    expect(baugruppenSrc).toMatch(/assemblies\.addMoldedPart/);
     expect(baugruppenSrc).not.toMatch(/Spritzguss-Kalkulation hinzufügen/);
   });
 
   it("ordnet Kaufteile zwischen Einzelteilkalkulation und Veredelung ein", () => {
     const topLevel = navItems
-      .filter((item): item is { to: string; label: string; end?: boolean } => !("children" in item))
-      .map((item) => item.label);
-    const iEinzel = topLevel.indexOf("Einzelteilkalkulation");
-    const iKauf = topLevel.indexOf("Kaufteile");
-    const iVered = topLevel.indexOf("Veredelung");
+      .filter(
+        (item): item is { to: string; labelKey: string; end?: boolean } => !("children" in item),
+      )
+      .map((item) => item.labelKey);
+    const iEinzel = topLevel.indexOf("nav.partCalculation");
+    const iKauf = topLevel.indexOf("nav.purchasedParts");
+    const iVered = topLevel.indexOf("nav.finishing");
     expect(iEinzel).toBeGreaterThanOrEqual(0);
     expect(iKauf).toBe(iEinzel + 1);
     expect(iVered).toBe(iKauf + 1);
@@ -61,15 +63,15 @@ describe("Hauptnavigation Einzelteilkalkulation / Kaufteile", () => {
 
   it("enthält Kaufteile nicht doppelt (nicht unter Stammdaten)", () => {
     const stammdaten = navItems.find(
-      (item): item is { label: string; children: { to: string; label: string }[] } =>
-        "children" in item && item.label === "Stammdaten",
+      (item): item is { labelKey: string; children: { to: string; labelKey: string }[] } =>
+        "children" in item && item.labelKey === "nav.masterData",
     );
     expect(stammdaten).toBeDefined();
-    expect(stammdaten!.children.some((c) => c.label === "Kaufteile")).toBe(false);
+    expect(stammdaten!.children.some((c) => c.labelKey === "nav.purchasedParts")).toBe(false);
     expect(stammdaten!.children.some((c) => c.to.includes("kaufteile"))).toBe(false);
 
     const kaufteileLeaves = navItems.filter(
-      (item) => !("children" in item) && item.label === "Kaufteile",
+      (item) => !("children" in item) && item.labelKey === "nav.purchasedParts",
     );
     expect(kaufteileLeaves).toHaveLength(1);
     expect(kaufteileLeaves[0]).toMatchObject({ to: "/stammdaten/kaufteile" });
@@ -86,13 +88,13 @@ describe("Hauptnavigation Einzelteilkalkulation / Kaufteile", () => {
   it("hält Kaufteile-Route und Seite unverändert erreichbar", () => {
     expect(appSrc).toMatch(/path="stammdaten\/kaufteile"/);
     expect(appSrc).toMatch(/KaufteilePage/);
-    expect(kaufteileSrc).toMatch(/title="Kaufteile"/);
+    expect(kaufteileSrc).toMatch(/nav\.purchasedParts/);
     expect(kaufteileSrc).toMatch(/endpoint="\/kaufteile"/);
   });
 
   it("exportiert konsistente Menüreihenfolge", () => {
-    const labels = leafLabelsInOrder();
-    expect(labels.indexOf("Einzelteilkalkulation")).toBeLessThan(labels.indexOf("Kaufteile"));
-    expect(labels.indexOf("Kaufteile")).toBeLessThan(labels.indexOf("Veredelung"));
+    const keys = leafLabelKeysInOrder();
+    expect(keys.indexOf("nav.partCalculation")).toBeLessThan(keys.indexOf("nav.purchasedParts"));
+    expect(keys.indexOf("nav.purchasedParts")).toBeLessThan(keys.indexOf("nav.finishing"));
   });
 });

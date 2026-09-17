@@ -3,12 +3,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { listCustomers, listPrograms, listProjects } from "../../api/hierarchy";
 import { listKalkulationen } from "../../api/spritzguss";
 import { useActiveProject } from "../../context/ActiveProjectContext";
-import { Button } from "../ui/Button";
-import { SectionHeader } from "../ui/SectionHeader";
-import { ValidationMessage } from "../ui/ValidationMessage";
+import { useT } from "../../i18n";
 import type { Customer, Program, Project } from "../../types/hierarchy";
 import type { SpritzgussListItem } from "../../types/spritzguss";
 import { teilbildSrc } from "../../utils/teilbild";
+import { Button } from "../ui/Button";
+import { SectionHeader } from "../ui/SectionHeader";
+import { ValidationMessage } from "../ui/ValidationMessage";
 
 function euro(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "–";
@@ -28,6 +29,7 @@ export function SpritzgussSavedList({
   onOpen: (id: number) => void;
   onDelete: (id: number) => void;
 }) {
+  const t = useT();
   const { selection } = useActiveProject();
   const [list, setList] = useState<SpritzgussListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +91,7 @@ export function SpritzgussSavedList({
         if (!cancelled) {
           setList([]);
           setLoadError(
-            err instanceof Error ? err.message : "Gespeicherte Kalkulationen konnten nicht geladen werden.",
+            err instanceof Error ? err.message : t("spritzguss.loadSavedFailed"),
           );
         }
       })
@@ -99,14 +101,12 @@ export function SpritzgussSavedList({
     return () => {
       cancelled = true;
     };
-  }, [filterKey, refreshKey]);
+  }, [filterKey, refreshKey, t]);
 
-  // Beim Wechsel des Filters wieder "einklappen".
   useEffect(() => {
     setExpanded(false);
   }, [filterKey]);
 
-  // Höhe für "eingeklappt" (genau eine Zeile) messen.
   useEffect(() => {
     if (expanded) return;
     const host = gridHeightMeasureRef.current;
@@ -114,7 +114,6 @@ export function SpritzgussSavedList({
     const firstCard = host.querySelector('[data-saved-card="true"]') as HTMLElement | null;
     if (!firstCard) return;
 
-    // Tailwind: gap-3 ~ 12px
     const gapPx = 12;
     const measured = firstCard.getBoundingClientRect().height + gapPx;
     if (Number.isFinite(measured) && measured > 0) {
@@ -134,18 +133,18 @@ export function SpritzgussSavedList({
   return (
     <section className="app-card p-5">
       <SectionHeader
-        title="Gespeicherte Kalkulationen"
-        description="Schnellzugriff auf gespeicherte Einzelteile – mit Teilbild zur leichteren Erkennung."
+        title={t("spritzguss.savedTitle")}
+        description={t("spritzguss.savedDesc")}
         actions={
           <Button variant="secondary" size="sm" onClick={resetFilter}>
-            Filter zurücksetzen
+            {t("businessCase.resetFilters")}
           </Button>
         }
       />
 
       <div className="mb-4 grid gap-3 md:grid-cols-3">
         <label className="block text-sm">
-          <span className="mb-1 block font-medium text-app-heading">Kunde</span>
+          <span className="mb-1 block font-medium text-app-heading">{t("project.customer")}</span>
           <select
             value={customerId}
             onChange={(e) => {
@@ -156,7 +155,7 @@ export function SpritzgussSavedList({
             }}
             className="app-input mt-0"
           >
-            <option value="">Alle Kunden</option>
+            <option value="">{t("spritzguss.allCustomers")}</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -165,7 +164,7 @@ export function SpritzgussSavedList({
           </select>
         </label>
         <label className="block text-sm">
-          <span className="mb-1 block font-medium text-app-heading">Programm</span>
+          <span className="mb-1 block font-medium text-app-heading">{t("project.program")}</span>
           <select
             value={programId}
             disabled={customerId === ""}
@@ -176,7 +175,7 @@ export function SpritzgussSavedList({
             }}
             className="app-input mt-0"
           >
-            <option value="">Alle Programme</option>
+            <option value="">{t("spritzguss.allPrograms")}</option>
             {programs.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -185,14 +184,14 @@ export function SpritzgussSavedList({
           </select>
         </label>
         <label className="block text-sm">
-          <span className="mb-1 block font-medium text-app-heading">Projekt</span>
+          <span className="mb-1 block font-medium text-app-heading">{t("project.project")}</span>
           <select
             value={projectId}
             disabled={programId === ""}
             onChange={(e) => setProjectId(e.target.value === "" ? "" : Number(e.target.value))}
             className="app-input mt-0"
           >
-            <option value="">Alle Projekte</option>
+            <option value="">{t("project.allProjects")}</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -209,12 +208,10 @@ export function SpritzgussSavedList({
       ) : null}
 
       {loading ? (
-        <p className="text-body-lg text-app-muted">Lade gespeicherte Kalkulationen…</p>
+        <p className="text-body-lg text-app-muted">{t("spritzguss.loadingSaved")}</p>
       ) : list.length === 0 ? (
         <p className="rounded-app border border-dashed border-app-border px-4 py-8 text-center text-app-muted">
-          {filterActive
-            ? "Keine gespeicherten Kalkulationen für den gewählten Filter. Filter zurücksetzen, um alle anzuzeigen."
-            : "Noch keine gespeicherten Kalkulationen."}
+          {filterActive ? t("spritzguss.emptyFiltered") : t("spritzguss.emptyNone")}
         </p>
       ) : (
         <div className="relative">
@@ -245,7 +242,9 @@ export function SpritzgussSavedList({
                         {thumb ? (
                           <img src={thumb} alt="" className="h-full w-full object-contain" />
                         ) : (
-                          <span className="text-[10px] uppercase tracking-wide text-app-muted">Kein Bild</span>
+                          <span className="text-[10px] uppercase tracking-wide text-app-muted">
+                            {t("spritzguss.noImage")}
+                          </span>
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -257,7 +256,7 @@ export function SpritzgussSavedList({
                           {item.kunde || "–"} · {item.projekt || "–"}
                         </p>
                         <p className="mt-1 text-xs font-medium text-brand">
-                          VP {euro(item.verkaufspreis)} €
+                          {t("spritzguss.sellingPriceShort", { price: euro(item.verkaufspreis) })}
                         </p>
                       </div>
                     </div>
@@ -267,11 +266,11 @@ export function SpritzgussSavedList({
                         size="sm"
                         onClick={() => onOpen(item.id)}
                       >
-                        {isActive ? "Geöffnet" : "Öffnen"}
+                        {isActive ? t("spritzguss.opened") : t("spritzguss.open")}
                       </Button>
                       {canWrite ? (
                         <Button variant="danger" size="sm" onClick={() => onDelete(item.id)}>
-                          Löschen
+                          {t("common.delete")}
                         </Button>
                       ) : null}
                     </div>
@@ -283,8 +282,13 @@ export function SpritzgussSavedList({
 
           {list.length > 1 ? (
             <div className="mt-3 flex justify-end">
-              <Button variant="secondary" size="sm" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
-                {expanded ? "Weniger anzeigen" : "Alle anzeigen"}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setExpanded((v) => !v)}
+                aria-expanded={expanded}
+              >
+                {expanded ? t("spritzguss.showLess") : t("spritzguss.showAll")}
               </Button>
             </div>
           ) : null}

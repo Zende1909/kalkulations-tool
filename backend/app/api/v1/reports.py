@@ -28,6 +28,7 @@ from app.services.export_pdf import (
     render_dashboard_pdf,
     render_spritzguss_pdf,
 )
+from app.services.i18n_export import normalize_locale
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -46,22 +47,26 @@ def _file_response(content: bytes, filename: str, media_type: str) -> Response:
 @router.get("/spritzguss/{calculation_id}.pdf")
 def export_spritzguss_pdf(
     calculation_id: int,
+    lang: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
+    locale = normalize_locale(lang)
     data = build_spritzguss_export(db, calculation_id)
-    pdf = render_spritzguss_pdf(data)
+    pdf = render_spritzguss_pdf(data, locale=locale)
     return _file_response(pdf, spritzguss_export_filename(data, "pdf"), "application/pdf")
 
 
 @router.get("/spritzguss/{calculation_id}.xlsx")
 def export_spritzguss_xlsx(
     calculation_id: int,
+    lang: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
+    locale = normalize_locale(lang)
     data = build_spritzguss_export(db, calculation_id)
-    xlsx = render_spritzguss_excel(data)
+    xlsx = render_spritzguss_excel(data, locale=locale)
     return _file_response(
         xlsx,
         spritzguss_export_filename(data, "xlsx"),
@@ -72,22 +77,26 @@ def export_spritzguss_xlsx(
 @router.get("/baugruppen/{assembly_id}.pdf")
 def export_baugruppe_pdf(
     assembly_id: int,
+    lang: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
+    locale = normalize_locale(lang)
     data = build_baugruppe_export(db, assembly_id)
-    pdf = render_baugruppe_pdf(data)
+    pdf = render_baugruppe_pdf(data, locale=locale)
     return _file_response(pdf, baugruppe_export_filename(data, "pdf"), "application/pdf")
 
 
 @router.get("/baugruppen/{assembly_id}.xlsx")
 def export_baugruppe_xlsx(
     assembly_id: int,
+    lang: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
+    locale = normalize_locale(lang)
     data = build_baugruppe_export(db, assembly_id)
-    xlsx = render_baugruppe_excel(data)
+    xlsx = render_baugruppe_excel(data, locale=locale)
     return _file_response(
         xlsx,
         baugruppe_export_filename(data, "xlsx"),
@@ -103,9 +112,11 @@ def export_dashboard_pdf(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     kalkulationsart: str | None = Query(default=None),
+    lang: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
+    locale = normalize_locale(lang)
     data = build_dashboard_export(
         db,
         project=project or None,
@@ -115,7 +126,7 @@ def export_dashboard_pdf(
         date_to=date_to,
         kalkulationsart=kalkulationsart or None,
     )
-    pdf = render_dashboard_pdf(data)
+    pdf = render_dashboard_pdf(data, locale=locale)
     return _file_response(pdf, dashboard_export_filename(data, "pdf"), "application/pdf")
 
 
@@ -127,9 +138,11 @@ def export_dashboard_xlsx(
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
     kalkulationsart: str | None = Query(default=None),
+    lang: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
+    locale = normalize_locale(lang)
     data = build_dashboard_export(
         db,
         project=project or None,
@@ -139,7 +152,7 @@ def export_dashboard_xlsx(
         date_to=date_to,
         kalkulationsart=kalkulationsart or None,
     )
-    xlsx = render_dashboard_excel(data)
+    xlsx = render_dashboard_excel(data, locale=locale)
     return _file_response(
         xlsx,
         dashboard_export_filename(data, "xlsx"),
@@ -152,16 +165,19 @@ def export_business_case_xlsx(
     customer_id: int = Query(..., ge=1),
     program_id: int = Query(..., ge=1),
     linked_project_id: int = Query(..., ge=1),
+    lang: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
+    locale = normalize_locale(lang)
     data = build_business_case_export(
         db,
         customer_id=customer_id,
         program_id=program_id,
         linked_project_id=linked_project_id,
+        locale=locale,
     )
-    xlsx = render_business_case_excel(data)
+    xlsx = render_business_case_excel(data, locale=locale)
     safe_name = data.project.replace(" ", "_")
     return _file_response(
         xlsx,
@@ -175,16 +191,19 @@ def export_business_case_pdf(
     customer_id: int = Query(..., ge=1),
     program_id: int = Query(..., ge=1),
     linked_project_id: int = Query(..., ge=1),
+    lang: str | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_viewer),
 ):
+    locale = normalize_locale(lang)
     data = build_business_case_export(
         db,
         customer_id=customer_id,
         program_id=program_id,
         linked_project_id=linked_project_id,
+        locale=locale,
     )
-    pdf = render_business_case_pdf(data)
+    pdf = render_business_case_pdf(data, locale=locale)
     safe_name = data.project.replace(" ", "_")
     return _file_response(
         pdf,

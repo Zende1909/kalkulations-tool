@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../../api/client";
 import { StammdatenGrid } from "../../components/stammdaten/StammdatenGrid";
+import { useT } from "../../i18n";
 import type { FormField } from "../../components/stammdaten/StammdatenFormModal";
 import type { Werk, WerkZuschlag } from "../../types/stammdaten";
 import {
@@ -10,15 +11,8 @@ import {
   submitWerkZuschlagFormValues,
 } from "../../utils/werkZuschlagFormDecimals";
 
-const columnDefs: ColDef<WerkZuschlag>[] = [
-  { field: "typ", headerName: "Typ" },
-  { field: "bezeichnung", headerName: "Bezeichnung" },
-  { field: "satz_prozent", headerName: "Satz %" },
-  { field: "kostenbasis", headerName: "Kostenbasis" },
-  { field: "aktiv", headerName: "Aktiv" },
-];
-
 export function WerkZuschlaegePage() {
+  const t = useT();
   const [werke, setWerke] = useState<Werk[]>([]);
   const [werkId, setWerkId] = useState<number | "">("");
 
@@ -29,25 +23,42 @@ export function WerkZuschlaegePage() {
     });
   }, []);
 
-  const formFields: FormField[] = useMemo(
-    () => [
-      { name: "typ", label: "Typ", type: "text", required: true },
-      { name: "bezeichnung", label: "Bezeichnung", type: "text", required: true },
-      { name: "satz_prozent", label: "Satz (%)", type: "number", required: true, step: "0.01" },
-      { name: "kostenbasis", label: "Kostenbasis", type: "text", required: true },
-      { name: "aktiv", label: "Aktiv", type: "checkbox" },
+  const columnDefs = useMemo(
+    (): ColDef<WerkZuschlag>[] => [
+      { field: "typ", headerName: t("masterData.type") },
+      { field: "bezeichnung", headerName: t("masterData.designation") },
+      { field: "satz_prozent", headerName: t("masterData.ratePercentShort") },
+      { field: "kostenbasis", headerName: t("masterData.costBase") },
+      { field: "aktiv", headerName: t("common.active") },
     ],
-    [],
+    [t],
+  );
+
+  const formFields = useMemo(
+    (): FormField[] => [
+      { name: "typ", label: t("masterData.type"), type: "text", required: true },
+      { name: "bezeichnung", label: t("masterData.designation"), type: "text", required: true },
+      {
+        name: "satz_prozent",
+        label: t("masterData.ratePercent"),
+        type: "number",
+        required: true,
+        step: "0.01",
+      },
+      { name: "kostenbasis", label: t("masterData.costBase"), type: "text", required: true },
+      { name: "aktiv", label: t("common.active"), type: "checkbox" },
+    ],
+    [t],
   );
 
   if (werkId === "") {
-    return <p className="text-sm text-gray-600">Lade Werke…</p>;
+    return <p className="text-sm text-gray-600">{t("masterData.loadingPlants")}</p>;
   }
 
   return (
     <div className="space-y-3">
       <label className="block max-w-md text-sm">
-        <span className="font-medium text-gray-700">Werk</span>
+        <span className="font-medium text-gray-700">{t("masterData.plant")}</span>
         <select
           value={werkId}
           onChange={(e) => setWerkId(Number(e.target.value))}
@@ -62,8 +73,9 @@ export function WerkZuschlaegePage() {
       </label>
       <StammdatenGrid<WerkZuschlag>
         key={werkId}
-        title="Werk-Zuschläge"
-        entityLabel="Werk-Zuschlag"
+        title={t("nav.plantMarkups")}
+        description={t("pages.plantMarkupsDesc")}
+        entityLabel={t("masterData.plantMarkup")}
         endpoint={`/werke/${werkId}/zuschlaege`}
         columnDefs={columnDefs}
         formFields={formFields}

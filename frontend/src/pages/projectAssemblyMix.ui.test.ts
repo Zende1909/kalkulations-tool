@@ -10,7 +10,7 @@ const appSrc = readFileSync(resolve(__dirname, "../App.tsx"), "utf-8");
 
 describe("Project assembly mix UI", () => {
   it("exposes Anteil am Projekt on BaugruppenPage", () => {
-    expect(pageSrc).toMatch(/Anteil am Projekt/);
+    expect(pageSrc).toMatch(/assemblies\.variantSharePct/);
     expect(pageSrc).toMatch(/variant_share_pct/);
     expect(pageSrc).toMatch(/clear_variant_share/);
   });
@@ -26,10 +26,10 @@ describe("Project assembly mix UI", () => {
     expect(appSrc).toMatch(/Navigate to=\"\/baugruppen\"/);
   });
 
-  it("shows mix status as vollständig/unvollständig text", () => {
-    expect(pageSrc).toMatch(/mixStatusLabel|vollständig/);
-    expect(typesSrc).toMatch(/vollständig/);
-    expect(typesSrc).toMatch(/unvollständig/);
+  it("shows mix status via i18n keys", () => {
+    expect(pageSrc).toMatch(/mixStatusLabelI18n|assemblies\.mixComplete/);
+    expect(typesSrc).toMatch(/mixStatusKey|assemblies\.mixComplete/);
+    expect(typesSrc).toMatch(/assemblies\.mixIncomplete/);
     expect(pageSrc).toMatch(/ProjectAssemblyMix|projectMix/);
   });
 });

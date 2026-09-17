@@ -13,15 +13,15 @@ const materialPageSrc = readFileSync(
 
 describe("Maschinengröße UI", () => {
   it("bietet Eingabemodi Maße und Projizierte Fläche", () => {
-    expect(pageSrc).toMatch(/Maschinengröße \/ Zuhaltekraft/);
+    expect(pageSrc).toMatch(/spritzguss\.machineSizeSection/);
     expect(pageSrc).toMatch(/maschinen_groesse_modus/);
-    expect(pageSrc).toMatch(/Projizierte Fläche/);
+    expect(pageSrc).toMatch(/spritzguss\.projectedArea/);
     expect(pageSrc).toMatch(/maschinenGroesse/);
   });
 
   it("Material-Stammdaten enthalten Einspritzdruck", () => {
     expect(materialPageSrc).toMatch(/injection_pressure_kg_cm2/);
-    expect(materialPageSrc).toMatch(/kg\/cm²/);
+    expect(materialPageSrc).toMatch(/masterData\.injectionPressure/);
   });
 
   it("nutzt Live-Vorschau und Kavitäten aus Maschine & Lohn", () => {
@@ -31,8 +31,6 @@ describe("Maschinengröße UI", () => {
   });
 
   it("sendet beim Berechnen die geparsten Maschinengröße-Felder aus decimalRaw", () => {
-    // Regression: Vorschau las decimalRaw, Berechnen schickte form (oft null) →
-    // „Im Modus Maße sind Breite, Länge und Öffnungen erforderlich.“
     expect(pageSrc).toMatch(/const parsedForm = resolveParsedForm\(\)/);
     expect(pageSrc).toMatch(/maschinen_groesse_breite_mm:\s*parsedForm\.maschinen_groesse_breite_mm/);
     expect(pageSrc).toMatch(/maschinen_groesse_laenge_mm:\s*parsedForm\.maschinen_groesse_laenge_mm/);

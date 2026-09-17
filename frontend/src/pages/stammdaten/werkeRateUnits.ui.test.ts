@@ -39,17 +39,17 @@ describe("Werk rate UI percent ↔ fraction", () => {
   });
 
   it("OEE bleibt Anteil (keine /100-Hilfsfunktion)", () => {
-    expect(werkeSrc).toMatch(/OEE \(0–1\)/);
+    expect(werkeSrc).toMatch(/masterData\.oee01/);
     expect(utilSrc).toMatch(/zinssatz/);
     expect(utilSrc).not.toMatch(/oee/);
     expect(werkeSrc).toMatch(/WERK_RATE_FRACTION_FIELDS/);
   });
 
   it("Werkfelder haben %-Labels und Hinweis", () => {
-    expect(werkeSrc).toMatch(/Zinssatz \(%\)/);
-    expect(werkeSrc).toMatch(/Versicherungssatz \(%\)/);
-    expect(werkeSrc).toMatch(/Instandhaltungssatz \(%\)/);
-    expect(werkeSrc).toMatch(/Eingabe als Prozentwert/);
+    expect(werkeSrc).toMatch(/masterData\.interestRatePct/);
+    expect(werkeSrc).toMatch(/masterData\.insuranceRatePct/);
+    expect(werkeSrc).toMatch(/masterData\.maintenanceRatePct/);
+    expect(werkeSrc).toMatch(/masterData\.ratePercentHint/);
     expect(werkeSrc).toMatch(/step: "0\.0001"/);
   });
 
